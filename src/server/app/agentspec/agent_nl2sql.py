@@ -15,7 +15,7 @@ No runtime imports.
 from pyagentspec.agent import Agent as AgentSpecAgent
 from pyagentspec.mcp import MCPToolBox
 
-from server.app.agentspec.adapters.mcp import build_mcp_transport
+from server.app.agentspec.adapters.mcp import McpCredential, build_mcp_transport
 from server.app.agentspec.agent_llm_only import build_llm_config
 from server.app.core.schemas import ClientSettings
 
@@ -30,7 +30,7 @@ NL2SQL_SQLCL_TOOLS = (
 def build_nl2sql_agentspec(
     client_settings: ClientSettings,
     server_url: str,
-    api_key: str,
+    api_key: McpCredential,
     system_prompt: str,
 ) -> AgentSpecAgent:
     """Build a pyagentspec Agent definition with the SQLcl tools required by NL2SQL.

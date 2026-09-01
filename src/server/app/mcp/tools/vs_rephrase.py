@@ -14,6 +14,7 @@ from fastmcp import Context
 from langchain_core.prompts import PromptTemplate
 from litellm.exceptions import APIConnectionError
 
+from server.app.core.auth import authenticated_client
 from server.app.core.mcp import mcp
 from server.app.core.settings import resolve_client
 from server.app.mcp.prompts.registry import find_prompt
@@ -173,4 +174,4 @@ def register_rephrase_tool():
         """Rephrase user question using conversation history for better vector search retrieval."""
         if ctx:
             await ctx.info(f"VS Rephrase (Thread ID: {thread_id})")
-        return await _vs_rephrase_impl(question, chat_history, client=thread_id)
+        return await _vs_rephrase_impl(question, chat_history, client=authenticated_client(thread_id))

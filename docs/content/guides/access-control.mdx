@@ -11,56 +11,29 @@ One **AI Optimizer Server** can serve many GUI sessions, IDE or MCP clients, and
 
 ## Choose a Deployment Boundary
 
-- **Trusted collaborators:** Use one server and [protect shared configuration](#protecting-the-shared-configuration) controls with a password.
-- **External applications:** Authenticate requests with the API key.
-- **Untrusted users or tenants:** Use separate deployments with different API keys.
+- **No Oracle CORE database:** Use the current shared API-key authentication model. It does not provide durable multi-user OIDC isolation.
+- **Development:** Configure a CORE Oracle Database with the built-in development OIDC provider. The server binds working sessions and personal artifacts to the authenticated principal.
+- **Production eligible:** Configure a CORE Oracle Database with an external OIDC provider, then explicitly select production mode when appropriate.
+- **Administrators:** Grant a configured role or scope claim to manage the shared catalog and Deep Data Security resources.
 
 ## Client IDs and Access Boundary
 
-A client ID selects a session; it does not authenticate a client or restrict access to a session.
+In principal-authenticated deployments, `X-AIO-Session` selects an opaque working session after authentication. The server binds that session to its creating principal and rejects access by another principal.
 
-Any client with the API key can use any client ID, including `server`. A client that knows or guesses another client ID can read that session's conversation history and submit requests using its settings.
+In the no-database shared API-key deployment, the `Client` header and `client`
+query parameter retain their current behavior. In a principal-authenticated
+deployment, they do not provide access isolation; use `X-AIO-Session` instead.
 
 :::tip
 Use client IDs to separate conversation context and client settings. To isolate untrusted tenants, run separate deployments of the **AI Optimizer** with different API keys.
 :::
 
-## Protecting the Shared Configuration
+## Shared Catalog Access
 
-The password gate keeps unauthenticated browser sessions from changing shared configuration, including adding or deleting databases, editing models, resetting settings, and exporting configuration that contains secrets.
+The Server is the authority for shared catalog access. The Client does not add a separate password gate.
 
-For shared or multi-client deployments, set a **shared password** to protect these controls using the [`AIO_CLIENT_PASSWORD`](../guides/env-vars#client) environment variable to enable the gate.
+- **No Oracle CORE database:** `AIO_AUTH_MODE` remains unset and clients use `AIO_API_KEY`. Shared catalog controls are not gated.
+- **CORE database with development authentication:** `AIO_AUTH_MODE=dev` is selected by default. The bootstrapped `admin@example.test` identity has the `aio.admin` claim and can manage the shared catalog.
+- **CORE database with OIDC or trusted-proxy authentication:** values in `AIO_AUTH_ADMIN_CLAIM_VALUES` identify the principals allowed to manage the shared catalog.
 
-When the password is set, the gate is enabled and protected controls are read-only until a user signs in.
-
-When it is unset, the gate is disabled and all controls are accessible.
-
-:::note
-This check applies only to the GUI. It does not replace or affect API Server authentication. External clients still authenticate with `AIO_API_KEY`. See [Environment Variables](../guides/env-vars).
-:::
-
-### What the gate covers
-
-When a password is configured, the following remain read-only until sign-in:
-
-- **Configuration** tabs: Databases, Models, OCI, MCP, and Settings
-- The **API Server** page (including the server key)
-- Stored connection fields (passwords and keys render as a redacted `••••••••` placeholder rather than editable inputs)
-- **Reset** / **Delete** actions and configuration **import/export**
-- **Prompt Engineering** edits
-
-Personal workspace pages, including **ChatBot**, **Tools**, and **Testbed**, stay usable while signed out. Only controls that change shared configuration are protected.
-
-### Signing in and out
-
-When the password is configured, a **🔐 Sign-in** entry appears in the sidebar. Select it, or the inline **Sign in** link next to a protected control, to open the password dialog. Enter the shared password and press **Enter**.
-
-![Access Control](../_assets/images/access-control-signin.png)
-
-Authentication applies to one browser session. Signing in unlocks protected controls for that session only, and other browser sessions are unaffected. Once signed in, the entry becomes **🔓 Sign-out**, which clears that session's authenticated state.
-
-![Access Control](../_assets/images/access-control-signout.png)
-
-:::warning
-The password is _shared_. It protects shared controls, but does not identify the browser session that supplies it.
-:::
+`AIO_CLIENT_PASSWORD` is retired and rejected at Server startup. Use the development admin password only to bootstrap the built-in development identity provider; it does not create a client-side gate.

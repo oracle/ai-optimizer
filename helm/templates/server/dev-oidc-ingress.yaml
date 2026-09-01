@@ -1,0 +1,38 @@
+{{/* Copyright (c) 2026, Oracle and/or its affiliates.
+Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl. */}}
+
+{{- $oidc := .Values.server.devOidc -}}
+{{- if and $oidc.enabled $oidc.ingress.enabled -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "ai-optimizer.server.serviceName" . }}-dev-oidc
+  labels:
+    app.kubernetes.io/component: server
+    {{- include "ai-optimizer.labels" . | nindent 4 }}
+  {{- with $oidc.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with $oidc.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- with $oidc.ingress.tlsSecretName }}
+  tls:
+    - secretName: {{ . }}
+      hosts:
+        - {{ required "server.devOidc.ingress.host is required when devOidc ingress is enabled" $oidc.ingress.host | quote }}
+  {{- end }}
+  rules:
+    - host: {{ required "server.devOidc.ingress.host is required when devOidc ingress is enabled" $oidc.ingress.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "ai-optimizer.server.serviceName" . }}
+                port:
+                  number: {{ $oidc.service.port }}
+{{- end }}

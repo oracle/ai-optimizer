@@ -32,6 +32,14 @@ async def openapi_schema(request: Request) -> JSONResponse:
     prefix (AIO_SERVER_URL_PREFIX). The cached app schema is not mutated.
     """
     schema: dict[str, Any] = request.app.openapi()
+    components = schema.setdefault("components", {})
+    components.setdefault("securitySchemes", {}).setdefault(
+        "BearerAuth", {"type": "http", "scheme": "bearer", "bearerFormat": "JWT"}
+    )
+    components.setdefault("securitySchemes", {}).setdefault(
+        "APIKeyHeader", {"type": "apiKey", "in": "header", "name": "X-API-Key"}
+    )
+    schema.setdefault("security", [{"BearerAuth": []}, {"APIKeyHeader": []}])
     root_path = request.scope.get("root_path", "").rstrip("/")
     if root_path:
         servers = schema.get("servers", [])
@@ -44,11 +52,10 @@ async def openapi_schema(request: Request) -> JSONResponse:
 async def swagger_ui(request: Request) -> HTMLResponse:
     """Serve a Swagger UI gate page.
 
-    The HTML shell is public and contains no schema data. The user enters an
-    API key; the page then fetches `./openapi.json` (resolves correctly under
-    a root_path) with the key, and initializes Swagger UI with the returned
-    spec. `preauthorizeApiKey` is called so "Try it out" requests reuse the
-    same key without a second entry in the built-in Authorize dialog.
+    The HTML shell is public and contains no schema data. The user can enter
+    an API key or Bearer token; the page then fetches `./openapi.json`
+    (resolves correctly under a root_path) and initializes Swagger UI with
+    the returned spec.
     """
     title = html.escape(f"{request.app.title}")
     page = f"""<!DOCTYPE html>
@@ -68,10 +75,12 @@ async def swagger_ui(request: Request) -> HTMLResponse:
 <body>
   <div id="gate">
     <h2>{title}</h2>
-    <p>Enter your API key to load the documentation.</p>
+    <p>Enter an API key or Bearer access token to load the documentation.</p>
     <label for="api-key">X-API-Key</label>
-    <input id="api-key" type="password" autocomplete="off" autofocus>
-    <button id="api-key-submit" type="button">Load</button>
+    <input id="api-key" type="password" autocomplete="off">
+    <label for="bearer-token">Bearer access token</label>
+    <input id="bearer-token" type="password" autocomplete="off" autofocus>
+    <button id="auth-submit" type="button">Load</button>
     <div id="gate-error" role="alert"></div>
   </div>
   <div id="swagger-ui"></div>
@@ -79,21 +88,26 @@ async def swagger_ui(request: Request) -> HTMLResponse:
   <script>
     (function () {{
       const keyInput = document.getElementById('api-key');
-      const button = document.getElementById('api-key-submit');
+      const bearerInput = document.getElementById('bearer-token');
+      const button = document.getElementById('auth-submit');
       const errorBox = document.getElementById('gate-error');
       const gate = document.getElementById('gate');
 
       async function loadDocs() {{
         errorBox.textContent = '';
         const key = keyInput.value.trim();
-        if (!key) {{
-          errorBox.textContent = 'API key is required.';
+        const bearer = bearerInput.value.trim();
+        if (!key && !bearer) {{
+          errorBox.textContent = 'An API key or Bearer access token is required.';
           return;
         }}
         try {{
-          const resp = await fetch('./openapi.json', {{ headers: {{ 'X-API-Key': key }} }});
-          if (resp.status === 403) {{
-            errorBox.textContent = 'Invalid API key.';
+          const headers = {{}};
+          if (key) headers['X-API-Key'] = key;
+          if (bearer) headers['Authorization'] = 'Bearer ' + bearer;
+          const resp = await fetch('./openapi.json', {{ headers: headers }});
+          if (resp.status === 401 || resp.status === 403) {{
+            errorBox.textContent = 'Authentication failed.';
             return;
           }}
           if (!resp.ok) {{
@@ -138,7 +152,8 @@ async def swagger_ui(request: Request) -> HTMLResponse:
             plugins: [FileArrayPlugin],
             layout: 'BaseLayout'
           }});
-          window.ui.preauthorizeApiKey('APIKeyHeader', key);
+          if (key) window.ui.preauthorizeApiKey('APIKeyHeader', key);
+          if (bearer) window.ui.preauthorizeApiKey('BearerAuth', bearer);
         }} catch (err) {{
           errorBox.textContent = 'Failed to load spec: ' + err;
         }}
@@ -146,6 +161,9 @@ async def swagger_ui(request: Request) -> HTMLResponse:
 
       button.addEventListener('click', loadDocs);
       keyInput.addEventListener('keydown', function (e) {{
+        if (e.key === 'Enter') {{ loadDocs(); }}
+      }});
+      bearerInput.addEventListener('keydown', function (e) {{
         if (e.key === 'Enter') {{ loadDocs(); }}
       }});
     }})();

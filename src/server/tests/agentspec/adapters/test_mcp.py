@@ -47,6 +47,11 @@ class TestBuildMcpTransport:
         headers = dict(transport.sensitive_headers or {})
         assert headers["X-API-Key"] == "my-secret"
 
+    def test_bearer_credential_is_preserved_for_principal_authenticated_calls(self):
+        transport = build_mcp_transport("https://x.com", "Bearer access-token")
+
+        assert dict(transport.sensitive_headers or {}) == {"Authorization": "Bearer access-token"}
+
 
 def _mock_mcp_session(prompt_result: GetPromptResult) -> AsyncMock:
     """Create a mock MCP ClientSession that returns the given prompt result."""
@@ -175,8 +180,9 @@ class TestFetchMcpPrompt:
             del http_client
             return FailingClient()
 
-        with patch("server.app.agentspec.adapters.mcp.streamable_http_client", failing_client), pytest.raises(
-            ConnectionError, match="refused"
+        with (
+            patch("server.app.agentspec.adapters.mcp.streamable_http_client", failing_client),
+            pytest.raises(ConnectionError, match="refused"),
         ):
             await fetch_mcp_prompt(self.server_url, self.api_key, "p")
 

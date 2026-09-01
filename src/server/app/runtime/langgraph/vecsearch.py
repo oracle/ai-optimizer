@@ -8,6 +8,7 @@ LangGraph runtime builder for the VecSearch flow.
 
 from typing import Any
 
+from server.app.agentspec.adapters.mcp import McpCredential
 from server.app.agentspec.flow_vecsearch import build_vecsearch_flow
 from server.app.core.schemas import ClientSettings
 from server.app.runtime.common import fetch_prompt_with_fallback
@@ -19,7 +20,7 @@ PROMPT_NAME = "optimizer_vs-tools-default"
 async def build_vecsearch_graph(
     client_settings: ClientSettings,
     server_url: str,
-    api_key: str,
+    api_key: McpCredential,
 ) -> Any:
     """Build a LangGraph flow for VecSearch."""
     prompt = await fetch_prompt_with_fallback(server_url, api_key, PROMPT_NAME)

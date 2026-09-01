@@ -9,9 +9,10 @@ Endpoints for retrieving OCI profile configurations.
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Body, Header, HTTPException, Query, Request
+from fastapi import APIRouter, Body, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 
+from server.app.api.deps import require_administrator
 from server.app.api.v1.endpoints._helpers import _build_updates, _log_sensitive_read
 from server.app.api.v1.schemas.common import ClientId
 from server.app.core.client_locks import _client_lock
@@ -70,7 +71,13 @@ async def get_oci_profile(
     raise HTTPException(status_code=404, detail=f"OCI profile config not found: {auth_profile}")
 
 
-@auth.post("", response_model=OciProfileConfig, status_code=201, response_model_exclude_unset=True)
+@auth.post(
+    "",
+    response_model=OciProfileConfig,
+    status_code=201,
+    response_model_exclude_unset=True,
+    dependencies=[Depends(require_administrator)],
+)
 async def create_oci_profile(body: OciProfileConfig):
     """Add a new OCI profile configuration."""
     async with _settings_lock:
@@ -87,7 +94,12 @@ async def create_oci_profile(body: OciProfileConfig):
         return body.model_dump(exclude=SENSITIVE_FIELDS)
 
 
-@auth.put("/{auth_profile}", response_model=OciProfileConfig, response_model_exclude_unset=True)
+@auth.put(
+    "/{auth_profile}",
+    response_model=OciProfileConfig,
+    response_model_exclude_unset=True,
+    dependencies=[Depends(require_administrator)],
+)
 async def update_oci_profile(auth_profile: str, body: OciProfileUpdate):
     """Update an existing OCI profile configuration by auth_profile (case-insensitive)."""
     async with _settings_lock:
@@ -134,7 +146,7 @@ async def update_oci_profile(auth_profile: str, body: OciProfileUpdate):
         return cfg.model_dump(exclude=SENSITIVE_FIELDS)
 
 
-@auth.delete("/{auth_profile}", status_code=204)
+@auth.delete("/{auth_profile}", status_code=204, dependencies=[Depends(require_administrator)])
 async def delete_oci_profile(auth_profile: str):
     """Remove an OCI profile configuration by auth_profile (case-insensitive)."""
     async with _settings_lock:
@@ -166,7 +178,7 @@ async def list_genai_models(auth_profile: str):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@auth.post("/genai/{auth_profile}", response_model=list)
+@auth.post("/genai/{auth_profile}", response_model=list, dependencies=[Depends(require_administrator)])
 async def enable_genai_models(auth_profile: str):
     """Enable GenAI models for the configured region."""
     async with _settings_lock:
@@ -253,6 +265,9 @@ async def oci_download_objects(
     # restore — see ``_restore_claimed_files_to_shared_under_lock``.
     async with _client_lock(client):
         downloaded, _failures = await download_bucket_objects_to_dir(
-            temp_directory, profile, bucket_name, request,
+            temp_directory,
+            profile,
+            bucket_name,
+            request,
         )
         return downloaded

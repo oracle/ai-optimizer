@@ -2,6 +2,8 @@
 # Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 # spell-checker: ignore nindent tolerations ollama pplx
 {{- include "ai-optimizer.server.otel.validate" . }}
+{{- include "ai-optimizer.client.passwordDeprecated.fail" . }}
+{{- include "ai-optimizer.server.devOidc.password.validate" . }}
 
 apiVersion: apps/v1
 kind: Deployment
@@ -22,6 +24,7 @@ spec:
     metadata:
       annotations:
         checksum/server-env-secret: {{ include "ai-optimizer.server.envSecretChecksum" . | quote }}
+        checksum/server-dev-oidc-password-secret: {{ include "ai-optimizer.server.devOidc.passwordSecretChecksum" . | quote }}
         {{- with .Values.server.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -54,6 +57,20 @@ spec:
                 secretKeyRef:
                   name: {{ include "ai-optimizer.apiSecretName" . }}
                   key: {{ include "ai-optimizer.apiSecretKey" . }}
+            {{- if and .Values.server.devOidc.enabled (or (.Values.server.devOidc.passwordSecretName | trim) .Values.server.devOidc.passwordAutoGenerate) }}
+            - name: AIO_AUTH_DEV_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ai-optimizer.server.devOidc.passwordSecretName" . }}
+                  key: {{ include "ai-optimizer.server.devOidc.passwordSecretKey" . }}
+            {{- end }}
+            {{- if and .Values.server.devOidc.enabled .Values.client.enabled }}
+            - name: AIO_AUTH_DEV_WEB_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ printf "%s-client-oidc" (include "ai-optimizer.fullname" .) }}
+                  key: webClientSecret
+            {{- end }}
             {{- if and .Values.server.database .Values.server.database.type }}
             {{- include "ai-optimizer.server.database.authn" . | nindent 12 }}
               {{- if eq (include "ai-optimizer.server.database.isADBS" .) "true" }}
@@ -225,6 +242,11 @@ spec:
             - name: server-port
               containerPort: 8000
               protocol: TCP
+          {{- if .Values.server.devOidc.enabled }}
+            - name: dev-oidc
+              containerPort: {{ .Values.server.devOidc.listenPort }}
+              protocol: TCP
+          {{- end }}
           {{- if .Values.server.livenessProbe.enabled }}
           livenessProbe:
             httpGet:

@@ -97,6 +97,70 @@ def _client_service(docs: list[dict]) -> dict:
     raise AssertionError("client Service not found in rendered output")
 
 
+def test_development_oidc_renders_streamlit_access_token_configuration():
+    result = _render(
+        "client.cookieSecret=cccccccccccccccccccccccccccccccc",
+        "server.devOidc.enabled=true",
+        "server.devOidc.issuer=https://auth.example.test",
+        "server.devOidc.webClientRedirectUri=https://optimizer.example.test/oauth2callback",
+        "server.devOidc.passwordAutoGenerate=true",
+    )
+
+    assert result.returncode == 0, result.stderr
+    documents = _docs(result.stdout)
+    oidc_secret = next(
+        document
+        for document in documents
+        if document.get("kind") == "Secret" and document.get("metadata", {}).get("name", "").endswith("-client-oidc")
+    )
+    secrets_toml = oidc_secret["stringData"]["secrets.toml"]
+    assert 'redirect_uri = "https://optimizer.example.test/oauth2callback"' in secrets_toml
+    assert 'client_secret = ""' not in secrets_toml
+    assert "webClientSecret" in oidc_secret["stringData"]
+    assert 'server_metadata_url = "https://auth.example.test/.well-known/openid-configuration"' in secrets_toml
+    assert 'client_kwargs = { scope = "openid profile email aio.api" }' in secrets_toml
+    assert 'expose_tokens = "access"' in secrets_toml
+
+    server_environment = next(
+        document
+        for document in documents
+        if document.get("kind") == "Secret" and document.get("metadata", {}).get("name", "").endswith("-server-env")
+    )["stringData"]["server.env"]
+    assert "AIO_AUTH_DEV_WEB_REDIRECT_URI=https://optimizer.example.test/oauth2callback" in server_environment
+
+    server_deployment = next(
+        document
+        for document in documents
+        if document.get("kind") == "Deployment"
+        and document.get("metadata", {}).get("labels", {}).get("app.kubernetes.io/component") == "server"
+    )
+    server_env = server_deployment["spec"]["template"]["spec"]["containers"][0]["env"]
+    assert any(entry["name"] == "AIO_AUTH_DEV_ADMIN_PASSWORD" for entry in server_env)
+    assert any(entry["name"] == "AIO_AUTH_DEV_WEB_CLIENT_SECRET" for entry in server_env)
+
+    deployment = _client_deployment(documents)
+    client_env = deployment["spec"]["template"]["spec"]["containers"][0]["env"]
+    assert all(entry["name"] != "AIO_CLIENT_PASSWORD" for entry in client_env)
+    mounts = deployment["spec"]["template"]["spec"]["containers"][0]["volumeMounts"]
+    assert any(mount["mountPath"] == "/app/.streamlit/secrets.toml" for mount in mounts)
+
+
+@pytest.mark.parametrize(
+    "legacy_value",
+    [
+        "client.password=retired-password",
+        "client.passwordSecretName=retired-secret",
+        "client.passwordSecretKey=retired-key",
+        "client.passwordAutoGenerate=true",
+    ],
+)
+def test_legacy_client_password_values_are_rejected(legacy_value):
+    result = _render(legacy_value)
+
+    assert result.returncode != 0
+    assert "server.devOidc.passwordSecretName" in result.stderr
+
+
 def _ollama_service(docs: list[dict]) -> dict:
     """Return the Ollama Service document."""
     for document in docs:
@@ -544,6 +608,7 @@ class TestApplicationEnvironmentNames:
 
         assert tns_admin["secret"]["secretName"] == "test-adb-tns-admin-1"
         wallet_password = _server_env(deployment, "AIO_DB_WALLET_PASSWORD")
+        assert wallet_password is not None
         assert wallet_password["valueFrom"]["secretKeyRef"] == {
             "name": "test-adb-wallet-pass-1",
             "key": "test-adb-wallet-pass-1",
@@ -566,6 +631,7 @@ class TestApplicationEnvironmentNames:
 
         assert tns_admin["secret"]["secretName"] == "test-ai-optimizer-adb-tns-admin-1"
         wallet_password = _server_env(deployment, "AIO_DB_WALLET_PASSWORD")
+        assert wallet_password is not None
         assert wallet_password["valueFrom"]["secretKeyRef"] == {
             "name": "test-ai-optimizer-adb-wallet-pass-1",
             "key": "test-ai-optimizer-adb-wallet-pass-1",
@@ -591,6 +657,7 @@ class TestApplicationEnvironmentNames:
 
         assert tns_admin["secret"]["secretName"] == "custom-tns-admin"
         wallet_password = _server_env(deployment, "AIO_DB_WALLET_PASSWORD")
+        assert wallet_password is not None
         assert wallet_password["valueFrom"]["secretKeyRef"] == {
             "name": "custom-wallet-password",
             "key": "custom-wallet-key",

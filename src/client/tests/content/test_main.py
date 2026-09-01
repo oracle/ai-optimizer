@@ -8,7 +8,7 @@ Unit tests for client.app.main — server connection and initialization logic.
 
 import contextlib
 import sys
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 
@@ -74,6 +74,17 @@ class TestMainConnectionLogic:
         """Remove cached module before each test."""
         _remove_main_module()
 
+    def test_about_details_show_signed_in_email_and_opaque_session(self):
+        state = AttrDict({"optimizer_client": "session-123"})
+        valid_settings = {"database_configs": [], "model_configs": [], "client_settings": {}}
+        _import_main(state, get_settings_side_effect=[valid_settings])
+        about_details = sys.modules[MODULE]._about_details
+
+        assert (
+            about_details("session-123", "alice@example.com")
+            == "Signed in as: alice@example.com\n\nSession: session-123"
+        )
+
     def test_successful_first_connection(self):
         """When get_server_settings returns data, start_server is not called."""
         state = AttrDict({"optimizer_client": "test-123"})
@@ -102,6 +113,34 @@ class TestMainConnectionLogic:
 
         # state.settings should be None after both attempts fail
         assert state.get("settings") is None
+
+    def test_oidc_startup_adds_sidebar_space_before_spinner(self):
+        """The OIDC startup indicator must not render directly beneath the logo."""
+        import streamlit as real_st
+
+        state = AttrDict({"optimizer_client": "test-oidc"})
+        sidebar = MagicMock()
+        sidebar.spinner.return_value = contextlib.nullcontext()
+        user = MagicMock(is_logged_in=False)
+
+        _remove_main_module()
+        with (
+            patch.object(real_st, "session_state", state),
+            patch.object(real_st, "sidebar", sidebar),
+            patch.object(real_st, "secrets", {"auth": {}}),
+            patch.object(real_st, "user", user),
+            patch(f"{API_MODULE}._server_module_available", return_value=True),
+            patch(f"{API_MODULE}.start_server"),
+            patch(f"{API_MODULE}.get_server_settings", return_value={}),
+            patch(f"{API_MODULE}.api_get", return_value=[]),
+            patch("logging_config.configure_logging"),
+            contextlib.suppress(SystemExit),
+        ):
+            import client.app.main  # noqa: F401
+
+        assert sidebar.method_calls.index(call.space(size="small")) < sidebar.method_calls.index(
+            call.spinner("Starting server...", show_time=True)
+        )
 
     def test_split_pod_retries_on_subsequent_rerun(self):
         """In split client images `_server_module_available()` is False, so

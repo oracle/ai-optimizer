@@ -14,7 +14,7 @@ from typing import Any, AsyncGenerator, Awaitable, Callable, Dict, Optional, Uni
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
 
-from server.app.agentspec.adapters.mcp import connect_sqlcl_database
+from server.app.agentspec.adapters.mcp import McpCredential, connect_sqlcl_database
 from server.app.api.v1.schemas.chat import SqlMetadata, TokenUsage, VsMetadata
 from server.app.core.schemas import ClientSettings
 from server.app.core.secrets import reveal
@@ -84,7 +84,7 @@ class ChatOrchestrator:
     def __init__(
         self,
         server_url: str,
-        api_key: Union[str, Callable[[], str]],
+        api_key: McpCredential | Callable[[], McpCredential],
         resolve_client: Callable[[str], Any],
     ) -> None:
         self._server_url = server_url
@@ -96,9 +96,21 @@ class ChatOrchestrator:
         self.history = HistoryStore()
 
     @property
-    def api_key(self) -> str:
-        """Return the current API key, invoking the callable if needed."""
+    def api_key(self) -> McpCredential:
+        """Return the current MCP credential, invoking the callable if needed."""
         return self._api_key() if callable(self._api_key) else self._api_key
+
+    def for_bearer_credential(self, authorization: str) -> "ChatOrchestrator":
+        """Create a request-scoped tool orchestrator that retains bearer authentication."""
+        orchestrator = ChatOrchestrator(self._server_url, authorization, self._resolve_client)
+        orchestrator.history = self.history
+        return orchestrator
+
+    def for_request_headers(self, headers: dict[str, str]) -> "ChatOrchestrator":
+        """Create a request-scoped tool orchestrator with trusted proxy headers."""
+        orchestrator = ChatOrchestrator(self._server_url, headers, self._resolve_client)
+        orchestrator.history = self.history
+        return orchestrator
 
     @staticmethod
     def _validate_llm(cs: Any) -> None:

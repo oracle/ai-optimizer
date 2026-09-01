@@ -229,48 +229,29 @@ letting a whitespace cookieSecret clobber an operator-owned external Secret.
 {{- if $explicit -}}{{ $explicit }}{{- else -}}cookieSecret{{- end -}}
 {{- end }}
 
-{{/* ******************************************
-Validate the three mutually-exclusive client password paths. At most one of
-client.password, client.passwordSecretName, or client.passwordAutoGenerate
-may be active. Combinations are ambiguous (which Secret does the deployment
-bind, who owns the lifecycle); fail loudly rather than apply silent precedence.
-*********************************************** */}}
-{{- define "ai-optimizer.client.passwordBothSet.fail" -}}
-  {{- $inline := .Values.client.password | trim | default "" -}}
-  {{- $byo := .Values.client.passwordSecretName | trim | default "" -}}
-  {{- $auto := .Values.client.passwordAutoGenerate -}}
-  {{- $count := 0 -}}
-  {{- if ne $inline "" -}}{{- $count = add $count 1 -}}{{- end -}}
-  {{- if ne $byo "" -}}{{- $count = add $count 1 -}}{{- end -}}
-  {{- if $auto -}}{{- $count = add $count 1 -}}{{- end -}}
-  {{- if gt $count 1 -}}
-    {{- fail "client.password, client.passwordSecretName, and client.passwordAutoGenerate are mutually exclusive; set at most one" -}}
-  {{- end -}}
+{{/* Reject retired client password values rather than silently removing their
+former UI behavior. */}}
+{{- define "ai-optimizer.client.passwordDeprecated.fail" -}}
+{{- if or (default "" .Values.client.password | trim) (default "" .Values.client.passwordSecretName | trim) (default "" .Values.client.passwordSecretKey | trim) (default false .Values.client.passwordAutoGenerate) -}}
+{{- fail "client.password* is retired; use server.devOidc.passwordSecretName, passwordSecretKey, or passwordAutoGenerate" -}}
+{{- end -}}
 {{- end -}}
 
-{{/* ******************************************
-Returns "true" when the additional client UI access check is active. Off
-unless one of client.password, client.passwordSecretName, or
-client.passwordAutoGenerate is set. When off, AIO_CLIENT_PASSWORD is not
-rendered into the client pod env.
-*********************************************** */}}
-{{- define "ai-optimizer.client.passwordGate.enabled" -}}
-{{- if or (.Values.client.password | trim) (.Values.client.passwordSecretName | trim) .Values.client.passwordAutoGenerate -}}true{{- end -}}
+{{/* Development OIDC administrator password Secret helpers. */}}
+{{- define "ai-optimizer.server.devOidc.password.validate" -}}
+{{- if and (default "" .Values.server.devOidc.passwordSecretName | trim) (default false .Values.server.devOidc.passwordAutoGenerate) -}}
+{{- fail "server.devOidc.passwordSecretName and server.devOidc.passwordAutoGenerate are mutually exclusive" -}}
+{{- end -}}
 {{- end -}}
 
-{{/* ******************************************
-Define the Client Password Secret name/key with defaults. Same trimming
-rationale as the cookie helpers: whitespace-only values are treated as unset.
-*********************************************** */}}
-{{- define "ai-optimizer.client.passwordSecretName" -}}
-{{- $explicit := .Values.client.passwordSecretName | trim -}}
-{{- if $explicit -}}{{ $explicit }}{{- else -}}{{ printf "%s-client-password" (include "ai-optimizer.fullname" .) }}{{- end -}}
-{{- end }}
+{{- define "ai-optimizer.server.devOidc.passwordSecretName" -}}
+{{- $explicit := default "" .Values.server.devOidc.passwordSecretName | trim -}}
+{{- if $explicit -}}{{ $explicit }}{{- else -}}{{ printf "%s-dev-oidc-password" (include "ai-optimizer.fullname" .) }}{{- end -}}
+{{- end -}}
 
-{{- define "ai-optimizer.client.passwordSecretKey" -}}
-{{- $explicit := .Values.client.passwordSecretKey | trim -}}
-{{- if $explicit -}}{{ $explicit }}{{- else -}}password{{- end -}}
-{{- end }}
+{{- define "ai-optimizer.server.devOidc.passwordSecretKey" -}}
+{{- default "password" .Values.server.devOidc.passwordSecretKey | trim -}}
+{{- end -}}
 
 {{/* ******************************************
 Checksum used to roll the client Deployment when the cookie-signing secret
@@ -306,31 +287,10 @@ Secret-change requires a reloader controller and is out of scope for this chart.
 {{- end -}}
 
 
-{{/* ******************************************
-Checksum used to roll the client Deployment when the shared password Secret
-changes. Mirrors client.cookieSecretChecksum:
-
-  * Inline path (client.password set): hash the rendered password-secret.yaml.
-    The cookie checksum already hashes the same file, so when BOTH cookie and
-    password are inline a value change on either rotates the pod — accepted
-    over-rotation; under-rotation is the bug we are preventing.
-
-  * Lookup path (client.passwordSecretName set OR passwordAutoGenerate true):
-    `lookup` the Secret at the resolved name and hash its current data. BYO
-    is operator-owned; auto-generate is the default-name Secret created by
-    password-secret.yaml. Both bind the same Secret in the Deployment. During
-    `helm template` / `--dry-run` / first install, `lookup` returns empty; we
-    fall back to a name-keyed sentinel so the annotation stays stable and
-    distinct per configuration.
-
-  * Gate disabled (none set): constant sentinel.
-*********************************************** */}}
-{{- define "ai-optimizer.client.passwordSecretChecksum" -}}
-{{- if .Values.client.password | trim -}}
-{{- include (print $.Template.BasePath "/client/password-secret.yaml") . | sha256sum -}}
-{{- else if or (.Values.client.passwordSecretName | trim) .Values.client.passwordAutoGenerate -}}
-  {{- $name := include "ai-optimizer.client.passwordSecretName" . -}}
-  {{- $key := include "ai-optimizer.client.passwordSecretKey" . -}}
+{{- define "ai-optimizer.server.devOidc.passwordSecretChecksum" -}}
+{{- if or (default "" .Values.server.devOidc.passwordSecretName | trim) (default false .Values.server.devOidc.passwordAutoGenerate) -}}
+  {{- $name := include "ai-optimizer.server.devOidc.passwordSecretName" . -}}
+  {{- $key := include "ai-optimizer.server.devOidc.passwordSecretKey" . -}}
   {{- $found := lookup "v1" "Secret" .Release.Namespace $name -}}
   {{- if and $found $found.data (hasKey $found.data $key) -}}
 {{- printf "live:%s:%s" $name (index $found.data $key) | sha256sum -}}
@@ -338,7 +298,7 @@ changes. Mirrors client.cookieSecretChecksum:
 {{- printf "unresolved:%s:%s" $name $key | sha256sum -}}
   {{- end -}}
 {{- else -}}
-{{- printf "gate-disabled" | sha256sum -}}
+{{- printf "runtime-generated" | sha256sum -}}
 {{- end -}}
 {{- end -}}
 
@@ -480,6 +440,15 @@ Secret-mounted file rather than as pod env entries. Operator-supplied
 {{- if (default false .oke) -}}
 {{- $_ = set $out "AIO_OCI_CLI_REGION" .region -}}
 {{- $_ = set $out "AIO_OCI_CLI_AUTH" "oke_workload_identity" -}}
+{{- end -}}
+{{- end -}}
+{{- with .Values.server.devOidc -}}
+{{- if .enabled -}}
+{{- $_ = set $out "AIO_AUTH_MODE" "dev" -}}
+{{- $_ = set $out "AIO_AUTH_DEV_ISSUER" (required "server.devOidc.issuer is required when devOidc is enabled" .issuer) -}}
+{{- $_ = set $out "AIO_AUTH_DEV_WEB_REDIRECT_URI" (required "server.devOidc.webClientRedirectUri is required when devOidc is enabled" .webClientRedirectUri) -}}
+{{- $_ = set $out "AIO_AUTH_DEV_LISTEN_HOST" "0.0.0.0" -}}
+{{- $_ = set $out "AIO_AUTH_DEV_LISTEN_PORT" (.listenPort | toString) -}}
 {{- end -}}
 {{- end -}}
 {{- if .Values.ollama.enabled -}}

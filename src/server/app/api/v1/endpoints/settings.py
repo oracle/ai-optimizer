@@ -10,10 +10,11 @@ import asyncio
 import logging
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Header, HTTPException, Query, Request, Response
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse
 
 from runtime_config_fields import RUNTIME_ONLY_FIELDS
+from server.app.api.deps import require_administrator
 from server.app.api.v1.endpoints.chat import get_orchestrator
 from server.app.api.v1.schemas.common import ClientId
 from server.app.api.v1.schemas.settings import (
@@ -165,7 +166,7 @@ async def get_client_settings(
     return data
 
 
-@auth.post("/export", response_model=None)
+@auth.post("/export", response_model=None, dependencies=[Depends(require_administrator)])
 async def export_settings(
     request: Request,
     confirm: Annotated[str, Header(alias="X-Confirm-Export")] = "",
@@ -273,7 +274,7 @@ async def create_client_settings(client: Annotated[ClientId, Query()] = "CONFIGU
         return data
 
 
-@auth.post("/server/copy", response_model=ClientSettings)
+@auth.post("/server/copy", response_model=ClientSettings, dependencies=[Depends(require_administrator)])
 async def copy_to_server(client: Annotated[ClientId, Query()] = "CONFIGURED"):
     """Copy a source client's client_settings to the SERVER client."""
     async with _settings_lock:
@@ -293,7 +294,7 @@ async def copy_to_server(client: Annotated[ClientId, Query()] = "CONFIGURED"):
         return server_cs
 
 
-@auth.post("/import", response_model=SettingsImportResult)
+@auth.post("/import", response_model=SettingsImportResult, dependencies=[Depends(require_administrator)])
 async def import_settings(body: SettingsImport, client: Annotated[ClientId, Query()] = "CONFIGURED"):
     """Import a partial or full configuration with incoming-wins semantics.
 
@@ -409,7 +410,12 @@ async def import_settings(body: SettingsImport, client: Annotated[ClientId, Quer
         return result
 
 
-@auth.post("/reset", response_model=SettingsResponse, response_model_exclude_unset=True)
+@auth.post(
+    "/reset",
+    response_model=SettingsResponse,
+    response_model_exclude_unset=True,
+    dependencies=[Depends(require_administrator)],
+)
 async def reset_to_factory():
     """Reset models, prompts, and client settings to factory defaults.
 

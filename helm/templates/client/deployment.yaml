@@ -22,8 +22,10 @@ spec:
     metadata:
       annotations:
         checksum/client-cookie-secret: {{ include "ai-optimizer.client.cookieSecretChecksum" . | quote }}
-        checksum/client-password-secret: {{ include "ai-optimizer.client.passwordSecretChecksum" . | quote }}
         checksum/client-env-secret: {{ include "ai-optimizer.client.envSecretChecksum" . | quote }}
+        {{- if .Values.server.devOidc.enabled }}
+        checksum/client-oidc-secret: {{ printf "%s:%s" .Values.server.devOidc.issuer .Values.server.devOidc.webClientRedirectUri | sha256sum | quote }}
+        {{- end }}
         {{- with .Values.client.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -65,13 +67,6 @@ spec:
                 secretKeyRef:
                   name: {{ include "ai-optimizer.client.cookieSecretName" . }}
                   key: {{ include "ai-optimizer.client.cookieSecretKey" . }}
-            {{- if include "ai-optimizer.client.passwordGate.enabled" . }}
-            - name: AIO_CLIENT_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "ai-optimizer.client.passwordSecretName" . }}
-                  key: {{ include "ai-optimizer.client.passwordSecretKey" . }}
-            {{- end }}
             {{- if .Values.client.oci.sourceBucketCompartmentId }}
             - name: AIO_OCI_SOURCE_BUCKET_COMPARTMENT_ID
               value: {{ .Values.client.oci.sourceBucketCompartmentId | quote }}
@@ -121,6 +116,12 @@ spec:
               mountPath: /app/src/.env.{{ .Values.global.env }}
               subPath: {{ include "ai-optimizer.client.envSecretKey" . }}
               readOnly: true
+            {{- if .Values.server.devOidc.enabled }}
+            - name: oidc-config
+              mountPath: /app/.streamlit/secrets.toml
+              subPath: secrets.toml
+              readOnly: true
+            {{- end }}
           {{- with .Values.client.volumeMounts }}
             {{- toYaml . | nindent 12 }}
           {{- end }}
@@ -133,6 +134,11 @@ spec:
         - name: env-config
           secret:
             secretName: {{ include "ai-optimizer.client.envSecretName" . }}
+        {{- if .Values.server.devOidc.enabled }}
+        - name: oidc-config
+          secret:
+            name: {{ include "ai-optimizer.fullname" . }}-client-oidc
+        {{- end }}
       {{- with .Values.client.volumes }}
         {{- toYaml . | nindent 8 }}
       {{- end }}

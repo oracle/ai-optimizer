@@ -62,7 +62,7 @@ def _reset_model_configs():
 async def test_list_oci_profiles_no_auth(app_client):
     """OCI profiles endpoint rejects requests without API key."""
     resp = await app_client.get("/v1/oci")
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 @pytest.mark.unit
@@ -320,9 +320,7 @@ async def test_update_previously_usable_now_fails(app_client, auth_headers):
 
 @pytest.mark.unit
 @pytest.mark.anyio
-async def test_update_previously_usable_failure_does_not_mark_touched(
-    app_client, auth_headers, mock_persist_settings
-):
+async def test_update_previously_usable_failure_does_not_mark_touched(app_client, auth_headers, mock_persist_settings):
     """Validation-failure rollback must not flag GenAI fields as touched.
 
     Otherwise a request that happens to include a GenAI field matching the
@@ -691,6 +689,5 @@ async def test_list_bucket_objects_filters_unsupported_extensions(app_client, au
         resp = await app_client.get("/v1/oci/objects/my-bucket/TEST", headers=auth_headers)
     assert resp.status_code == 200
     assert resp.json() == ["report.pdf", "PRESENTATION.PPTX", "notes.MD"], (
-        f"GET /v1/oci/objects must filter via SUPPORTED_EXTENSIONS "
-        f"(case-insensitive); got {resp.json()!r}"
+        f"GET /v1/oci/objects must filter via SUPPORTED_EXTENSIONS (case-insensitive); got {resp.json()!r}"
     )

@@ -13,7 +13,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pandas as pd
 import pytest
+from starlette.requests import Request
 
+from server.app.api.v1.endpoints import testbed as testbed_endpoint
+from server.app.core.settings import settings
 from server.tests.api.conftest import _create_mock_pool
 from server.tests.constants import TEST_OPENAI_MODEL_ID, TEST_OPENAI_MODEL_KEY, TEST_PLACEHOLDER_EMBED_KEY
 
@@ -555,6 +558,35 @@ async def test_evaluate_rejects_invalid_tid(app_client, auth_headers):
     assert resp.status_code == 422
     assert "tid" in resp.text
     mock_load.assert_not_awaited()
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_collect_answers_uses_request_scoped_orchestrator(monkeypatch):
+    """Testbed MCP-backed answers retain the inbound bearer credential."""
+    monkeypatch.setattr(settings, "auth_mode", "dev")
+    request = Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "path": "/v1/testbed/evaluate",
+            "headers": [(b"authorization", b"Bearer access-token")],
+        }
+    )
+    orchestrator = AsyncMock()
+    orchestrator.execute_chat.return_value = {"result": "answer"}
+    loaded_testset = MagicMock()
+    loaded_testset.to_pandas.return_value = pd.DataFrame({"question": ["Question?"]})
+
+    with patch(
+        "server.app.api.v1.endpoints.testbed.get_request_orchestrator",
+        return_value=orchestrator,
+    ) as get_request_orchestrator:
+        answers = await testbed_endpoint._collect_answers(loaded_testset, "server", request)
+
+    get_request_orchestrator.assert_called_once_with(request)
+    orchestrator.execute_chat.assert_awaited_once_with(question="Question?", client="server")
+    assert len(answers) == 1
 
 
 # ---------------------------------------------------------------------------

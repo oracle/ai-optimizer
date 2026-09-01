@@ -10,6 +10,7 @@ from typing import Any
 
 from langgraph.checkpoint.memory import MemorySaver
 
+from server.app.agentspec.adapters.mcp import McpCredential
 from server.app.agentspec.agent_nl2sql import build_nl2sql_agentspec
 from server.app.core.schemas import ClientSettings
 from server.app.runtime.common import fetch_prompt_with_fallback
@@ -21,7 +22,7 @@ PROMPT_NAME = "optimizer_nl2sql-tools-default"
 async def build_nl2sql_graph(
     client_settings: ClientSettings,
     server_url: str,
-    api_key: str,
+    api_key: McpCredential,
     checkpointer: Any = None,
 ) -> Any:
     """Build a LangGraph agent for NL2SQL with dynamic MCP tool discovery."""

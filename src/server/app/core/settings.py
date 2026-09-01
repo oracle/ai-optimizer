@@ -7,14 +7,16 @@ Application settings loaded from environment variables and .env file.
 # spell-checker: ignore genai
 
 import asyncio
+import json
 import os
 import secrets
 import threading
 from collections import OrderedDict
-from typing import Optional
+from typing import Annotated, Literal, Optional
+from urllib.parse import urlparse
 
 from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from server.app.core.paths import PROJECT_ROOT
 from server.app.core.schemas import ClientSettings
@@ -23,6 +25,23 @@ from server.app.database.schemas import DatabaseConfig
 from server.app.mcp.prompts.schemas import PromptConfig
 from server.app.models.schemas import ModelConfig
 from server.app.oci.schemas import OciProfileConfig
+
+
+def _validate_issuer_url(issuer: str, *, require_root_path: bool = True) -> None:
+    """Validate an absolute issuer and limit plaintext HTTP to loopback."""
+    parsed = urlparse(issuer)
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.hostname
+        or parsed.params
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise ValueError("OIDC issuer must be an absolute HTTP(S) origin")
+    if require_root_path and parsed.path not in {"", "/"}:
+        raise ValueError("OIDC issuer must use its dedicated origin root path")
+    if parsed.scheme == "http" and parsed.hostname not in {"127.0.0.1", "::1", "localhost"}:
+        raise ValueError("Plain HTTP OIDC issuers are allowed only on loopback")
 
 
 class SettingsBase(BaseModel):
@@ -73,6 +92,51 @@ class Settings(SettingsBase, BaseSettings):
     db_pool_size: int = Field(default=5, exclude=True)
 
     max_clients: int = Field(default=64, ge=1, exclude=True)
+
+    # Principal authentication. A deployment selects OIDC bearer validation or
+    # a trusted identity-proxy adapter.
+    auth_mode: Literal["dev", "oidc", "proxy"] | None = Field(default=None, exclude=True)
+    auth_oidc_issuer: str = Field(default="", exclude=True)
+    auth_oidc_audience: str = Field(default="", exclude=True)
+    auth_oidc_client_id: str = Field(default="", exclude=True)
+    auth_oidc_client_secret: Optional[SecretStr] = Field(default=None, exclude=True)
+    auth_oidc_scopes: Annotated[list[str], NoDecode] = Field(
+        default_factory=lambda: ["openid", "profile", "email", "aio.api"], exclude=True
+    )
+    auth_oidc_required_scopes: Annotated[list[str], NoDecode] = Field(default_factory=lambda: ["aio.api"], exclude=True)
+    auth_oidc_roles_claim: str = Field(default="roles", exclude=True)
+    auth_dev_issuer: str = Field(default="http://127.0.0.1:8765", exclude=True)
+    auth_dev_web_redirect_uri: str = Field(default="http://localhost:8501/oauth2callback", exclude=True)
+    auth_dev_listen_host: str = Field(default="127.0.0.1", exclude=True)
+    auth_dev_listen_port: int = Field(default=8765, ge=1, le=65535, exclude=True)
+    auth_dev_admin_password: Optional[SecretStr] = Field(default=None, exclude=True)
+    auth_dev_web_client_secret: Optional[SecretStr] = Field(default=None, exclude=True)
+    auth_dev_sync_bootstrap_password: bool = Field(default=False, exclude=True)
+    # Retained solely to reject the retired AIO_CLIENT_PASSWORD setting with a
+    # useful migration error instead of silently accepting a no-longer-effective
+    # shared-state control.
+    client_password: Optional[SecretStr] = Field(default=None, exclude=True)
+    auth_proxy_trusted_cidrs: Annotated[list[str], NoDecode] = Field(default_factory=list, exclude=True)
+    auth_proxy_subject_header: str = Field(default="X-Authenticated-Subject", exclude=True)
+    auth_proxy_roles_header: str = Field(default="X-Authenticated-Roles", exclude=True)
+    auth_proxy_issuer: str = Field(default="trusted-proxy", exclude=True)
+    auth_admin_claim_values: Annotated[list[str], NoDecode] = Field(default_factory=lambda: ["aio.admin"], exclude=True)
+
+    @field_validator(
+        "auth_proxy_trusted_cidrs",
+        "auth_admin_claim_values",
+        "auth_oidc_scopes",
+        "auth_oidc_required_scopes",
+        mode="before",
+    )
+    @classmethod
+    def _parse_auth_list(cls, value):
+        """Accept normal comma-separated environment values as well as JSON lists."""
+        if isinstance(value, str):
+            if value.lstrip().startswith("["):
+                return json.loads(value)
+            return [item.strip() for item in value.split(",") if item.strip()]
+        return value
 
     # OCI CLI — applied to DEFAULT profile at startup (excluded from serialization)
     oci_cli_auth: Optional[str] = Field(default=None, exclude=True)
@@ -125,6 +189,25 @@ class Settings(SettingsBase, BaseSettings):
             self.api_key = SecretStr(secrets.token_urlsafe(32))
         else:
             object.__setattr__(self, "_api_key_generated", False)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_authentication_posture(self) -> "Settings":
+        """Reject development/production combinations that cannot be safe."""
+        if self.client_password is not None:
+            raise ValueError("AIO_CLIENT_PASSWORD is retired; use AIO_AUTH_DEV_ADMIN_PASSWORD in development mode")
+        if self.auth_mode is None and any(cfg.alias == "CORE" for cfg in self.database_configs):
+            self.auth_mode = "dev"
+        if self.auth_mode == "dev" and not any(cfg.alias == "CORE" for cfg in self.database_configs):
+            raise ValueError("AIO_AUTH_MODE=dev requires an Oracle CORE database")
+        if self.auth_mode == "dev":
+            _validate_issuer_url(self.auth_dev_issuer)
+            if self.auth_dev_admin_password is None:
+                self.auth_dev_admin_password = SecretStr(secrets.token_urlsafe(32))
+            if self.auth_dev_web_client_secret is None:
+                self.auth_dev_web_client_secret = SecretStr(secrets.token_urlsafe(32))
+        if self.auth_mode == "oidc":
+            _validate_issuer_url(self.auth_oidc_issuer, require_root_path=False)
         return self
 
     @property

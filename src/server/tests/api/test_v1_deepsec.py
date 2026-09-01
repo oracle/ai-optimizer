@@ -22,6 +22,7 @@ MODULE = "server.app.api.v1.endpoints.deepsec"
 def _base_cfg() -> DatabaseConfig:
     return DatabaseConfig(alias="CORE", username="OWNER", password=SecretStr("pw"), dsn="dsn")
 
+
 _STATUS = {
     "available": True,
     "version": "23.26.2.0.0",
@@ -59,7 +60,7 @@ def mock_db():
 async def test_status_requires_auth(app_client):
     """GET /status rejects requests without an API key."""
     resp = await app_client.get("/v1/deepsec/status")
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 @pytest.mark.unit
@@ -67,7 +68,7 @@ async def test_status_requires_auth(app_client):
 async def test_create_data_role_requires_auth(app_client):
     """POST /data-roles rejects requests without an API key."""
     resp = await app_client.post("/v1/deepsec/data-roles", json={"name": "r"})
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 # ---------------------------------------------------------------------------
@@ -100,9 +101,7 @@ async def test_list_data_roles(app_client, auth_headers, mock_db):
 @pytest.mark.anyio
 async def test_create_data_role(app_client, auth_headers, mock_db):
     with patch(f"{MODULE}.deepsec_db.create_data_role", AsyncMock()) as mock_create:
-        resp = await app_client.post(
-            "/v1/deepsec/data-roles", json={"name": "ANALYST"}, headers=auth_headers
-        )
+        resp = await app_client.post("/v1/deepsec/data-roles", json={"name": "ANALYST"}, headers=auth_headers)
     assert resp.status_code == 200
     assert "ANALYST" in resp.json()["message"]
     mock_create.assert_awaited_once()
@@ -228,7 +227,7 @@ async def test_revoke_data_role(app_client, auth_headers, mock_db):
 async def test_grant_data_role_requires_auth(app_client):
     """POST /data-role-grants rejects requests without an API key."""
     resp = await app_client.post("/v1/deepsec/data-role-grants", json={"grantee": "x", "roles": ["r"]})
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 # ---------------------------------------------------------------------------
@@ -246,9 +245,7 @@ async def test_connect_as_registers_managed(app_client, auth_headers, mock_db):
         patch(f"{MODULE}.register_database", AsyncMock(return_value=None)) as mock_reg,
         patch(f"{MODULE}.refresh_sqlcl_proxy", AsyncMock()) as mock_refresh,
     ):
-        resp = await app_client.post(
-            "/v1/deepsec/connect-as", json={"end_user": "SCOUT1"}, headers=auth_headers
-        )
+        resp = await app_client.post("/v1/deepsec/connect-as", json={"end_user": "SCOUT1"}, headers=auth_headers)
     assert resp.status_code == 200
     body = resp.json()
     assert body == {"alias": "CORE::SCOUT1", "base_alias": "CORE", "end_user": "SCOUT1"}
@@ -268,9 +265,7 @@ async def test_connect_as_strict_failure_registers_nothing(app_client, auth_head
         patch(f"{MODULE}.register_database", AsyncMock(return_value="ORA-01017: invalid credential")),
         patch(f"{MODULE}.refresh_sqlcl_proxy", AsyncMock()) as mock_refresh,
     ):
-        resp = await app_client.post(
-            "/v1/deepsec/connect-as", json={"end_user": "SCOUT1"}, headers=auth_headers
-        )
+        resp = await app_client.post("/v1/deepsec/connect-as", json={"end_user": "SCOUT1"}, headers=auth_headers)
     assert resp.status_code == 400
     assert "ORA-01017" in resp.json()["detail"]
     mock_refresh.assert_not_awaited()
@@ -290,9 +285,7 @@ async def test_connect_as_stale_failure_refreshes_sqlcl(app_client, auth_headers
         patch(f"{MODULE}.register_database", AsyncMock(return_value="ORA-01017: invalid credential")),
         patch(f"{MODULE}.refresh_sqlcl_proxy", AsyncMock()) as mock_refresh,
     ):
-        resp = await app_client.post(
-            "/v1/deepsec/connect-as", json={"end_user": "SCOUT1"}, headers=auth_headers
-        )
+        resp = await app_client.post("/v1/deepsec/connect-as", json={"end_user": "SCOUT1"}, headers=auth_headers)
     assert resp.status_code == 400
     # Stale entry torn down (config + referencing settings) and the store rebuilt despite the failure.
     mock_clear.assert_awaited_once_with(alias="CORE::SCOUT1")
@@ -312,9 +305,7 @@ async def test_connect_as_reuses_existing_usable(app_client, auth_headers, mock_
         patch(f"{MODULE}.register_database", AsyncMock()) as mock_reg,
         patch(f"{MODULE}.refresh_sqlcl_proxy", AsyncMock()) as mock_refresh,
     ):
-        resp = await app_client.post(
-            "/v1/deepsec/connect-as", json={"end_user": "SCOUT1"}, headers=auth_headers
-        )
+        resp = await app_client.post("/v1/deepsec/connect-as", json={"end_user": "SCOUT1"}, headers=auth_headers)
     assert resp.status_code == 200
     assert resp.json()["alias"] == "CORE::SCOUT1"
     mock_reg.assert_not_awaited()
@@ -340,9 +331,7 @@ async def test_connect_as_rejects_non_managed_alias_collision(app_client, auth_h
         patch(f"{MODULE}.clear_dds_for", AsyncMock(return_value=set())) as mock_clear,
         patch(f"{MODULE}.refresh_sqlcl_proxy", AsyncMock()) as mock_refresh,
     ):
-        resp = await app_client.post(
-            "/v1/deepsec/connect-as", json={"end_user": "SCOUT1"}, headers=auth_headers
-        )
+        resp = await app_client.post("/v1/deepsec/connect-as", json={"end_user": "SCOUT1"}, headers=auth_headers)
     assert resp.status_code == 409
     # The ordinary connection was neither reused-as-managed, torn down, nor duplicated.
     mock_reg.assert_not_awaited()
@@ -355,9 +344,7 @@ async def test_connect_as_rejects_non_managed_alias_collision(app_client, auth_h
 async def test_connect_as_requires_usable_owner(app_client, auth_headers, mock_db):
     """503 when the owner database is unavailable."""
     with patch(f"{MODULE}.get_client_db_config", return_value=None):
-        resp = await app_client.post(
-            "/v1/deepsec/connect-as", json={"end_user": "SCOUT1"}, headers=auth_headers
-        )
+        resp = await app_client.post("/v1/deepsec/connect-as", json={"end_user": "SCOUT1"}, headers=auth_headers)
     assert resp.status_code == 503
 
 

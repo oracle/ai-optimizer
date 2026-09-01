@@ -196,6 +196,18 @@ class TestHeaders:
             result = _headers()
         assert result == {"X-API-Key": ""}
 
+    def test_with_streamlit_access_token(self):
+        """API calls use the access token and never the OIDC ID token."""
+        streamlit = MagicMock()
+        streamlit.user.is_logged_in = True
+        streamlit.user.tokens = {"access": "api-token", "id": "id-token"}
+        streamlit.session_state = {}
+        with patch(f"{MODULE}.st", streamlit):
+            from client.app.core.api import _headers
+
+            result = _headers()
+        assert result == {"Authorization": "Bearer api-token"}
+
 
 # ---------------------------------------------------------------------------
 # api_get
@@ -621,7 +633,6 @@ class TestGetServerSettings:
         assert result == {"settings": "ok"}
         assert mock_cls.call_args.kwargs["verify"] is True
 
-
     def test_http_error_returns_none(self):
         """Verify get_server_settings returns None when the server is unreachable."""
         fail_resp = _resp(503, json_data={"detail": "down"})
@@ -654,7 +665,6 @@ class TestGetServerSettings:
         _, kwargs = instance.get.call_args
         assert kwargs["params"]["client"] == "my-client"
         assert "include_sensitive" not in kwargs["params"]
-
 
     def test_include_sensitive_routes_to_export(self):
         """``include_sensitive=True`` triggers the export helper."""
@@ -980,8 +990,8 @@ class TestStartServer:
         # ``settings.api_key`` is a ``SecretStr`` after migration; reveal it
         # for the assertion.
         from client.app.core.secrets import reveal
-        assert reveal(settings.api_key) == "generated-key"
 
+        assert reveal(settings.api_key) == "generated-key"
 
 
 # ---------------------------------------------------------------------------

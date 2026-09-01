@@ -10,9 +10,10 @@ import logging
 from typing import Awaitable, Callable
 
 import oracledb
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 
+from server.app.api.deps import require_administrator
 from server.app.api.v1.endpoints._helpers import _build_updates, _log_sensitive_read
 from server.app.core.constants import PERSIST_FAIL_DETAIL as _PERSIST_FAIL
 from server.app.core.error_detail import response_error_detail
@@ -102,9 +103,7 @@ async def _refuse_core_rotation_if_active_embed_jobs(cfg: DatabaseConfig) -> Non
     )
 
 
-async def _refuse_alias_change_if_targeted_by_active_embed_jobs(
-    alias: str, action: str
-) -> None:
+async def _refuse_alias_change_if_targeted_by_active_embed_jobs(alias: str, action: str) -> None:
     """Refuse PUT / DELETE on *alias* while embed jobs target it.
 
     Pipeline holds the alias's pool through the post-``populate_vs``
@@ -249,7 +248,7 @@ async def register_database(
     return error
 
 
-@auth.post("", status_code=201, response_model_exclude_unset=True)
+@auth.post("", status_code=201, response_model_exclude_unset=True, dependencies=[Depends(require_administrator)])
 async def create_database(body: DatabaseConfig):
     """Add a new database configuration."""
     # managed_by marks runtime-only DDS connections and is server-owned: it is set only by
@@ -276,7 +275,7 @@ async def create_database(body: DatabaseConfig):
     return JSONResponse(content=result, status_code=201)
 
 
-@auth.put("/{alias}", response_model_exclude_unset=True)
+@auth.put("/{alias}", response_model_exclude_unset=True, dependencies=[Depends(require_administrator)])
 async def update_database(alias: str, body: DatabaseUpdate):
     """Update an existing database configuration by alias (case-insensitive).
 
@@ -340,9 +339,7 @@ async def update_database(alias: str, body: DatabaseUpdate):
         # Only a change to a connection field the managed connection copied invalidates an active
         # DDS connect-as derived from this base; tear it down then (clear-and-disable, the user
         # re-designates). An unrelated edit (e.g. username) must not silently disable the override.
-        if any(
-            field in originals and originals[field] != getattr(cfg, field) for field in MANAGED_CONNECTION_FIELDS
-        ):
+        if any(field in originals and originals[field] != getattr(cfg, field) for field in MANAGED_CONNECTION_FIELDS):
             await clear_dds_for(base_alias=cfg.alias)
 
         result = cfg.model_dump(exclude=SENSITIVE_FIELDS)
@@ -352,7 +349,7 @@ async def update_database(alias: str, body: DatabaseUpdate):
     return result
 
 
-@auth.delete("/{alias}", status_code=204)
+@auth.delete("/{alias}", status_code=204, dependencies=[Depends(require_administrator)])
 async def remove_database(alias: str):
     """Remove a database configuration by alias (case-insensitive)."""
     async with _settings_lock:
@@ -377,7 +374,7 @@ async def remove_database(alias: str):
     await refresh_sqlcl_proxy()
 
 
-@auth.delete("/{alias}/vector-stores/{table_name}", status_code=204)
+@auth.delete("/{alias}/vector-stores/{table_name}", status_code=204, dependencies=[Depends(require_administrator)])
 async def delete_vector_store(alias: str, table_name: str):
     """Drop a vector store table and remove it from the database configuration."""
     async with _settings_lock:

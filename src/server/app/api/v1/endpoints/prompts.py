@@ -5,8 +5,9 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 CRUD endpoints for prompt management.
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from server.app.api.deps import require_administrator
 from server.app.api.v1.endpoints.chat import get_orchestrator
 from server.app.api.v1.schemas.prompts import PromptResponse, PromptUpdate
 from server.app.core.constants import PERSIST_FAIL_DETAIL as _PERSIST_FAIL
@@ -23,7 +24,7 @@ from server.app.mcp.prompts.registry import (
 auth = APIRouter(prefix="/prompts")
 
 
-@auth.put("/{name}", response_model=PromptResponse)
+@auth.put("/{name}", response_model=PromptResponse, dependencies=[Depends(require_administrator)])
 async def update_prompt(name: str, body: PromptUpdate):
     """Update the text of a prompt."""
     async with _settings_lock:
@@ -41,7 +42,7 @@ async def update_prompt(name: str, body: PromptUpdate):
     return prompt_to_response(pc)
 
 
-@auth.post("/reset", response_model=list[PromptResponse])
+@auth.post("/reset", response_model=list[PromptResponse], dependencies=[Depends(require_administrator)])
 async def reset_all_prompts():
     """Reset all prompts to their factory text."""
     async with _settings_lock:
@@ -61,7 +62,7 @@ async def reset_all_prompts():
     return [prompt_to_response(pc) for pc in settings.prompt_configs]
 
 
-@auth.post("/{name}/reset", response_model=PromptResponse)
+@auth.post("/{name}/reset", response_model=PromptResponse, dependencies=[Depends(require_administrator)])
 async def reset_prompt(name: str):
     """Reset a prompt to its factory text."""
     async with _settings_lock:

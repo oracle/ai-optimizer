@@ -49,9 +49,6 @@ class ClientSettings(BaseSettings):
     client_ssl: bool = False
     client_ssl_cert_file: str = ""
     client_ssl_key_file: str = ""
-    # When unset, additional UI access checks are disabled.
-    client_password: Optional[SecretStr] = None
-
     # Operator-set OCI source defaults. When valid at render time, these can pin
     # the Split & Embed OCI source selectors (compartment + bucket) for all users.
     # Bucket pinning requires a valid configured compartment.

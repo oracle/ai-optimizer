@@ -17,6 +17,7 @@ from typing import Any, Optional
 from fastmcp import Context
 from langchain_oracledb import OracleVS
 
+from server.app.core.auth import authenticated_client
 from server.app.core.mcp import mcp
 from server.app.core.settings import resolve_client
 from server.app.database.config import DdsConnectionError
@@ -410,4 +411,4 @@ def register_retriever_tool():
                 question = parsed["rephrased_prompt"]
         except (json.JSONDecodeError, TypeError):
             pass
-        return await _vs_retrieve_impl(question, ctx, client=thread_id)
+        return await _vs_retrieve_impl(question, ctx, client=authenticated_client(thread_id))

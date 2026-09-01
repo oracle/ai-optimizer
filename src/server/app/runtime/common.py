@@ -13,7 +13,7 @@ from typing import Any, Dict, Iterable, List, Optional
 
 from pydantic import BaseModel
 
-from server.app.agentspec.adapters.mcp import fetch_mcp_prompt
+from server.app.agentspec.adapters.mcp import McpCredential, fetch_mcp_prompt
 from server.app.api.v1.schemas.chat import SqlMetadata, TokenUsage, VsMetadata
 from server.app.core.schemas import TOOL_NL2SQL, TOOL_VECSEARCH
 from server.app.mcp.prompts.registry import require_factory_text
@@ -124,7 +124,7 @@ def format_history_text(entries: Iterable[Dict[str, Any]]) -> str:
 ROUTE_PROMPTS: Dict[Route, str] = {}
 
 
-async def fetch_prompt_with_fallback(server_url: str, api_key: str, prompt_name: str) -> str:
+async def fetch_prompt_with_fallback(server_url: str, api_key: McpCredential, prompt_name: str) -> str:
     """Fetch a system prompt from MCP, falling back to the factory entry
     (mcp/prompts/defaults.py) on transport failure."""
     try:
@@ -134,7 +134,7 @@ async def fetch_prompt_with_fallback(server_url: str, api_key: str, prompt_name:
         return require_factory_text(prompt_name)
 
 
-async def fetch_prompt_for_route(route: Route, server_url: str, api_key: str) -> str:
+async def fetch_prompt_for_route(route: Route, server_url: str, api_key: McpCredential) -> str:
     """Fetch the current prompt text for a given route."""
     prompt_name = ROUTE_PROMPTS.get(route)
     if prompt_name is None:
@@ -260,6 +260,7 @@ _CLASSIFIER_REQUIRED_SUBSTRINGS = (
 
 # Required str.format slots in an admin-supplied synthesis template.
 _SYNTHESIS_REQUIRED_SLOTS = ("{system_prompt}", "{query}", "{sql_answer}", "{search_answer}")
+
 
 def validate_classifier_prompt(text: str) -> bool:
     """Return False if any decision token or the ``{{query}}`` slot is missing."""

@@ -245,7 +245,19 @@ def _base_url(api_prefix: str = "/v1") -> str:
 
 
 def _headers() -> dict:
-    return {"X-API-Key": reveal(settings.api_key) or ""}
+    """Build API headers from the active Streamlit identity or legacy key."""
+    headers: dict[str, str] = {}
+    try:
+        access_token = st.user.tokens.get("access") if st.user.is_logged_in else None
+    except (AttributeError, KeyError):
+        access_token = None
+    if access_token:
+        headers["Authorization"] = f"Bearer {access_token}"
+    else:
+        headers["X-API-Key"] = reveal(settings.api_key) or ""
+    if session_id := st.session_state.get("optimizer_client"):
+        headers["X-AIO-Session"] = session_id
+    return headers
 
 
 def api_get(

@@ -11,9 +11,10 @@ import logging
 from typing import Optional
 
 import litellm
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
+from server.app.api.deps import require_administrator
 from server.app.api.v1.endpoints._helpers import _build_updates, _log_sensitive_read
 from server.app.core.constants import PERSIST_FAIL_DETAIL as _PERSIST_FAIL
 from server.app.core.secrets import REVEAL_KEY
@@ -133,7 +134,7 @@ async def models_supported(
 # --- Pull endpoint (must be before /{provider}/{model_id:path}) ---
 
 
-@auth.post("/pull/{provider}/{model_id:path}")
+@auth.post("/pull/{provider}/{model_id:path}", dependencies=[Depends(require_administrator)])
 async def pull_model(provider: str, model_id: str):
     """Pull an Ollama model and stream progress as NDJSON."""
     if provider.casefold() != "ollama":
@@ -179,7 +180,13 @@ async def get_model(
     return cfg.model_dump(exclude=SENSITIVE_FIELDS)
 
 
-@auth.post("", response_model=ModelConfig, status_code=201, response_model_exclude_unset=True)
+@auth.post(
+    "",
+    response_model=ModelConfig,
+    status_code=201,
+    response_model_exclude_unset=True,
+    dependencies=[Depends(require_administrator)],
+)
 async def create_model(body: ModelConfig):
     """Add a new model configuration."""
     async with _settings_lock:
@@ -193,7 +200,12 @@ async def create_model(body: ModelConfig):
         return body.model_dump(exclude=SENSITIVE_FIELDS)
 
 
-@auth.put("/{provider}/{model_id:path}", response_model=ModelConfig, response_model_exclude_unset=True)
+@auth.put(
+    "/{provider}/{model_id:path}",
+    response_model=ModelConfig,
+    response_model_exclude_unset=True,
+    dependencies=[Depends(require_administrator)],
+)
 async def update_model(provider: str, model_id: str, body: ModelUpdate):
     """Update an existing model configuration by provider and id (case-insensitive)."""
     async with _settings_lock:
@@ -227,7 +239,7 @@ async def update_model(provider: str, model_id: str, body: ModelUpdate):
         return cfg.model_dump(exclude=SENSITIVE_FIELDS)
 
 
-@auth.delete("/{provider}/{model_id:path}", status_code=204)
+@auth.delete("/{provider}/{model_id:path}", status_code=204, dependencies=[Depends(require_administrator)])
 async def delete_model(provider: str, model_id: str):
     """Remove a model configuration by provider and id (case-insensitive)."""
     async with _settings_lock:

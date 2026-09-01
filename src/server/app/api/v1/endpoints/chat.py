@@ -11,7 +11,7 @@ import logging
 from typing import Annotated
 from urllib.parse import urlunparse
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from net_addressing import connect_host, netloc
@@ -28,6 +28,7 @@ from server.app.api.v1.schemas.chat import (
     VsMetadata,
 )
 from server.app.api.v1.schemas.common import ClientId
+from server.app.core.auth import INTERNAL_PROXY_TOKEN
 from server.app.core.secrets import reveal
 from server.app.core.settings import resolve_client, settings
 from server.app.database.config import DdsConnectionError
@@ -69,9 +70,33 @@ def get_orchestrator() -> ChatOrchestrator:
     return _orchestrator
 
 
+def get_request_orchestrator(request: Request) -> ChatOrchestrator:
+    """Use the inbound bearer credential for principal-authenticated MCP calls."""
+    authorization = request.headers.get("authorization")
+    if settings.auth_mode in {"dev", "oidc"} and authorization:
+        headers = {"Authorization": authorization}
+        if session_id := request.headers.get("x-aio-session"):
+            headers["X-AIO-Session"] = session_id
+        return _orchestrator.for_request_headers(headers)
+    if settings.auth_mode == "proxy":
+        headers = {
+            "X-AIO-Internal-Subject": request.headers.get(settings.auth_proxy_subject_header, ""),
+            "X-AIO-Internal-Roles": request.headers.get(settings.auth_proxy_roles_header, ""),
+            "X-AIO-Internal-Token": INTERNAL_PROXY_TOKEN,
+        }
+        if session_id := request.headers.get("x-aio-session"):
+            headers["X-AIO-Session"] = session_id
+        return _orchestrator.for_request_headers(headers)
+    return _orchestrator
+
+
+_request_orchestrator = get_request_orchestrator
+
+
 @auth.post("/completions", response_model=ChatResponse)
 async def chat_completions(
     body: ChatRequest,
+    request: Request,
     client: Annotated[ClientId, Header()] = "server",
 ):
     """Full (non-streaming) chat completion.
@@ -81,7 +106,7 @@ async def chat_completions(
     question = _last_user_message(body)
 
     try:
-        result = await _orchestrator.execute_chat(
+        result = await _request_orchestrator(request).execute_chat(
             question=question,
             client=client,
         )
@@ -113,6 +138,7 @@ async def chat_completions(
 @auth.post("/streams")
 async def chat_stream(
     body: ChatRequest,
+    request: Request,
     client: Annotated[ClientId, Header()] = "server",
 ):
     """Streaming chat completion via ``StreamingResponse``.
@@ -128,7 +154,7 @@ async def chat_stream(
         sql_metadata = None
         token_usage = None
         try:
-            async for event in _orchestrator.execute_chat_stream(
+            async for event in _request_orchestrator(request).execute_chat_stream(
                 question=question,
                 client=client,
             ):

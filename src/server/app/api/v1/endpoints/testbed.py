@@ -22,6 +22,7 @@ from fastapi import (
     Header,
     HTTPException,
     Query,
+    Request,
     UploadFile,
 )
 from fastapi import Path as PathParam
@@ -32,7 +33,7 @@ from litellm.exceptions import APIConnectionError
 from pydantic import ValidationError
 
 from server.app.api.v1.endpoints._helpers import _safe_filename_or_400
-from server.app.api.v1.endpoints.chat import get_orchestrator
+from server.app.api.v1.endpoints.chat import get_request_orchestrator
 from server.app.api.v1.schemas.chat import MessageResponse
 from server.app.api.v1.schemas.common import ClientId
 from server.app.api.v1.schemas.testbed import Evaluation, EvaluationReport, QASetData, QASets, RejectedFile
@@ -284,6 +285,7 @@ async def generate_testset_endpoint(
 async def evaluate_testset(
     tid: Annotated[TestsetId, Query()],
     judge: str,
+    request: Request,
     client: Annotated[ClientId, Header()] = "server",
 ):
     """Run an evaluation against a testset using the configured chatbot and judge model."""
@@ -304,7 +306,7 @@ async def evaluate_testset(
         pool = _require_core_pool()
         loaded_testset = await _load_testset_from_db(pool, tid, temp_directory)
         judge_config, judge_prompt = _get_judge_config(judge, client)
-        answers = await _collect_answers(loaded_testset, client)
+        answers = await _collect_answers(loaded_testset, client, request)
         report = await _run_giskard_evaluation(loaded_testset, answers, judge_config, judge_prompt)
 
         async with pool.acquire() as conn:
@@ -465,9 +467,9 @@ async def _run_giskard_evaluation(loaded_testset, answers, judge_config: dict, j
             raise
 
 
-async def _collect_answers(loaded_testset, client: str) -> list:
+async def _collect_answers(loaded_testset, client: str, request: Request) -> list:
     """Collect answers from the chatbot for all questions in the testset."""
-    orchestrator = get_orchestrator()
+    orchestrator = get_request_orchestrator(request)
     answers = []
     for sample in loaded_testset.to_pandas().itertuples():
         result = await orchestrator.execute_chat(

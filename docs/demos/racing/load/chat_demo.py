@@ -206,7 +206,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--vs-alias-template",
-        default="RACE_DRIVER_{N:03d}", 
+        default="RACE_DRIVER_{N:03d}",
         help=(
             "Python format string for the per-driver vector store alias. "
             "{N} (or {N:03d}) is the driver number. Use a constant string "

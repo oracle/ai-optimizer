@@ -13,7 +13,6 @@ from streamlit import session_state as state
 
 from _version import __version__
 from client.app.core.api import _server_module_available, api_get, get_server_settings, start_server
-from client.app.core.auth import auth_sidebar, gate_active, is_authenticated
 from logging_config import configure_logging
 
 configure_logging()
@@ -24,6 +23,26 @@ ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets"
 if "optimizer_client" not in state:
     state.optimizer_client = str(uuid4())
 
+
+def _about_details(session_id: str, email: str | None = None) -> str:
+    """Build About text without exposing the opaque session as a client identity."""
+    details = [f"Session: {session_id}"]
+    if email:
+        details.insert(0, f"Signed in as: {email}")
+    return "\n\n".join(details)
+
+
+def _signed_in_email() -> str | None:
+    """Return the optional email claim supplied by Streamlit's OIDC integration."""
+    try:
+        if not st.user.is_logged_in:
+            return None
+        email = st.user.get("email")
+    except (AttributeError, KeyError):
+        return None
+    return email if isinstance(email, str) and email else None
+
+
 st.set_page_config(
     page_title="Oracle AI Optimizer and Toolkit",
     page_icon=str(ASSETS_DIR / "favicon.png"),
@@ -32,7 +51,7 @@ st.set_page_config(
     menu_items={
         "Get Help": "https://oracle.github.io/ai-optimizer/",
         "Report a bug": "https://github.com/oracle/ai-optimizer/issues/new?template=2-bug_report.yml",
-        "About": f"Version: v{__version__}\n\nClient: {state.optimizer_client}",
+        "About": f"Version: v{__version__}\n\n{_about_details(state.optimizer_client, _signed_in_email())}",
     },
 )
 st.html(
@@ -59,6 +78,21 @@ st.html(
     """,
 )
 st.logo(str(ASSETS_DIR / "logo.png"))
+
+# Native Streamlit OIDC is opt-in through the deployment's ``[auth]``
+# secrets configuration. API calls use the provider-issued access token;
+# the ID token remains a Streamlit client credential.
+try:
+    oidc_configured = "auth" in st.secrets
+except FileNotFoundError:
+    oidc_configured = False
+if oidc_configured and not st.user.is_logged_in:
+    if _server_module_available():
+        st.sidebar.space(size="small")
+        with st.sidebar.spinner("Starting server...", show_time=True):
+            start_server()
+    st.button("Sign in", on_click=st.login)
+    st.stop()
 
 if state.get("settings") is None:
     st.sidebar.space(size="small")
@@ -89,12 +123,5 @@ tools = st.Page("content/tools/tools.py", title="Tools", icon="🧰")
 sidebar_navigation[""].append(tools)
 config = st.Page("content/config/config.py", title="Configuration", icon="⚙️")
 sidebar_navigation[""].append(config)
-if gate_active():
-    if is_authenticated():
-        sidebar_navigation[""].append(st.Page("content/signout.py", title="Sign-out", icon="🔓"))
-    else:
-        sidebar_navigation[""].append(st.Page("content/signin.py", title="Sign-in", icon="🔐"))
-auth_sidebar()
-
 pg_sidebar = st.navigation(sidebar_navigation, position="sidebar", expanded=False)
 pg_sidebar.run()

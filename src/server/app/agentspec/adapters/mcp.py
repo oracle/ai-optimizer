@@ -20,19 +20,30 @@ from server.app.mcp.proxies.sqlcl import ensure_sqlcl_saved_connection
 
 LOGGER = logging.getLogger(__name__)
 
+McpCredential = str | dict[str, str]
+
 
 def _normalize_server_url(server_url: str) -> str:
     """Use the canonical trailing-slash MCP endpoint."""
     return server_url.rstrip("/") + "/"
 
 
-def build_mcp_transport(server_url: str, api_key: str) -> StreamableHTTPTransport:
+def _authentication_headers(credential: McpCredential) -> dict[str, str]:
+    """Use bearer authentication unchanged or an API key for no-principal deployments."""
+    if isinstance(credential, dict):
+        return credential
+    if credential.lower().startswith("bearer "):
+        return {"Authorization": credential}
+    return {"X-API-Key": credential}
+
+
+def build_mcp_transport(server_url: str, api_key: McpCredential) -> StreamableHTTPTransport:
     """Create a StreamableHTTPTransport for the MCP server."""
 
     return StreamableHTTPTransport(
         name="mcp-transport",
         url=_normalize_server_url(server_url),
-        sensitive_headers={"X-API-Key": api_key},
+        sensitive_headers=_authentication_headers(api_key),
     )
 
 
@@ -61,7 +72,7 @@ def _render_text_content(content: Any) -> str:
 
 async def connect_sqlcl_database(
     server_url: str,
-    api_key: str,
+    api_key: McpCredential,
     connection_name: str,
     model: str,
     thread_id: str | None = None,
@@ -72,7 +83,7 @@ async def connect_sqlcl_database(
 
     server_url = _normalize_server_url(server_url)
     LOGGER.debug("Connecting SQLcl database '%s' via %s", connection_name, server_url)
-    http_client = httpx.AsyncClient(headers={"X-API-Key": api_key}, verify=verify_for_url(server_url))
+    http_client = httpx.AsyncClient(headers=_authentication_headers(api_key), verify=verify_for_url(server_url))
     async with http_client:  # noqa: SIM117
         async with streamable_http_client(server_url, http_client=http_client) as (read, write, _):
             async with ClientSession(read, write) as session:
@@ -103,7 +114,7 @@ async def connect_sqlcl_database(
 
 async def fetch_mcp_prompt(
     server_url: str,
-    api_key: str,
+    api_key: McpCredential,
     prompt_name: str,
     arguments: dict[str, str] | None = None,
 ) -> str:
@@ -111,7 +122,7 @@ async def fetch_mcp_prompt(
 
     server_url = _normalize_server_url(server_url)
     LOGGER.debug("Fetching MCP prompt '%s' from %s", prompt_name, server_url)
-    http_client = httpx.AsyncClient(headers={"X-API-Key": api_key}, verify=verify_for_url(server_url))
+    http_client = httpx.AsyncClient(headers=_authentication_headers(api_key), verify=verify_for_url(server_url))
     async with http_client:  # noqa: SIM117
         async with streamable_http_client(server_url, http_client=http_client) as (read, write, _):
             async with ClientSession(read, write) as session:

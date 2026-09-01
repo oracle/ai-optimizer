@@ -7,14 +7,18 @@ Container / CLI entrypoint — configures the environment and launches the serve
 """
 # spell-checker: ignore streamlit sslcertfile sslkeyfile
 
+import json
 import os
 import re
+import secrets
 import shutil
 import sys
 from pathlib import Path
+from urllib.parse import urlparse
 
 from dotenv import load_dotenv
 
+from dev_auth_credentials import load_or_create_bootstrap_credential, load_or_create_web_client_secret
 from net_addressing import ensure_ssl_cert
 
 
@@ -111,11 +115,98 @@ def start_client(script_dir: Path) -> None:
     if cookie_secret:
         os.environ["STREAMLIT_SERVER_COOKIE_SECRET"] = cookie_secret
 
+    _prepare_development_oidc_streamlit_config(script_dir, cookie_secret)
+
     if os.environ.get("AIO_CLIENT_SSL", "false").lower() == "true":
         cert, key = ensure_ssl_cert(script_dir, "AIO_CLIENT_SSL_CERT_FILE", "AIO_CLIENT_SSL_KEY_FILE")
         args.extend(["--server.sslCertFile", str(cert), "--server.sslKeyFile", str(key)])
 
     os.execvp("streamlit", args)
+
+
+def _prepare_development_oidc_streamlit_config(script_dir: Path, cookie_secret: str) -> None:
+    """Create local Streamlit OIDC settings when the built-in provider is active."""
+    if not _uses_local_development_oidc(script_dir):
+        return
+    if _is_local_all_in_one(script_dir):
+        bootstrap_credential = None
+        if not os.environ.get("AIO_AUTH_DEV_ADMIN_PASSWORD"):
+            bootstrap_credential = load_or_create_bootstrap_credential(script_dir)
+            os.environ["AIO_AUTH_DEV_ADMIN_PASSWORD"] = bootstrap_credential.password
+            os.environ["AIO_AUTH_DEV_SYNC_BOOTSTRAP_PASSWORD"] = "true"
+            if not os.environ.get("AIO_AUTH_DEV_WEB_CLIENT_SECRET"):
+                os.environ["AIO_AUTH_DEV_WEB_CLIENT_SECRET"] = bootstrap_credential.web_client_secret
+        if not os.environ.get("AIO_AUTH_DEV_WEB_CLIENT_SECRET"):
+            os.environ["AIO_AUTH_DEV_WEB_CLIENT_SECRET"] = (
+                bootstrap_credential.web_client_secret
+                if bootstrap_credential is not None
+                else load_or_create_web_client_secret(script_dir)
+            )
+    config_dir = script_dir / "client" / "app" / ".streamlit"
+    secrets_file = config_dir / "secrets.toml"
+    if secrets_file.exists():
+        if "AIO_AUTH_DEV_WEB_CLIENT_SECRET" not in os.environ:
+            return
+        contents = secrets_file.read_text(encoding="utf-8")
+        if 'client_id = "platform-web-client"' not in contents or 'client_secret = ""' not in contents:
+            return
+        secrets_file.write_text(
+            contents.replace(
+                'client_secret = ""',
+                f"client_secret = {json.dumps(os.environ['AIO_AUTH_DEV_WEB_CLIENT_SECRET'])}",
+            ),
+            encoding="utf-8",
+        )
+        secrets_file.chmod(0o600)
+        return
+    config_dir.mkdir(parents=True, exist_ok=True)
+    issuer = os.environ.get("AIO_AUTH_DEV_ISSUER", "http://127.0.0.1:8765").rstrip("/")
+    redirect_uri = os.environ.get("AIO_AUTH_DEV_WEB_REDIRECT_URI", "http://localhost:8501/oauth2callback")
+    oidc_cookie_secret = cookie_secret or secrets.token_urlsafe(48)
+    web_client_secret = os.environ["AIO_AUTH_DEV_WEB_CLIENT_SECRET"]
+    contents = "\n".join(
+        (
+            "[auth]",
+            f"redirect_uri = {json.dumps(redirect_uri)}",
+            f"cookie_secret = {json.dumps(oidc_cookie_secret)}",
+            'client_id = "platform-web-client"',
+            f"client_secret = {json.dumps(web_client_secret)}",
+            f"server_metadata_url = {json.dumps(f'{issuer}/.well-known/openid-configuration')}",
+            'client_kwargs = { scope = "openid profile email aio.api" }',
+            'expose_tokens = "access"',
+            "",
+        )
+    )
+    try:
+        with secrets_file.open("x", encoding="utf-8") as streamlit_secrets:
+            streamlit_secrets.write(contents)
+        secrets_file.chmod(0o600)
+    except FileExistsError:
+        # A concurrent launcher or an operator-provided file won the race.
+        return
+
+
+def _uses_local_development_oidc(script_dir: Path) -> bool:
+    """Return whether this client launch uses the built-in development provider."""
+    if not _is_local_all_in_one(script_dir):
+        return False
+    auth_mode = os.environ.get("AIO_AUTH_MODE")
+    if auth_mode == "dev":
+        return True
+    if auth_mode is not None:
+        return False
+    return any(
+        os.environ.get(name)
+        for name in ("DB_USERNAME", "DB_PASSWORD", "DB_DSN", "AIO_DB_USERNAME", "AIO_DB_PASSWORD", "AIO_DB_DSN")
+    )
+
+
+def _is_local_all_in_one(script_dir: Path) -> bool:
+    """Return whether this source installation will connect to its local server."""
+    if not (script_dir / "server").is_dir():
+        return False
+    hostname = urlparse(os.environ.get("AIO_SERVER_URL", "http://localhost")).hostname
+    return hostname in {"localhost", "127.0.0.1", "::1", "0.0.0.0", "::"}
 
 
 def main() -> None:

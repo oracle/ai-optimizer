@@ -51,7 +51,7 @@ def mock_refresh_sqlcl():
 async def test_list_databases_no_auth(app_client):
     """Databases endpoint rejects requests without API key."""
     resp = await app_client.get("/v1/databases")
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 @pytest.mark.unit
@@ -59,7 +59,7 @@ async def test_list_databases_no_auth(app_client):
 async def test_create_database_no_auth(app_client):
     """POST databases rejects requests without API key."""
     resp = await app_client.post("/v1/databases", json={"alias": "X"})
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 @pytest.mark.unit
@@ -67,7 +67,7 @@ async def test_create_database_no_auth(app_client):
 async def test_update_database_no_auth(app_client):
     """PUT databases rejects requests without API key."""
     resp = await app_client.put("/v1/databases/TEST", json={"username": "x"})
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 @pytest.mark.unit
@@ -75,7 +75,7 @@ async def test_update_database_no_auth(app_client):
 async def test_delete_database_no_auth(app_client):
     """DELETE databases rejects requests without API key."""
     resp = await app_client.delete("/v1/databases/TEST")
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 @pytest.mark.unit
@@ -83,7 +83,7 @@ async def test_delete_database_no_auth(app_client):
 async def test_delete_vector_store_no_auth(app_client):
     """DELETE vector-store rejects requests without API key."""
     resp = await app_client.delete("/v1/databases/TEST/vector-stores/VS1")
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 @pytest.mark.unit
@@ -197,9 +197,7 @@ async def test_update_database_rejects_managed(app_client, auth_headers):
     """A DDS-managed alias is not updatable via the database endpoint."""
     managed = make_test_database_config(alias="CORE::SCOUT1", username="SCOUT1", managed_by="dds:CORE")
     settings.database_configs.append(managed)
-    resp = await app_client.put(
-        "/v1/databases/CORE::SCOUT1", json={"username": "X"}, headers=auth_headers
-    )
+    resp = await app_client.put("/v1/databases/CORE::SCOUT1", json={"username": "X"}, headers=auth_headers)
     assert resp.status_code == 404
 
 
@@ -560,9 +558,7 @@ async def test_update_core_database_reinitializes(app_client, auth_headers, mock
 
 @pytest.mark.unit
 @pytest.mark.anyio
-async def test_update_core_database_blocked_by_active_embed_jobs(
-    app_client, auth_headers, mock_persist_settings
-):
+async def test_update_core_database_blocked_by_active_embed_jobs(app_client, auth_headers, mock_persist_settings):
     """[P2] CORE rotation must be refused while non-terminal embed jobs exist.
 
     Reviewer concern: rotating CORE closes the previous pool, but
@@ -587,9 +583,7 @@ async def test_update_core_database_blocked_by_active_embed_jobs(
                 new_callable=AsyncMock,
                 return_value=2,
             ) as mock_count,
-            patch(
-                "server.app.api.v1.endpoints.databases.close_pool", new_callable=AsyncMock
-            ) as mock_close,
+            patch("server.app.api.v1.endpoints.databases.close_pool", new_callable=AsyncMock) as mock_close,
             patch(
                 "server.app.api.v1.endpoints.databases.init_core_database",
                 new_callable=AsyncMock,
@@ -730,9 +724,7 @@ async def test_update_non_core_database_blocked_by_active_jobs_targeting_alias(
             new_callable=AsyncMock,
             return_value=2,
         ) as mock_count_alias,
-        patch(
-            "server.app.api.v1.endpoints.databases.close_pool", new_callable=AsyncMock
-        ) as mock_close,
+        patch("server.app.api.v1.endpoints.databases.close_pool", new_callable=AsyncMock) as mock_close,
         patch(
             "server.app.api.v1.endpoints.databases.test_connection",
             new_callable=AsyncMock,
@@ -1028,9 +1020,7 @@ async def test_delete_database_not_found(app_client, auth_headers):
 
 @pytest.mark.unit
 @pytest.mark.anyio
-async def test_delete_database_blocked_by_active_jobs_targeting_alias(
-    app_client, auth_headers, mock_persist_settings
-):
+async def test_delete_database_blocked_by_active_jobs_targeting_alias(app_client, auth_headers, mock_persist_settings):
     """[P2] Removal must refuse while embed jobs still target the alias.
 
     Reviewer concern: the per-alias guard added on PUT only protects
@@ -1054,9 +1044,7 @@ async def test_delete_database_blocked_by_active_jobs_targeting_alias(
             new_callable=AsyncMock,
             return_value=3,
         ) as mock_count_alias,
-        patch(
-            "server.app.api.v1.endpoints.databases.close_pool", new_callable=AsyncMock
-        ) as mock_close,
+        patch("server.app.api.v1.endpoints.databases.close_pool", new_callable=AsyncMock) as mock_close,
     ):
         resp = await app_client.delete("/v1/databases/TEST", headers=auth_headers)
 
@@ -1072,16 +1060,13 @@ async def test_delete_database_blocked_by_active_jobs_targeting_alias(
     mock_count_alias.assert_called_once()
     args, _kwargs = mock_count_alias.call_args
     assert args[1] == "TEST" or _kwargs.get("alias") == "TEST", (
-        f"per-alias guard must pass the alias being deleted; "
-        f"got args={args}, kwargs={_kwargs}"
+        f"per-alias guard must pass the alias being deleted; got args={args}, kwargs={_kwargs}"
     )
 
 
 @pytest.mark.unit
 @pytest.mark.anyio
-async def test_delete_database_proceeds_when_count_check_fails(
-    app_client, auth_headers, mock_persist_settings
-):
+async def test_delete_database_proceeds_when_count_check_fails(app_client, auth_headers, mock_persist_settings):
     """[P2] A flaky count check must not permanently block removal.
 
     Same fail-open posture as the PUT-side guard: a wedged CORE pool

@@ -85,6 +85,8 @@ async def test_swagger_docs_shell_is_public(app_client):
     assert "SwaggerUIBundle" in body
     assert "swagger-ui" in body
     assert 'id="api-key"' in body
+    assert 'id="bearer-token"' in body
+    assert "headers['Authorization'] = 'Bearer ' + bearer" in body
     # Gate page fetches the spec relative to the doc URL so prefixed deployments
     # resolve correctly without server-side templating.
     assert "./openapi.json" in body

@@ -159,6 +159,41 @@ When two examples use the same top-level key, such as `server:`, add their setti
 Use Kubernetes Secrets rather than committing credentials to a values file.
 :::
 
+### Built-in Development OIDC
+
+The chart can expose the built-in development provider from the Server pod;
+it does not deploy a separate identity-service image. It requires a configured
+CORE Oracle Database and is for development or evaluation, not production.
+
+Give the provider a dedicated HTTPS hostname and route that hostname to the
+provider listener. The issuer is the root URL, so do not add an `/oidc` path.
+
+```yaml
+server:
+  devOidc:
+    enabled: true
+    issuer: https://auth.example.com
+    webClientRedirectUri: https://optimizer.example.com/oauth2callback
+    ingress:
+      enabled: true
+      className: nginx
+      host: auth.example.com
+      tlsSecretName: optimizer-auth-tls
+```
+
+This configures `AIO_AUTH_MODE=dev`, exposes port `8765` inside the
+Server pod, and mounts a Streamlit OIDC configuration that exposes only the
+API access token. The Client callback URL must use the Client's public origin
+and end with `/oauth2callback`. The provider ingress terminates TLS and
+forwards requests to port `8765`.
+
+To provide a stable bootstrap password, create a Kubernetes Secret and set
+`server.devOidc.passwordSecretName` and `server.devOidc.passwordSecretKey`.
+Alternatively, set `server.devOidc.passwordAutoGenerate=true` for a
+chart-managed retained Secret. The chart provides that value only to the Server
+as `AIO_AUTH_DEV_ADMIN_PASSWORD`. When none is configured, the Server
+generates the password at startup.
+
 ### Configure the Database
 
 Choose a database mode when the deployment needs a chart-managed or external Oracle database. To run the Server without a database configuration, leave `server.database.type` empty. The chart then omits database resources and database environment variables; database-backed features such as RAG and NL2SQL are unavailable.

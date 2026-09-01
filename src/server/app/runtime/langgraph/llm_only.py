@@ -10,6 +10,7 @@ from typing import Any
 
 from langgraph.checkpoint.memory import MemorySaver
 
+from server.app.agentspec.adapters.mcp import McpCredential
 from server.app.agentspec.agent_llm_only import build_llm_only_agentspec
 from server.app.core.schemas import ClientSettings
 from server.app.runtime.common import fetch_prompt_with_fallback
@@ -21,7 +22,7 @@ PROMPT_NAME = "optimizer_basic-default"
 async def build_llm_only_graph(
     client_settings: ClientSettings,
     server_url: str,
-    api_key: str,
+    api_key: McpCredential,
     checkpointer: Any = None,
 ) -> Any:
     """Build a LangGraph agent for LLM-only conversation."""

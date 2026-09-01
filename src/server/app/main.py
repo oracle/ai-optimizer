@@ -11,16 +11,20 @@ import contextlib
 import logging
 from contextlib import asynccontextmanager
 
+import uvicorn
 from fastapi import FastAPI
 from fastmcp.utilities.lifespan import combine_lifespans
-from starlette.middleware import Middleware
 
 import server.app.core.environ  # noqa: F401, E402  # side-effect: loads .env
 from _version import __version__
+from server.app.api.dev_oidc import create_application as create_development_oidc_application
 from server.app.api.mcp.router import router as mcp_router
 from server.app.api.v1.router import router as v1_router
+from server.app.core.auth import PrincipalAuthMiddleware
+from server.app.core.dev_oidc import DevelopmentOidcService, OracleDevelopmentOidcStore
 from server.app.core.etc import apply_overlay, ensure_core_alias, load_config_file
-from server.app.core.mcp import MCPApiKeyMiddleware, mcp
+from server.app.core.mcp import mcp
+from server.app.core.secrets import reveal
 from server.app.core.settings import _client_store, settings
 from server.app.database.config import close_pool, get_database_settings
 from server.app.database.registry import init_core_database
@@ -48,6 +52,59 @@ from server.app.otel import init_telemetry, instrument_fastapi
 init_telemetry()
 
 LOGGER = logging.getLogger(__name__)
+
+
+class _EmbeddedUvicornServer(uvicorn.Server):
+    """A lifecycle child server that leaves the primary server's signals alone."""
+
+    def install_signal_handlers(self) -> None:
+        return
+
+
+async def _start_development_oidc() -> tuple[_EmbeddedUvicornServer, asyncio.Task]:
+    """Start the built-in provider on its dedicated issuer listener."""
+    service = DevelopmentOidcService(
+        issuer=settings.auth_dev_issuer,
+        store=OracleDevelopmentOidcStore(),
+        seed_passwords={
+            "admin@example.test": reveal(settings.auth_dev_admin_password) or "",
+        },
+        web_client_secret=reveal(settings.auth_dev_web_client_secret) or "",
+        sync_admin_password=settings.auth_dev_sync_bootstrap_password,
+        web_client_redirect_uri=settings.auth_dev_web_redirect_uri,
+    )
+    oidc_app = await create_development_oidc_application(service)
+    server = _EmbeddedUvicornServer(
+        uvicorn.Config(
+            oidc_app,
+            host=settings.auth_dev_listen_host,
+            port=settings.auth_dev_listen_port,
+            log_level=settings.log_level.lower(),
+        )
+    )
+    task = asyncio.create_task(server.serve(), name="development-oidc")
+    for _ in range(100):
+        if server.started:
+            return server, task
+        await asyncio.sleep(0.01)
+    server.should_exit = True
+    await task
+    raise RuntimeError("Built-in development OIDC provider did not start")
+
+
+async def _initialize_core_database() -> None:
+    """Initialize CORE, which is mandatory only for development OIDC."""
+    core_db = get_database_settings(settings.database_configs, "CORE")
+    if core_db is None:
+        return
+    try:
+        await init_core_database(core_db)
+    except Exception:
+        LOGGER.exception("CORE database initialization failed — continuing without persistence")
+        if settings.auth_mode == "dev":
+            raise
+
+
 #############################################################################
 # APP FACTORY
 #############################################################################
@@ -85,12 +142,12 @@ async def lifespan(_app: FastAPI):
         protected.discard("api_key")
 
     # --- Phase 2: Init CORE database ---
-    core_db = get_database_settings(settings.database_configs, "CORE")
-    if core_db is not None:
-        try:
-            await init_core_database(core_db)
-        except Exception:
-            LOGGER.exception("CORE database initialization failed — continuing without persistence")
+    await _initialize_core_database()
+
+    dev_oidc_server: _EmbeddedUvicornServer | None = None
+    dev_oidc_task: asyncio.Task | None = None
+    if settings.auth_mode == "dev":
+        dev_oidc_server, dev_oidc_task = await _start_development_oidc()
 
     # --- Phase 3: Build FACTORY baseline ---
     await load_default_models()
@@ -142,6 +199,11 @@ async def lifespan(_app: FastAPI):
     try:
         yield
     finally:
+        if dev_oidc_server is not None:
+            dev_oidc_server.should_exit = True
+        if dev_oidc_task is not None:
+            with contextlib.suppress(BaseException):
+                await dev_oidc_task
         for task in (heartbeat_task, reaper_task):
             task.cancel()
             with contextlib.suppress(BaseException):
@@ -157,7 +219,6 @@ MCP_PREFIX = "/mcp"
 
 mcp_app = mcp.http_app(
     path="/",
-    middleware=[Middleware(MCPApiKeyMiddleware)],
 )
 
 app = FastAPI(
@@ -176,6 +237,7 @@ app = FastAPI(
         "url": "http://oss.oracle.com/licenses/upl",
     },
 )
+app.add_middleware(PrincipalAuthMiddleware)
 instrument_fastapi(app)
 
 app.include_router(v1_router, prefix=API_PREFIX)

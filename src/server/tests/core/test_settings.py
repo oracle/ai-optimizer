@@ -9,10 +9,13 @@ Tests for server.app.core.settings — resolve_client, _apply_default_ll_model, 
 from typing import Literal
 
 import pytest
+from pydantic import SecretStr
+from pydantic_settings import SettingsConfigDict
 
 from server.app.core.schemas import ClientSettings
 from server.app.core.settings import (
     _PROTECTED_CLIENTS,
+    Settings,
     SettingsBase,
     _apply_default_ll_model,
     _client_store,
@@ -24,6 +27,12 @@ from server.app.models.schemas import ModelConfig
 from server.tests.constants import TEST_OPENAI_MODEL_ID
 
 pytestmark = [pytest.mark.unit]
+
+
+class _SettingsWithoutEnvFile(Settings):
+    """Settings variant that reads environment variables but not a dotenv file."""
+
+    model_config = SettingsConfigDict(env_file=None)
 
 
 @pytest.fixture(autouse=True)
@@ -87,6 +96,74 @@ class TestSettingsBaseValidators:
         """Already-correct prefix is unchanged."""
         sb = SettingsBase(server_url_prefix="/v1")
         assert sb.server_url_prefix == "/v1"
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("aio.admin, ops", ["aio.admin", "ops"]),
+        ('["aio.admin", "ops"]', ["aio.admin", "ops"]),
+    ],
+)
+def test_auth_list_environment_values_support_comma_separated_and_json_items(monkeypatch, value, expected):
+    """Authentication list settings accept comma-separated and JSON environment values."""
+    monkeypatch.setenv("AIO_AUTH_ADMIN_CLAIM_VALUES", value)
+
+    configured = _SettingsWithoutEnvFile()
+
+    assert configured.auth_admin_claim_values == expected
+
+
+def test_deployment_mode_is_not_a_supported_setting():
+    assert "deployment_mode" not in Settings.model_fields
+
+
+def test_development_is_not_a_supported_authentication_mode():
+    with pytest.raises(ValueError, match="Input should be"):
+        Settings.model_validate({"auth_mode": "development"})
+
+
+def test_database_defaults_to_development_authentication(monkeypatch):
+    """A CORE database enables the built-in development identity provider by default."""
+    monkeypatch.delenv("AIO_AUTH_MODE", raising=False)
+
+    configured = _SettingsWithoutEnvFile(
+        db_username="optimizer",
+        db_password=SecretStr("database-password"),
+        db_dsn="db.example.test/service",
+    )
+
+    assert configured.auth_mode == "dev"
+    assert configured.auth_dev_admin_password is not None
+
+
+def test_no_database_keeps_api_key_authentication(monkeypatch):
+    """No-database deployments preserve the shared API-key authentication model."""
+    monkeypatch.delenv("AIO_AUTH_MODE", raising=False)
+
+    configured = _SettingsWithoutEnvFile()
+
+    assert configured.auth_mode is None
+
+
+def test_explicit_authentication_mode_overrides_database_default():
+    """External identity adapters retain explicit operator selection."""
+    configured = _SettingsWithoutEnvFile(
+        auth_mode="proxy",
+        db_username="optimizer",
+        db_password=SecretStr("database-password"),
+        db_dsn="db.example.test/service",
+    )
+
+    assert configured.auth_mode == "proxy"
+
+
+def test_client_password_is_rejected(monkeypatch):
+    """The retired client password must not silently appear to protect shared state."""
+    monkeypatch.setenv("AIO_CLIENT_PASSWORD", "retired-password")
+
+    with pytest.raises(ValueError, match="AIO_AUTH_DEV_ADMIN_PASSWORD"):
+        _SettingsWithoutEnvFile()
 
 
 # ---------------------------------------------------------------------------

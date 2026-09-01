@@ -25,7 +25,7 @@ from pyagentspec.flows.nodes import EndNode, LlmNode, StartNode, ToolNode
 from pyagentspec.mcp import MCPTool, StreamableHTTPTransport
 from pyagentspec.property import Property, StringProperty
 
-from server.app.agentspec.adapters.mcp import build_mcp_transport
+from server.app.agentspec.adapters.mcp import McpCredential, build_mcp_transport
 from server.app.agentspec.agent_llm_only import build_llm_config
 from server.app.core.schemas import ClientSettings
 
@@ -307,7 +307,7 @@ def _add_grade(state: _FlowState, transport: StreamableHTTPTransport, retriever_
 def build_vecsearch_flow(
     client_settings: ClientSettings,
     server_url: str,
-    api_key: str,
+    api_key: McpCredential,
     system_prompt: str,
     output_name: str = "answer",
     flow_id: str = "vecsearch-flow",

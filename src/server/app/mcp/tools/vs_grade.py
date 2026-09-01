@@ -13,6 +13,7 @@ from typing import Optional, Union
 from fastmcp import Context
 from litellm.exceptions import APIConnectionError
 
+from server.app.core.auth import authenticated_client
 from server.app.core.mcp import mcp
 from server.app.core.settings import resolve_client
 from server.app.mcp.prompts.registry import find_prompt
@@ -123,4 +124,4 @@ def register_grade_tool():
             parsed_docs = parsed_docs["documents"]
         if not isinstance(parsed_docs, list):
             raise TypeError(f"Expected list of documents, got {type(parsed_docs)}")
-        return await _vs_grade_impl(question, parsed_docs, client=thread_id)
+        return await _vs_grade_impl(question, parsed_docs, client=authenticated_client(thread_id))

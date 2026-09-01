@@ -103,9 +103,88 @@ Values supplied through `AIO_*` variables are reapplied at startup. You can chan
 
 ### Authentication
 
-| Variable      | Description                                                                                                                                                                                      | Default       |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------- |
-| `AIO_API_KEY` | API key for authenticating requests to the [**AI Optimizer Server**](../server/intro.mdx). If unset, a key is generated at startup and displayed on the [API Server](../client/api_server) page. | _(generated)_ |
+| Variable                        | Description                                                                                                                                                                  | Default                                |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
+| `AIO_API_KEY`                   | Shared API key used only when `AIO_AUTH_MODE` is unset. When unset, the Server generates one at startup. Principal-authenticated deployments do not accept it. | _(generated)_                          |
+| `AIO_AUTH_MODE`                 | Principal authentication adapter: `dev` for the built-in OIDC provider, `oidc` for an external provider, or `proxy` for configured trusted-proxy identity headers. A configured CORE database defaults to `dev`. | _(none)_ |
+| `AIO_AUTH_OIDC_ISSUER`          | Expected external OIDC issuer; its discovery document supplies the signing-key endpoint when `AIO_AUTH_MODE=oidc`.                                                           | _(none)_                               |
+| `AIO_AUTH_OIDC_AUDIENCE`        | Expected external API access-token audience when `AIO_AUTH_MODE=oidc`.                                                                                                       | _(none)_                               |
+| `AIO_AUTH_OIDC_CLIENT_ID`       | OIDC client identifier used by an application client.                                                                                                                        | _(none)_                               |
+| `AIO_AUTH_OIDC_CLIENT_SECRET`   | OIDC client secret when the configured client is confidential.                                                                                                               | _(none)_                               |
+| `AIO_AUTH_OIDC_SCOPES`          | Requested OIDC scopes.                                                                                                                                                       | `openid,profile,email,aio.api`         |
+| `AIO_AUTH_OIDC_REQUIRED_SCOPES` | Scopes every API/MCP access token must contain.                                                                                                                              | `aio.api`                              |
+| `AIO_AUTH_OIDC_ROLES_CLAIM`     | JWT claim containing roles or scopes used for administrator mapping.                                                                                                         | `roles`                                |
+| `AIO_AUTH_ADMIN_CLAIM_VALUES`   | JSON array of role/scope values that grant administrator authority.                                                                                                          | `["aio.admin"]`                        |
+| `AIO_AUTH_DEV_ISSUER`           | Built-in provider issuer. It must be an absolute root-path origin; plain HTTP is accepted only for loopback.                                                                 | `http://127.0.0.1:8765`                |
+| `AIO_AUTH_DEV_WEB_REDIRECT_URI` | Registered Streamlit callback URI for the built-in provider.                                                                                                                 | `http://localhost:8501/oauth2callback` |
+| `AIO_AUTH_DEV_LISTEN_HOST`      | Built-in provider bind address.                                                                                                                                              | `127.0.0.1`                            |
+| `AIO_AUTH_DEV_LISTEN_PORT`      | Built-in provider listener port.                                                                                                                                             | `8765`                                 |
+| `AIO_AUTH_DEV_ADMIN_PASSWORD`   | Initial password for the bootstrapped `admin@example.test` development administrator. When unset, a random password is generated at startup for bootstrap. | _(generated)_ |
+| `AIO_AUTH_DEV_WEB_CLIENT_SECRET` | Confidential credential for the built-in Streamlit OIDC client. All-In-One and Helm generate and share it automatically. | _(generated)_ |
+| `AIO_AUTH_PROXY_TRUSTED_CIDRS`  | JSON array of trusted direct-peer CIDRs allowed to supply configured proxy identity headers.                                                                                 | _(none)_                               |
+| `AIO_AUTH_PROXY_SUBJECT_HEADER` | Trusted-proxy header containing the authenticated subject.                                                                                                                   | `X-Authenticated-Subject`              |
+| `AIO_AUTH_PROXY_ROLES_HEADER`   | Trusted-proxy header containing roles/scopes.                                                                                                                                | `X-Authenticated-Roles`                |
+| `AIO_AUTH_PROXY_ISSUER`         | Stable issuer label recorded for proxy-authenticated principals.                                                                                                             | `trusted-proxy`                        |
+
+Choose the authentication model from the available deployment resources:
+
+- Without an Oracle CORE database, leave `AIO_AUTH_MODE` unset and use
+  `AIO_API_KEY`. This is the current no-database deployment model.
+- With an Oracle CORE database, the built-in development OIDC provider is
+  selected by default. Set `AIO_AUTH_MODE` only to select `oidc` or `proxy`.
+- With an Oracle CORE database and an external OIDC provider, set
+  `AIO_AUTH_MODE=oidc`.
+
+### Built-in development OIDC
+
+The built-in provider is enabled only when `AIO_AUTH_MODE=dev` and a
+CORE Oracle Database is configured. It runs as a dedicated listener in the
+same platform process; it does not require Docker, Podman, a JVM, or a
+separately installed identity product.
+
+For a local installation, the default issuer and discovery URL are:
+
+```text
+http://127.0.0.1:8765
+http://127.0.0.1:8765/.well-known/openid-configuration
+```
+
+The provider seeds one `admin@example.test` account with `aio.admin` and the
+`openid profile email aio.api` scopes. Its initial password is
+`AIO_AUTH_DEV_ADMIN_PASSWORD`. When unset, the server generates a random value
+at startup; it is used only when creating a missing bootstrap account. HTTP is
+supported only on loopback; use a configured HTTPS issuer behind TLS for other
+deployments.
+
+When the Client is started through the platform entrypoint, development mode
+automatically creates its local Streamlit OIDC configuration using the issuer
+and callback settings above. In an All-In-One bare-metal installation, when
+the development administrator password is not configured, the launcher also
+creates and reuses a private local bootstrap credential. Retrieve it only from
+the machine that started All-In-One:
+
+```bash
+uv run python -m server.app.dev_oidc_admin show-bootstrap-password
+```
+
+The command prints `admin@example.test` and the generated password. On each
+local All-In-One start, that generated password is synchronized to the
+bootstrap account, including an account created by an earlier server startup.
+The local credential and generated `secrets.toml` are owner-only and ignored by Git.
+Helm mounts the equivalent Streamlit configuration from its chart-managed
+Secret.
+
+To add an additional development user after the server database is configured:
+
+```bash
+uv run python -m server.app.dev_oidc_admin add-user \
+  --username carol@example.test \
+  --email carol@example.test \
+  --display-name Carol
+```
+
+The command prompts for the password twice. Add `--administrator` only when
+the user needs the `aio.admin` scope.
 
 ### Client
 
@@ -114,7 +193,6 @@ Values supplied through `AIO_*` variables are reapplied at startup. You can chan
 | `AIO_CLIENT_ADDRESS`       | Client listen address                                                                                                                                                                                          | `localhost` |
 | `AIO_CLIENT_PORT`          | Client listen port                                                                                                                                                                                             | `8501`      |
 | `AIO_CLIENT_COOKIE_SECRET` | Signing key for the client's XSRF cookies. Multi-replica deployments must provide the same value to every replica.                                                                                             | _(none)_    |
-| `AIO_CLIENT_PASSWORD`      | Shared password gating configuration and shared-state controls in the GUI client. This does not replace [**AI Optimizer Server**](../server/intro.mdx) authentication. See [Access Control](./access-control). | _(none)_    |
 | `AIO_CLIENT_SSL`           | Enables TLS for the Client                                                                                                                                                                                     | `false`     |
 | `AIO_CLIENT_SSL_CERT_FILE` | Path to a TLS certificate in PEM format                                                                                                                                                                        | _(none)_    |
 | `AIO_CLIENT_SSL_KEY_FILE`  | Path to a TLS private key in PEM format                                                                                                                                                                        | _(none)_    |

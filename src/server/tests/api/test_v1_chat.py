@@ -8,12 +8,27 @@ from typing import Any, AsyncGenerator, Dict, List
 from unittest.mock import AsyncMock
 
 import pytest
+from starlette.requests import Request
 
 from server.app.api.v1.endpoints import chat as chat_endpoint
+from server.app.core.auth import Principal
 from server.app.core.settings import _client_store, settings
 from server.tests.conftest import make_test_model_config
 from server.tests.constants import TEST_OLLAMA_MODEL_ID
 from server.tests.runtime.shared_helpers import ollama_available
+
+
+@pytest.fixture
+def auth_headers(monkeypatch):
+    """Use a stable principal while endpoint tests exercise OIDC request handling."""
+    principal = Principal(
+        issuer=settings.auth_dev_issuer,
+        subject="chat-test-user",
+        roles=frozenset({"aio.api", *settings.auth_admin_claim_values}),
+        authentication_method="oidc",
+    )
+    monkeypatch.setattr("server.app.core.auth._decode_oidc_token", lambda _token: principal)
+    return {"Authorization": "Bearer chat-test-token"}
 
 
 async def _collect_sse(response) -> List[str]:
@@ -76,6 +91,29 @@ def test_internal_mcp_url_preserves_url_prefix():
     )
 
 
+def test_principal_authenticated_chat_forwards_bearer_credential_and_session(monkeypatch):
+    monkeypatch.setattr(settings, "auth_mode", "dev")
+    request = Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "path": "/v1/chat/completions",
+            "headers": [
+                (b"authorization", b"Bearer access-token"),
+                (b"x-aio-session", b"streamlit-session"),
+            ],
+        }
+    )
+
+    orchestrator = chat_endpoint._request_orchestrator(request)
+
+    assert orchestrator is not chat_endpoint._orchestrator
+    assert orchestrator.api_key == {
+        "Authorization": "Bearer access-token",
+        "X-AIO-Session": "streamlit-session",
+    }
+
+
 @pytest.mark.unit
 @pytest.mark.anyio
 async def test_streams_happy_path(app_client, auth_headers, monkeypatch):
@@ -100,8 +138,8 @@ async def test_streams_happy_path(app_client, auth_headers, monkeypatch):
 
     monkeypatch.setattr(
         chat_endpoint,
-        "_orchestrator",
-        AsyncMock(execute_chat_stream=fake_stream),
+        "_request_orchestrator",
+        lambda _request: AsyncMock(execute_chat_stream=fake_stream),
     )
 
     resp = await app_client.post(
@@ -144,8 +182,8 @@ async def test_streams_status_and_error_passthrough(app_client, auth_headers, mo
 
     monkeypatch.setattr(
         chat_endpoint,
-        "_orchestrator",
-        AsyncMock(execute_chat_stream=fake_stream),
+        "_request_orchestrator",
+        lambda _request: AsyncMock(execute_chat_stream=fake_stream),
     )
 
     resp = await app_client.post(
@@ -176,8 +214,8 @@ async def test_streams_exception_translated_to_error_event(app_client, auth_head
 
     monkeypatch.setattr(
         chat_endpoint,
-        "_orchestrator",
-        AsyncMock(execute_chat_stream=failing_stream),
+        "_request_orchestrator",
+        lambda _request: AsyncMock(execute_chat_stream=failing_stream),
     )
 
     resp = await app_client.post(

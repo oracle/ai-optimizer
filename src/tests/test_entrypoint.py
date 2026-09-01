@@ -6,6 +6,7 @@ Unit tests for entrypoint.py
 """
 # spell-checker: disable
 
+import json
 import os
 from pathlib import Path
 
@@ -280,6 +281,84 @@ class TestStartClient:
         assert "--server.cookieSecret" not in args
         assert "STREAMLIT_SERVER_COOKIE_SECRET" not in os.environ
 
+    def test_development_oidc_writes_streamlit_auth_configuration(self, tmp_path, monkeypatch):
+        """Local development mode must make Streamlit's native login available."""
+        (tmp_path / "server").mkdir()
+        monkeypatch.setenv("AIO_AUTH_MODE", "dev")
+        monkeypatch.setenv("AIO_AUTH_DEV_ISSUER", "http://127.0.0.1:8765")
+        monkeypatch.setenv("AIO_AUTH_DEV_WEB_REDIRECT_URI", "http://localhost:8501/oauth2callback")
+        monkeypatch.delenv("AIO_CLIENT_COOKIE_SECRET", raising=False)
+        from unittest.mock import patch
+
+        with patch("os.execvp"):
+            entrypoint.start_client(tmp_path)
+
+        secrets_file = tmp_path / "client" / "app" / ".streamlit" / "secrets.toml"
+        contents = secrets_file.read_text(encoding="utf-8")
+        assert 'redirect_uri = "http://localhost:8501/oauth2callback"' in contents
+        assert 'server_metadata_url = "http://127.0.0.1:8765/.well-known/openid-configuration"' in contents
+        assert 'client_kwargs = { scope = "openid profile email aio.api" }' in contents
+        assert 'expose_tokens = "access"' in contents
+
+    def test_implicit_development_oidc_persists_a_shared_bootstrap_password(self, tmp_path, monkeypatch):
+        """A CORE-backed All-In-One launch reuses one locally retrievable password."""
+        (tmp_path / "server").mkdir()
+        monkeypatch.delenv("AIO_AUTH_MODE", raising=False)
+        monkeypatch.delenv("AIO_AUTH_DEV_ADMIN_PASSWORD", raising=False)
+        monkeypatch.delenv("AIO_AUTH_DEV_SYNC_BOOTSTRAP_PASSWORD", raising=False)
+        monkeypatch.delenv("AIO_SERVER_URL", raising=False)
+        monkeypatch.delenv("AIO_AUTH_DEV_WEB_CLIENT_SECRET", raising=False)
+        monkeypatch.setenv("AIO_DB_USERNAME", "optimizer")
+        monkeypatch.delenv("AIO_CLIENT_COOKIE_SECRET", raising=False)
+        from unittest.mock import patch
+
+        with patch("os.execvp"):
+            entrypoint.start_client(tmp_path)
+
+        generated_password = os.environ["AIO_AUTH_DEV_ADMIN_PASSWORD"]
+        assert os.environ["AIO_AUTH_DEV_SYNC_BOOTSTRAP_PASSWORD"] == "true"
+        credential_file = tmp_path / "client" / "app" / ".streamlit" / "dev-oidc-bootstrap.json"
+        assert credential_file.exists()
+        assert credential_file.stat().st_mode & 0o777 == 0o600
+        web_client_secret = json.loads(credential_file.read_text())["web_client_secret"]
+        secrets_toml = (tmp_path / "client" / "app" / ".streamlit" / "secrets.toml").read_text()
+        assert f'client_secret = "{web_client_secret}"' in secrets_toml
+
+        monkeypatch.delenv("AIO_AUTH_DEV_ADMIN_PASSWORD")
+        with patch("os.execvp"):
+            entrypoint.start_client(tmp_path)
+
+        assert os.environ["AIO_AUTH_DEV_ADMIN_PASSWORD"] == generated_password
+        assert os.environ["AIO_AUTH_DEV_WEB_CLIENT_SECRET"] == web_client_secret
+        assert (tmp_path / "client" / "app" / ".streamlit" / "secrets.toml").exists()
+
+    def test_operator_development_password_is_not_persisted_locally(self, tmp_path, monkeypatch):
+        """An explicit development password remains solely operator-managed."""
+        (tmp_path / "server").mkdir()
+        monkeypatch.setenv("AIO_AUTH_MODE", "dev")
+        monkeypatch.setenv("AIO_AUTH_DEV_ADMIN_PASSWORD", "operator-password")
+        from unittest.mock import patch
+
+        with patch("os.execvp"):
+            entrypoint.start_client(tmp_path)
+
+        assert not (tmp_path / "client" / "app" / ".streamlit" / "dev-oidc-bootstrap.json").exists()
+
+    def test_remote_development_server_does_not_create_a_local_password(self, tmp_path, monkeypatch):
+        """A full source checkout may still be a client for an externally hosted IdP."""
+        (tmp_path / "server").mkdir()
+        monkeypatch.setenv("AIO_AUTH_MODE", "dev")
+        monkeypatch.setenv("AIO_SERVER_URL", "https://optimizer.example.test")
+        monkeypatch.delenv("AIO_AUTH_DEV_ADMIN_PASSWORD", raising=False)
+        from unittest.mock import patch
+
+        with patch("os.execvp"):
+            entrypoint.start_client(tmp_path)
+
+        assert "AIO_AUTH_DEV_ADMIN_PASSWORD" not in os.environ
+        assert not (tmp_path / "client" / "app" / ".streamlit" / "dev-oidc-bootstrap.json").exists()
+        assert not (tmp_path / "client" / "app" / ".streamlit" / "secrets.toml").exists()
+
     def test_cookie_secret_empty_string_treated_as_unset(self, tmp_path, monkeypatch):
         """Empty AIO_CLIENT_COOKIE_SECRET must not create a Streamlit env var."""
         monkeypatch.setenv("AIO_CLIENT_COOKIE_SECRET", "")
@@ -306,9 +385,7 @@ class TestStartClient:
             entrypoint.start_client(tmp_path)
 
         args = mock_exec.call_args[0][1]
-        assert not any(secret in str(a) for a in args), (
-            f"secret leaked into argv: {args}"
-        )
+        assert not any(secret in str(a) for a in args), f"secret leaked into argv: {args}"
 
 
 class TestMain:

@@ -55,6 +55,18 @@
         "ssl": { "$ref": "#/definitions/ssl" },
         "gateway": { "$ref": "#/definitions/gateway" },
         "ingress": { "$ref": "#/definitions/ingress" },
+        "devOidc": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "issuer": { "type": "string" },
+            "webClientRedirectUri": { "type": "string" },
+            "listenPort": { "type": "integer", "minimum": 1, "maximum": 65535 },
+            "passwordSecretName": { "type": "string" },
+            "passwordSecretKey": { "type": "string" },
+            "passwordAutoGenerate": { "type": "boolean" }
+          }
+        },
         "livenessProbe": { "$ref": "#/definitions/probe" },
         "readinessProbe": { "$ref": "#/definitions/probe" },
         "podLabels": { "type": "object" },
@@ -236,10 +248,6 @@
         "cookieSecret": { "type": "string" },
         "cookieSecretName": { "type": "string" },
         "cookieSecretKey": { "type": "string" },
-        "password": { "type": "string" },
-        "passwordSecretName": { "type": "string" },
-        "passwordSecretKey": { "type": "string" },
-        "passwordAutoGenerate": { "type": "boolean" },
         "envSecret": { "$ref": "#/definitions/envSecret" },
         "livenessProbe": { "$ref": "#/definitions/probe" },
         "readinessProbe": { "$ref": "#/definitions/probe" },

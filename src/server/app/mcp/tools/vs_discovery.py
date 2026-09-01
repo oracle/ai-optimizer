@@ -13,6 +13,7 @@ from typing import Optional
 from fastmcp import Context
 from langchain_oracledb.vectorstores.oraclevs import DistanceStrategy
 
+from server.app.core.auth import authenticated_client
 from server.app.core.mcp import mcp
 from server.app.core.settings import resolve_client
 from server.app.database.config import DdsConnectionError
@@ -153,6 +154,6 @@ def register_discovery_tool():
         if ctx:
             await ctx.info(f"VS Discovery (Thread ID: {thread_id}, Filter: {filter_enabled_models})")
         try:
-            return await _vs_discovery_impl(filter_enabled_models, client=thread_id)
+            return await _vs_discovery_impl(filter_enabled_models, client=authenticated_client(thread_id))
         except DdsConnectionError as ex:
             return VectorStoreListResponse(parsed_tables=[], status="error", error=str(ex))

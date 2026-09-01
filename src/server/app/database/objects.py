@@ -43,6 +43,94 @@ RENAME_DDL = [
 ]
 
 SCHEMA_DDL = [
+    # Built-in development OIDC provider. These tables are used only when
+    # development authentication is selected and keep all IdP state in CORE.
+    """
+    CREATE TABLE IF NOT EXISTS aio_dev_oidc_users (
+        user_id       VARCHAR2(36) NOT NULL,
+        username      VARCHAR2(320) NOT NULL,
+        email         VARCHAR2(320) NOT NULL,
+        display_name  VARCHAR2(320) NOT NULL,
+        password_hash CLOB NOT NULL,
+        scopes        JSON NOT NULL,
+        active        BOOLEAN NOT NULL,
+        created       TIMESTAMP(9) WITH LOCAL TIME ZONE,
+        updated       TIMESTAMP(9) WITH LOCAL TIME ZONE,
+        CONSTRAINT aio_dev_oidc_users_pk PRIMARY KEY (user_id),
+        CONSTRAINT aio_dev_oidc_users_username_uq UNIQUE (username),
+        CONSTRAINT aio_dev_oidc_users_email_uq UNIQUE (email)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS aio_dev_oidc_clients (
+        client_id      VARCHAR2(320) NOT NULL,
+        redirect_uris  JSON NOT NULL,
+        allowed_scopes JSON NOT NULL,
+        is_public      BOOLEAN NOT NULL,
+        created        TIMESTAMP(9) WITH LOCAL TIME ZONE,
+        updated        TIMESTAMP(9) WITH LOCAL TIME ZONE,
+        CONSTRAINT aio_dev_oidc_clients_pk PRIMARY KEY (client_id)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS aio_dev_oidc_codes (
+        code_digest    VARCHAR2(64) NOT NULL,
+        client_id      VARCHAR2(320) NOT NULL,
+        user_id        VARCHAR2(36) NOT NULL,
+        redirect_uri   VARCHAR2(2048) NOT NULL,
+        scope          VARCHAR2(4000) NOT NULL,
+        nonce          VARCHAR2(2048) NOT NULL,
+        code_challenge VARCHAR2(256) NOT NULL,
+        expires_at     TIMESTAMP(9) WITH LOCAL TIME ZONE NOT NULL,
+        used           BOOLEAN NOT NULL,
+        created        TIMESTAMP(9) WITH LOCAL TIME ZONE,
+        CONSTRAINT aio_dev_oidc_codes_pk PRIMARY KEY (code_digest),
+        CONSTRAINT aio_dev_oidc_codes_user_fk FOREIGN KEY (user_id)
+            REFERENCES aio_dev_oidc_users(user_id) ON DELETE CASCADE
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS aio_dev_oidc_codes_expiry_ix
+        ON aio_dev_oidc_codes (expires_at)
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS aio_dev_oidc_sessions (
+        session_digest VARCHAR2(64) NOT NULL,
+        user_id        VARCHAR2(36) NOT NULL,
+        expires_at     TIMESTAMP(9) WITH LOCAL TIME ZONE NOT NULL,
+        revoked        BOOLEAN NOT NULL,
+        created        TIMESTAMP(9) WITH LOCAL TIME ZONE,
+        CONSTRAINT aio_dev_oidc_sessions_pk PRIMARY KEY (session_digest),
+        CONSTRAINT aio_dev_oidc_sessions_user_fk FOREIGN KEY (user_id)
+            REFERENCES aio_dev_oidc_users(user_id) ON DELETE CASCADE
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS aio_dev_oidc_sessions_expiry_ix
+        ON aio_dev_oidc_sessions (expires_at)
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS aio_dev_oidc_signing_keys (
+        key_id          VARCHAR2(128) NOT NULL,
+        private_key_pem CLOB NOT NULL,
+        active          BOOLEAN NOT NULL,
+        created         TIMESTAMP(9) WITH LOCAL TIME ZONE,
+        CONSTRAINT aio_dev_oidc_signing_keys_pk PRIMARY KEY (key_id)
+    )
+    """,
+    # Principal-authenticated session ownership is independent from legacy
+    # ``aio_settings.client`` rows so an existing caller-supplied ID is never
+    # silently assigned to a newly authenticated principal.
+    """
+    CREATE TABLE IF NOT EXISTS aio_principal_sessions (
+        session_id  VARCHAR2(255) NOT NULL,
+        issuer      VARCHAR2(1024) NOT NULL,
+        subject     VARCHAR2(1024) NOT NULL,
+        created     TIMESTAMP(9) WITH LOCAL TIME ZONE,
+        updated     TIMESTAMP(9) WITH LOCAL TIME ZONE,
+        CONSTRAINT aio_principal_sessions_pk PRIMARY KEY (session_id)
+    )
+    """,
     """
     CREATE TABLE IF NOT EXISTS aio_settings (
         client     VARCHAR2(255) NOT NULL,

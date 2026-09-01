@@ -53,7 +53,7 @@ def mock_persist_settings():
 async def test_list_models_no_auth(app_client):
     """Models endpoint rejects requests without API key."""
     resp = await app_client.get("/v1/models")
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 @pytest.mark.unit
@@ -292,7 +292,7 @@ async def test_models_supported_filter_type(app_client, auth_headers):
 async def test_create_model_no_auth(app_client):
     """POST without auth returns 403."""
     resp = await app_client.post("/v1/models", json={"id": "x", "type": "ll", "provider": "y"})
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 @pytest.mark.unit
@@ -300,7 +300,7 @@ async def test_create_model_no_auth(app_client):
 async def test_update_model_no_auth(app_client):
     """PUT without auth returns 403."""
     resp = await app_client.put("/v1/models/openai/test-llm", json={"temperature": 0.5})
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 @pytest.mark.unit
@@ -308,7 +308,7 @@ async def test_update_model_no_auth(app_client):
 async def test_delete_model_no_auth(app_client):
     """DELETE without auth returns 403."""
     resp = await app_client.delete("/v1/models/openai/test-llm")
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 # --- Sensitive fields ---

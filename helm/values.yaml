@@ -137,6 +137,33 @@ server:
     # dial the server). The container always listens on 8000.
     port: 8000
 
+  # Optional built-in development OIDC provider. It runs in the server process
+  # and uses the configured CORE database; it is not an additional container.
+  devOidc:
+    enabled: false
+    # Externally reachable root issuer. Use the loopback default only locally;
+    # deployed issuers must use HTTPS.
+    issuer: ""
+    # Public Streamlit callback URL. It must end in /oauth2callback and be
+    # reachable by the browser using the same origin as the Client ingress.
+    webClientRedirectUri: ""
+    # -- Name of a Secret holding the development administrator password.
+    passwordSecretName: ""
+    # -- Key inside passwordSecretName or the generated Secret.
+    passwordSecretKey: "password"
+    # -- Generate a persistent password Secret for the bootstrapped administrator.
+    passwordAutoGenerate: false
+    listenPort: 8765
+    service:
+      port: 8765
+    ingress:
+      enabled: false
+      className: nginx
+      annotations: {}
+      # Must match the host in `issuer`.
+      host: ""
+      tlsSecretName: ""
+
   # ssl: enable HTTPS on the uvicorn server.
   # Set enabled to true and optionally provide paths to cert/key files mounted into the container.
   # When certFile and keyFile are empty, a self-signed certificate is auto-generated at startup.
@@ -545,27 +572,6 @@ client:
   cookieSecretName: ""
   # -- Key inside cookieSecretName / the generated Secret that holds the value.
   cookieSecretKey: "cookieSecret"
-
-  # -- Shared password for selected client UI controls. Exactly one (or none)
-  # of password / passwordSecretName / passwordAutoGenerate may be set; the
-  # chart fails the render when more than one is active. With none set, the
-  # additional UI access check is disabled. Applies to the Streamlit client
-  # UI only; API access continues to be governed by AIO_API_KEY.
-  password: ""
-  # -- Name of a pre-existing Secret containing the shared password (BYO).
-  # The chart references it but does not create or manage its lifecycle.
-  passwordSecretName: ""
-  # -- Key inside passwordSecretName / the generated Secret that holds the value.
-  passwordSecretKey: "password"
-  # -- Auto-generate the shared password and let the chart own the Secret.
-  # On first install the chart creates `<fullname>-client-password` with a
-  # random value and `helm.sh/resource-policy: keep` so it survives upgrade
-  # and uninstall. Requires Helm with cluster access at render time — under
-  # `helm template` / ArgoCD without server-side render, `lookup` returns
-  # empty and the chart would re-mint the password on every render, so
-  # `kubectl apply` of that output would rotate the live Secret. Use BYO
-  # (passwordSecretName) instead for those pipelines.
-  passwordAutoGenerate: false
 
   # -- OCI source defaults applied to the Split & Embed tab for every user
   # of this deployment. The compartment is the anchor; the bucket alone
