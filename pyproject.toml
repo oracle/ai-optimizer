@@ -51,7 +51,7 @@ server = [
 
 # - client: client side only
 client = [
-    "streamlit==1.62.0",
+    "streamlit==1.63.0",
 ]
 
 # - otel: opentelemetry collector for server-side observability
