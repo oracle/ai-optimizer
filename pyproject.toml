@@ -1,4 +1,6 @@
 # spell-checker:disable
+# Check for outdated:          uv tree --outdated --depth 1
+# Upgrade within constraints:  uv lock --upgrade
 
 [build-system]
 requires = ["setuptools>=80.0.0", "setuptools_scm", "wheel"]
@@ -34,14 +36,14 @@ server = [
     "faiss-cpu==1.15.0",
     "fastmcp==3.4.7",
     "giskard==2.19.2",
-    "langchain-litellm==0.7.0",
+    "langchain-litellm==0.7.1",
     "langchain-mcp-adapters==0.3.2",
     "langchain-oracledb==1.5.0",
     "litellm==1.96.0",
-    "llama-index-core==0.14.23",
+    "llama-index-core==0.14.24",
     "oci~=2.0",
     "pyagentspec==26.1.2",
-    "pypdf==6.15.0",
+    "pypdf==6.16.1",
     "umap-learn==0.5.12",
     "torch", # Direct requirement to select the CPU-only PyTorch distribution for Docling.
     "torchvision", # Direct requirement to select the CPU-only PyTorch distribution for Docling.
