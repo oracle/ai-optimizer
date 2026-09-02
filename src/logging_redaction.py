@@ -73,7 +73,10 @@ def _sensitive_keys() -> tuple[frozenset[str], str]:
         from server.app.models.defaults import ENV_OVERRIDES  # noqa: PLC0415
         from server.app.models.schemas import ModelSensitive  # noqa: PLC0415
         from server.app.oci.schemas import OciSensitive  # noqa: PLC0415
-    except ImportError:
+    # Importing a server schema executes ``server/__init__.py``, which builds
+    # Settings. Invalid environment configuration must not prevent shared
+    # logging from initializing, so retain the static keyset in that case.
+    except (ImportError, ValueError):
         return _STATIC_SENSITIVE_KEYS, "static"
 
     keys: set[str] = set()

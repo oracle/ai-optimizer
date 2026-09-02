@@ -7,6 +7,7 @@ Unit tests for client.app.core.api
 # spell-checker: disable
 
 import json
+import logging
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -892,6 +893,21 @@ class TestWaitForServerReady:
 # ---------------------------------------------------------------------------
 class TestStartServer:
     """Tests for start_server."""
+
+    def test_reports_retired_client_password_without_spawning(self, monkeypatch, caplog):
+        """The retired client password should produce a concise migration message."""
+        monkeypatch.setenv("AIO_CLIENT_PASSWORD", "retired-password")
+        with (
+            patch(f"{MODULE}._SERVER", {"process": None, "log_file": None}),
+            patch(f"{MODULE}._spawn_server") as mock_spawn,
+            caplog.at_level(logging.ERROR, logger=MODULE),
+        ):
+            from client.app.core.api import start_server
+
+            start_server()
+
+        mock_spawn.assert_not_called()
+        assert "AIO_CLIENT_PASSWORD is retired; use AIO_AUTH_DEV_ADMIN_PASSWORD in development mode" in caplog.text
 
     def test_skips_when_already_running(self):
         """Verify start_server does not spawn a new process when one is already running."""

@@ -164,9 +164,7 @@ class TestKeyValueRedaction:
             "ABCDE+FGHIJKLMNOPQRSTUVWXYZabcdef0123456789exampleBODYabcdef"
         )
         record = _make_record(
-            "OCI_CLI_KEY_CONTENT=-----BEGIN RSA PRIVATE KEY-----\n"
-            f"{body}\n"
-            "-----END RSA PRIVATE KEY-----"
+            f"OCI_CLI_KEY_CONTENT=-----BEGIN RSA PRIVATE KEY-----\n{body}\n-----END RSA PRIVATE KEY-----"
         )
         filt.filter(record)
         scrubbed = record.getMessage()
@@ -307,6 +305,20 @@ class TestFilterAttributes:
         def fake_import(name, *a, **kw):
             if name.startswith("server.app."):
                 raise ImportError(f"simulated: {name}")
+            return real_import(name, *a, **kw)
+
+        monkeypatch.setattr(builtins, "__import__", fake_import)
+        f = RedactingFilter()
+        assert f.key_source == "static"
+        assert f.key_count == len(_STATIC_SENSITIVE_KEYS)
+
+    def test_static_fallback_when_server_settings_are_invalid(self, monkeypatch):
+        """Logging setup must survive validation errors from optional server imports."""
+        real_import = builtins.__import__
+
+        def fake_import(name, *a, **kw):
+            if name.startswith("server.app."):
+                raise ValueError("simulated settings validation failure")
             return real_import(name, *a, **kw)
 
         monkeypatch.setattr(builtins, "__import__", fake_import)

@@ -72,6 +72,7 @@ _SERVER: dict = {"process": None, "log_file": None}
 
 _SERVER_READY_TIMEOUT_SECONDS = float(os.environ.get("AIO_SERVER_READY_TIMEOUT", "180"))
 _SERVER_READY_POLL_INTERVAL = 5.0
+_RETIRED_CLIENT_PASSWORD_MESSAGE = "AIO_CLIENT_PASSWORD is retired; use AIO_AUTH_DEV_ADMIN_PASSWORD in development mode"
 
 
 _SRC_DIR = Path(__file__).resolve().parents[3]
@@ -149,6 +150,9 @@ def start_server() -> None:
     if proc is not None and proc.poll() is None:
         settings.server_url = _local_server_origin_url()
         LOGGER.info("Using local API Server URL for existing subprocess: %s", settings.server_url)
+        return
+    if os.environ.get("AIO_CLIENT_PASSWORD") is not None:
+        LOGGER.error(_RETIRED_CLIENT_PASSWORD_MESSAGE)
         return
 
     port = str(settings.server_port)
