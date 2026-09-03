@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import logging
-from base64 import b64decode
+from base64 import b64decode, b64encode
 from binascii import Error as BinasciiError
 from html import escape
+from pathlib import Path
 from urllib.parse import quote
 
 import jwt
@@ -16,11 +17,22 @@ from starlette.middleware.sessions import SessionMiddleware
 from server.app.core.dev_oidc import DevelopmentOidcService
 
 LOGGER = logging.getLogger(__name__)
+_BRAND_LOGO_PATH = Path(__file__).resolve().parents[3] / "client" / "assets" / "logo.png"
+
+
+def _brand_logo_data_uri() -> str:
+    """Return the application wordmark as an embeddable image."""
+    try:
+        encoded_logo = b64encode(_BRAND_LOGO_PATH.read_bytes()).decode("ascii")
+    except OSError:
+        return ""
+    return f"data:image/png;base64,{encoded_logo}"
 
 
 def _login_page(continue_to: str, *, error: str | None = None, status_code: int = 200) -> HTMLResponse:
     """Render the branded development sign-in page."""
     continuation_value = escape(continue_to, quote=True)
+    logo_data_uri = escape(_brand_logo_data_uri(), quote=True)
     error_message = f'<p class="form-error" role="alert">{escape(error)}</p>' if error else ""
     return HTMLResponse(
         f"""
@@ -49,27 +61,7 @@ def _login_page(continue_to: str, *, error: str | None = None, status_code: int 
               }}
               .auth-shell {{ width: min(100%, 28rem); }}
               .brand {{ margin-bottom: 1.75rem; text-align: center; }}
-              .brand-wordmark {{
-                color: #5d5d5d;
-                font-size: clamp(1.5rem, 7vw, 2.35rem);
-                font-weight: 300;
-                letter-spacing: 0.13em;
-                line-height: 1;
-              }}
-              .brand-wordmark strong {{ font-weight: 400; }}
-              .brand-subtitle {{
-                margin-top: 0.45rem;
-                color: #5d5d5d;
-                font-size: 1.1rem;
-                letter-spacing: 0.2em;
-              }}
-              .brand-powered {{
-                margin-top: 0.6rem;
-                color: #777777;
-                font-size: 0.78rem;
-                font-style: italic;
-              }}
-              .brand-powered strong {{ color: #c74634; font-style: normal; letter-spacing: 0.08em; }}
+              .brand-logo {{ display: block; width: min(100%, 24rem); height: auto; margin: 0 auto; }}
               .auth-card {{
                 padding: 2rem;
                 border: 1px solid #e2e5e9;
@@ -117,9 +109,7 @@ def _login_page(continue_to: str, *, error: str | None = None, status_code: int 
           <body>
             <main class="auth-shell">
               <header class="brand" aria-label="Oracle AI Optimizer and Toolkit">
-                <div class="brand-wordmark"><strong>AI</strong> OPTIMIZER</div>
-                <div class="brand-subtitle">&amp; TOOLKIT</div>
-                <div class="brand-powered">Powered by <strong>ORACLE</strong></div>
+                <img class="brand-logo" src="{logo_data_uri}" alt="Oracle AI Optimizer and Toolkit">
               </header>
               <section class="auth-card">
                 <h1>Sign in</h1>

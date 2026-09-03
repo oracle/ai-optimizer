@@ -122,6 +122,8 @@ class TestMainConnectionLogic:
         sidebar = MagicMock()
         sidebar.spinner.return_value = contextlib.nullcontext()
         user = MagicMock(is_logged_in=False)
+        login = MagicMock()
+        navigation = MagicMock()
 
         _remove_main_module()
         with (
@@ -129,8 +131,9 @@ class TestMainConnectionLogic:
             patch.object(real_st, "sidebar", sidebar),
             patch.object(real_st, "secrets", {"auth": {}}),
             patch.object(real_st, "user", user),
-            patch.object(real_st, "Page", side_effect=lambda *args, **kwargs: MagicMock()),
-            patch.object(real_st, "navigation", return_value=MagicMock()),
+            patch.object(real_st, "login", login),
+            patch.object(real_st, "Page", return_value=MagicMock()),
+            patch.object(real_st, "navigation", navigation),
             patch.object(real_st, "stop", side_effect=SystemExit),
             patch(f"{API_MODULE}._server_module_available", return_value=True),
             patch(f"{API_MODULE}.start_server"),
@@ -144,9 +147,11 @@ class TestMainConnectionLogic:
         assert sidebar.method_calls.index(call.space(size="small")) < sidebar.method_calls.index(
             call.spinner("Starting server...", show_time=True)
         )
+        login.assert_called_once_with()
+        navigation.assert_not_called()
 
-    def test_signed_out_oidc_adds_signin_as_the_navigation_item(self):
-        """The native sign-in action is exposed as the authentication navigation item."""
+    def test_signed_out_oidc_starts_native_login_automatically(self):
+        """The signed-out branch starts native OIDC without adding a navigation page."""
         import streamlit as real_st
 
         state = AttrDict({"optimizer_client": "test-signin"})
@@ -154,14 +159,7 @@ class TestMainConnectionLogic:
         sidebar.spinner.return_value = contextlib.nullcontext()
         user = MagicMock(is_logged_in=False)
         login = MagicMock()
-        pages = []
-        navigation_result = MagicMock()
-        navigation_result.run.side_effect = lambda: None
-
-        def page(*args, **kwargs):
-            page_result = MagicMock()
-            pages.append((args, kwargs, page_result))
-            return page_result
+        navigation = MagicMock()
 
         with (
             patch.object(real_st, "session_state", state),
@@ -169,9 +167,7 @@ class TestMainConnectionLogic:
             patch.object(real_st, "secrets", {"auth": {}}),
             patch.object(real_st, "user", user),
             patch.object(real_st, "login", login),
-            patch.object(real_st, "Page", side_effect=page),
-            patch.object(real_st, "navigation", return_value=navigation_result),
-            patch.object(real_st, "button"),
+            patch.object(real_st, "navigation", navigation),
             patch.object(real_st, "stop", side_effect=SystemExit),
             patch(f"{API_MODULE}._server_module_available", return_value=True),
             patch(f"{API_MODULE}.start_server"),
@@ -183,12 +179,8 @@ class TestMainConnectionLogic:
             with contextlib.suppress(SystemExit):
                 import client.app.main  # noqa: F401
 
-            pages[-1][0][0]()
-            login.assert_called_once_with()
-
-        assert pages[-1][1] == {"title": "Sign in", "icon": "🔐"}
-        assert pages[-1][0][0].__name__ == "sign_in"
-        assert len(pages) == 1
+        login.assert_called_once_with()
+        navigation.assert_not_called()
 
     def test_signed_in_oidc_adds_signout_as_the_last_navigation_item(self):
         """The native sign-out action is the final sidebar navigation item."""

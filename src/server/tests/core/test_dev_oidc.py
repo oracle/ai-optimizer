@@ -457,6 +457,7 @@ async def test_login_form_matches_the_application_branding():
     assert '<main class="auth-shell">' in response.text
     assert '<section class="auth-card">' in response.text
     assert 'aria-label="Oracle AI Optimizer and Toolkit"' in response.text
+    assert '<img class="brand-logo" src="data:image/png;base64,' in response.text
     assert 'name="username"' in response.text
     assert 'type="password"' in response.text
     assert 'name="continue_to"' in response.text

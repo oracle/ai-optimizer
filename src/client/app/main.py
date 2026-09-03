@@ -79,9 +79,6 @@ st.html(
 )
 st.logo(str(ASSETS_DIR / "logo.png"))
 
-# Left Hand Side - Navigation Initialization
-sidebar_navigation = {"": []}
-
 # Native Streamlit OIDC is opt-in through the deployment's ``[auth]``
 # secrets configuration. API calls use the provider-issued access token;
 # the ID token remains a Streamlit client credential.
@@ -95,12 +92,7 @@ if oidc_configured and not st.user.is_logged_in:
         with st.sidebar.spinner("Starting server...", show_time=True):
             start_server()
 
-    def sign_in():
-        """Start the current Streamlit OIDC login flow."""
-        st.login()
-
-    sidebar_navigation[""].append(st.Page(sign_in, title="Sign in", icon="🔐"))
-    st.navigation(sidebar_navigation, position="sidebar", expanded=False).run()
+    st.login()
     st.stop()
 
 if state.get("settings") is None:
@@ -120,16 +112,16 @@ if "optimizer_help" not in state:
     state.optimizer_help = {item["key"]: item["text"] for item in api_get("help")}
 
 # Left Hand Side - Navigation
-chatbot = st.Page("content/chatbot.py", title="ChatBot", icon="💬", default=True)
-sidebar_navigation[""].append(chatbot)
-testbed = st.Page("content/testbed.py", title="Testbed", icon="🧪")
-sidebar_navigation[""].append(testbed)
-api_server = st.Page("content/api_server.py", title="API Server", icon="📡")
-sidebar_navigation[""].append(api_server)
-tools = st.Page("content/tools/tools.py", title="Tools", icon="🧰")
-sidebar_navigation[""].append(tools)
-config = st.Page("content/config/config.py", title="Configuration", icon="⚙️")
-sidebar_navigation[""].append(config)
+sidebar_navigation = {"": []}
+sidebar_navigation[""].extend(
+    [
+        st.Page("content/chatbot.py", title="ChatBot", icon="💬", default=True),
+        st.Page("content/testbed.py", title="Testbed", icon="🧪"),
+        st.Page("content/api_server.py", title="API Server", icon="📡"),
+        st.Page("content/tools/tools.py", title="Tools", icon="🧰"),
+        st.Page("content/config/config.py", title="Configuration", icon="⚙️"),
+    ]
+)
 
 if oidc_configured and st.user.is_logged_in:
 
