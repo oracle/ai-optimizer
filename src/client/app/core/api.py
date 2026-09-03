@@ -5,6 +5,8 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 # spell-checker:ignore apiserver pypath
 
 import atexit
+import base64
+import binascii
 import contextlib
 import json
 import logging
@@ -72,6 +74,7 @@ _SERVER: dict = {"process": None, "log_file": None}
 
 _SERVER_READY_TIMEOUT_SECONDS = float(os.environ.get("AIO_SERVER_READY_TIMEOUT", "180"))
 _SERVER_READY_POLL_INTERVAL = 5.0
+_ACCESS_TOKEN_EXPIRY_BUFFER_SECONDS = 30
 _RETIRED_CLIENT_PASSWORD_MESSAGE = "AIO_CLIENT_PASSWORD is retired; use AIO_AUTH_DEV_ADMIN_PASSWORD in development mode"
 
 
@@ -255,6 +258,10 @@ def _headers() -> dict:
         access_token = st.user.tokens.get("access") if st.user.is_logged_in else None
     except (AttributeError, KeyError):
         access_token = None
+    if isinstance(access_token, str) and _access_token_expires_soon(access_token):
+        LOGGER.info("OIDC access token is expired or nearing expiry; starting a new login")
+        st.login()
+        st.stop()
     if access_token:
         headers["Authorization"] = f"Bearer {access_token}"
     else:
@@ -262,6 +269,33 @@ def _headers() -> dict:
     if session_id := st.session_state.get("optimizer_client"):
         headers["X-AIO-Session"] = session_id
     return headers
+
+
+def _access_token_expires_soon(access_token: str) -> bool:
+    """Return whether a JWT-shaped access token is expired or nearly expired.
+
+    Streamlit exposes only the provider's ID and access tokens, and its identity
+    cookie can outlive the access token.  Built-in development access tokens are
+    JWTs, so their ``exp`` claim lets us start a new authorization flow before
+    an API request receives a 401.  Opaque or malformed tokens are left alone
+    for external providers whose lifecycle is managed by Streamlit or the IdP.
+    """
+    try:
+        parts = access_token.split(".")
+        if len(parts) != 3:
+            return False
+        payload = base64.urlsafe_b64decode(parts[1] + "=" * (-len(parts[1]) % 4))
+        claims = json.loads(payload)
+        if not isinstance(claims, dict):
+            return False
+        expiry = claims.get("exp")
+    except (binascii.Error, UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError):
+        return False
+    return (
+        isinstance(expiry, (int, float))
+        and not isinstance(expiry, bool)
+        and expiry <= (time.time() + _ACCESS_TOKEN_EXPIRY_BUFFER_SECONDS)
+    )
 
 
 def api_get(
