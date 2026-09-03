@@ -149,6 +149,21 @@ def _client_credentials(request: Request, client_id: str, client_secret: str) ->
     return basic_client_id, basic_client_secret
 
 
+async def _logout_parameters(request: Request) -> tuple[str | None, str | None]:
+    """Read RP-initiated logout parameters from the query or POST form."""
+    client_id = request.query_params.get("client_id")
+    post_logout_redirect_uri = request.query_params.get("post_logout_redirect_uri")
+    if request.method == "POST":
+        form = await request.form()
+        form_client_id = form.get("client_id")
+        form_redirect_uri = form.get("post_logout_redirect_uri")
+        if isinstance(form_client_id, str):
+            client_id = form_client_id
+        if isinstance(form_redirect_uri, str):
+            post_logout_redirect_uri = form_redirect_uri
+    return client_id, post_logout_redirect_uri
+
+
 async def create_application(service: DevelopmentOidcService) -> FastAPI:
     """Create the dedicated-origin ASGI application for one provider service."""
     await service.initialize()
@@ -266,12 +281,19 @@ async def create_application(service: DevelopmentOidcService) -> FastAPI:
         except (ValueError, jwt.PyJWTError):
             return JSONResponse({"error": "invalid_token"}, status_code=401)
 
-    @app.post("/logout", status_code=204)
+    @app.api_route("/logout", methods=["GET", "POST"])
     async def logout(request: Request):
         login_session = request.session.get("login_session")
         if isinstance(login_session, str):
             await service.revoke_login_session(login_session)
         request.session.clear()
+
+        client_id, post_logout_redirect_uri = await _logout_parameters(request)
+        if post_logout_redirect_uri:
+            client = await service.store.get_client(client_id) if client_id else None
+            if client is None or post_logout_redirect_uri not in client.redirect_uris:
+                return JSONResponse({"error": "invalid_request"}, status_code=400)
+            return RedirectResponse(post_logout_redirect_uri, status_code=302)
         return Response(status_code=204)
 
     return app

@@ -658,6 +658,7 @@ class DevelopmentOidcService:
             "issuer": self.issuer,
             "authorization_endpoint": f"{self.issuer}/authorize",
             "token_endpoint": f"{self.issuer}/token",
+            "end_session_endpoint": f"{self.issuer}/logout",
             "userinfo_endpoint": f"{self.issuer}/userinfo",
             "jwks_uri": f"{self.issuer}/jwks.json",
             "response_types_supported": ["code"],
