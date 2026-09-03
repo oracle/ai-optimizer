@@ -300,12 +300,40 @@ class TestStartClient:
         assert 'client_kwargs = { scope = "openid profile email aio.api" }' in contents
         assert 'expose_tokens = "access"' in contents
 
+    def test_existing_development_oidc_configuration_uses_current_web_client_secret(self, tmp_path, monkeypatch):
+        """A generated Streamlit config must stay aligned with the launcher secret."""
+        (tmp_path / "server").mkdir()
+        config_dir = tmp_path / "client" / "app" / ".streamlit"
+        config_dir.mkdir(parents=True)
+        (config_dir / "secrets.toml").write_text(
+            """[auth]
+redirect_uri = \"http://localhost:8501/oauth2callback\"
+cookie_secret = \"stable-cookie-secret\"
+client_id = \"platform-web-client\"
+client_secret = \"old-web-client-secret\"
+server_metadata_url = \"http://127.0.0.1:8765/.well-known/openid-configuration\"
+client_kwargs = { scope = \"openid profile email aio.api\" }
+expose_tokens = \"access\"
+"""
+        )
+        monkeypatch.setenv("AIO_AUTH_MODE", "dev")
+        monkeypatch.setenv("AIO_AUTH_DEV_ADMIN_PASSWORD", "operator-password")
+        monkeypatch.setenv("AIO_AUTH_DEV_WEB_CLIENT_SECRET", "current-web-client-secret")
+        monkeypatch.delenv("AIO_CLIENT_COOKIE_SECRET", raising=False)
+        from unittest.mock import patch
+
+        with patch("os.execvp"):
+            entrypoint.start_client(tmp_path)
+
+        contents = (config_dir / "secrets.toml").read_text(encoding="utf-8")
+        assert 'client_secret = "current-web-client-secret"' in contents
+        assert 'cookie_secret = "stable-cookie-secret"' in contents
+
     def test_implicit_development_oidc_persists_a_shared_bootstrap_password(self, tmp_path, monkeypatch):
         """A CORE-backed All-In-One launch reuses one locally retrievable password."""
         (tmp_path / "server").mkdir()
         monkeypatch.delenv("AIO_AUTH_MODE", raising=False)
         monkeypatch.delenv("AIO_AUTH_DEV_ADMIN_PASSWORD", raising=False)
-        monkeypatch.delenv("AIO_AUTH_DEV_SYNC_BOOTSTRAP_PASSWORD", raising=False)
         monkeypatch.delenv("AIO_SERVER_URL", raising=False)
         monkeypatch.delenv("AIO_AUTH_DEV_WEB_CLIENT_SECRET", raising=False)
         monkeypatch.setenv("AIO_DB_USERNAME", "optimizer")
@@ -316,7 +344,6 @@ class TestStartClient:
             entrypoint.start_client(tmp_path)
 
         generated_password = os.environ["AIO_AUTH_DEV_ADMIN_PASSWORD"]
-        assert os.environ["AIO_AUTH_DEV_SYNC_BOOTSTRAP_PASSWORD"] == "true"
         credential_file = tmp_path / "client" / "app" / ".streamlit" / "dev-oidc-bootstrap.json"
         assert credential_file.exists()
         assert credential_file.stat().st_mode & 0o777 == 0o600

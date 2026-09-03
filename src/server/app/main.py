@@ -70,7 +70,6 @@ async def _start_development_oidc() -> tuple[_EmbeddedUvicornServer, asyncio.Tas
             "admin@example.test": reveal(settings.auth_dev_admin_password) or "",
         },
         web_client_secret=reveal(settings.auth_dev_web_client_secret) or "",
-        sync_admin_password=settings.auth_dev_sync_bootstrap_password,
         web_client_redirect_uri=settings.auth_dev_web_redirect_uri,
     )
     oidc_app = await create_development_oidc_application(service)

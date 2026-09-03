@@ -93,8 +93,8 @@ def load_or_create_bootstrap_credential(script_dir: Path) -> BootstrapCredential
     return credential
 
 
-def load_or_create_web_client_secret(script_dir: Path) -> str:
-    """Return a private web-client secret without persisting an operator password."""
+def load_or_create_web_client_secret(script_dir: Path, fallback: str = "") -> str:
+    """Return one durable web-client secret without persisting an operator password."""
     path = _web_client_secret_path(script_dir)
     if path.is_file():
         secret = path.read_text(encoding="utf-8").strip()
@@ -104,7 +104,7 @@ def load_or_create_web_client_secret(script_dir: Path) -> str:
         raise ValueError(f"Invalid development web-client secret file: {path}")
     path.parent.mkdir(parents=True, exist_ok=True)
     path.parent.chmod(0o700)
-    secret = secrets.token_urlsafe(32)
+    secret = fallback or secrets.token_urlsafe(32)
     try:
         descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     except FileExistsError:

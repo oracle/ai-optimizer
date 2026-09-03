@@ -189,6 +189,7 @@ forwards requests to port `8765`.
 
 To provide a stable bootstrap password, create a Kubernetes Secret and set
 `server.devOidc.passwordSecretName` and `server.devOidc.passwordSecretKey`.
+The value is applied to the bootstrap account whenever the Server starts.
 Alternatively, set `server.devOidc.passwordAutoGenerate=true` for a
 chart-managed retained Secret. The chart provides that value only to the Server
 as `AIO_AUTH_DEV_ADMIN_PASSWORD`. When none is configured, the Server

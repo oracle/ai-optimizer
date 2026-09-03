@@ -119,7 +119,7 @@ Values supplied through `AIO_*` variables are reapplied at startup. You can chan
 | `AIO_AUTH_DEV_WEB_REDIRECT_URI` | Registered Streamlit callback URI for the built-in provider.                                                                                                                 | `http://localhost:8501/oauth2callback` |
 | `AIO_AUTH_DEV_LISTEN_HOST`      | Built-in provider bind address.                                                                                                                                              | `127.0.0.1`                            |
 | `AIO_AUTH_DEV_LISTEN_PORT`      | Built-in provider listener port.                                                                                                                                             | `8765`                                 |
-| `AIO_AUTH_DEV_ADMIN_PASSWORD`   | Initial password for the bootstrapped `admin@example.test` development administrator. When unset, a random password is generated at startup for bootstrap. | _(generated)_ |
+| `AIO_AUTH_DEV_ADMIN_PASSWORD`   | Password for the bootstrapped `admin@example.test` development administrator. It is applied whenever the development provider starts. When unset, a random password is generated and retained locally for All-In-One startup. | _(generated)_ |
 | `AIO_AUTH_DEV_WEB_CLIENT_SECRET` | Confidential credential for the built-in Streamlit OIDC client. All-In-One and Helm generate and share it automatically. | _(generated)_ |
 | `AIO_AUTH_PROXY_TRUSTED_CIDRS`  | JSON array of trusted direct-peer CIDRs allowed to supply configured proxy identity headers.                                                                                 | _(none)_                               |
 | `AIO_AUTH_PROXY_SUBJECT_HEADER` | Trusted-proxy header containing the authenticated subject.                                                                                                                   | `X-Authenticated-Subject`              |
@@ -150,11 +150,12 @@ http://127.0.0.1:8765/.well-known/openid-configuration
 ```
 
 The provider seeds one `admin@example.test` account with `aio.admin` and the
-`openid profile email aio.api` scopes. Its initial password is
+`openid profile email aio.api` scopes. Its password is
 `AIO_AUTH_DEV_ADMIN_PASSWORD`. When unset, the server generates a random value
-at startup; it is used only when creating a missing bootstrap account. HTTP is
-supported only on loopback; use a configured HTTPS issuer behind TLS for other
-deployments.
+at startup. The configured or generated value is applied whenever the
+development provider starts, including when the bootstrap account already
+exists. HTTP is supported only on loopback; use a configured HTTPS issuer
+behind TLS for other deployments.
 
 When the Client is started through the platform entrypoint, development mode
 automatically creates its local Streamlit OIDC configuration using the issuer

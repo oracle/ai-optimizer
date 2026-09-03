@@ -442,14 +442,12 @@ class DevelopmentOidcService:
         store: DevelopmentOidcStore,
         seed_passwords: dict[str, str],
         web_client_secret: str = "",
-        sync_admin_password: bool = False,
         web_client_redirect_uri: str = DEFAULT_WEB_CLIENT_REDIRECT_URI,
     ):
         self.issuer = issuer.rstrip("/")
         self.store = store
         self.seed_passwords = seed_passwords
         self.web_client_secret = web_client_secret
-        self.sync_admin_password = sync_admin_password
         self.web_client_redirect_uri = web_client_redirect_uri
 
     @property
@@ -459,9 +457,7 @@ class DevelopmentOidcService:
 
     async def initialize(self) -> None:
         """Provision the administrator, first-party clients, and a signing key."""
-        await self._seed_user(
-            "admin@example.test", "ADMIN", {"aio.admin"}, synchronize_password=self.sync_admin_password
-        )
+        await self._seed_user("admin@example.test", "ADMIN", {"aio.admin"})
         await self._seed_client(
             DevelopmentClient(
                 client_id=WEB_CLIENT_ID,
@@ -485,23 +481,20 @@ class DevelopmentOidcService:
             )
             await self.store.save_signing_key(SigningKey(key_id=f"dev-{uuid.uuid4().hex}", private_key_pem=pem))
 
-    async def _seed_user(
-        self, email: str, display_name: str, elevated_scopes: set[str], *, synchronize_password: bool = False
-    ) -> None:
+    async def _seed_user(self, email: str, display_name: str, elevated_scopes: set[str]) -> None:
         existing = await self.store.get_user_by_username(email)
         if existing is not None:
-            if synchronize_password:
-                await self.store.save_user(
-                    DevelopmentUser(
-                        user_id=existing.user_id,
-                        username=existing.username,
-                        email=existing.email,
-                        display_name=existing.display_name,
-                        password_hash=_hash_password(self.seed_passwords[email]),
-                        scopes=existing.scopes,
-                        active=existing.active,
-                    )
+            await self.store.save_user(
+                DevelopmentUser(
+                    user_id=existing.user_id,
+                    username=existing.username,
+                    email=existing.email,
+                    display_name=existing.display_name,
+                    password_hash=_hash_password(self.seed_passwords[email]),
+                    scopes=existing.scopes,
+                    active=existing.active,
                 )
+            )
             return
         password = self.seed_passwords[email]
         user = DevelopmentUser(

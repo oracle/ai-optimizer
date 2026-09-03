@@ -201,8 +201,8 @@ async def test_development_provider_seeds_only_the_administrator():
     assert [user.username for user in store.users.values()] == [ADMIN_USERNAME]
 
 
-async def test_all_in_one_bootstrap_password_synchronizes_an_existing_administrator():
-    """A durable launcher password repairs a user seeded before launcher hand-off existed."""
+async def test_configured_bootstrap_password_synchronizes_an_existing_administrator():
+    """The configured development password remains authoritative for the bootstrap user."""
     store = InMemoryDevelopmentOidcStore()
     old_service = DevelopmentOidcService(
         issuer="http://127.0.0.1:8765",
@@ -215,7 +215,6 @@ async def test_all_in_one_bootstrap_password_synchronizes_an_existing_administra
         issuer="http://127.0.0.1:8765",
         store=store,
         seed_passwords={ADMIN_USERNAME: "durable-launcher-password"},
-        sync_admin_password=True,
     )
     await service.initialize()
 
@@ -440,3 +439,48 @@ async def test_login_form_escapes_its_continuation_value():
     assert response.status_code == 200
     assert "&quot;&lt;script&gt;" in response.text
     assert "<script>alert(1)</script>" not in response.text
+
+
+async def test_login_form_matches_the_application_branding():
+    service = DevelopmentOidcService(
+        issuer="http://127.0.0.1:8765",
+        store=InMemoryDevelopmentOidcStore(),
+        seed_passwords=SEED_PASSWORDS,
+    )
+    app = await create_application(service)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/login", params={"continue_to": "/authorize?state=opaque-state"})
+
+    assert response.status_code == 200
+    assert "<title>Oracle AI Optimizer and Toolkit - Sign in</title>" in response.text
+    assert '<main class="auth-shell">' in response.text
+    assert '<section class="auth-card">' in response.text
+    assert 'aria-label="Oracle AI Optimizer and Toolkit"' in response.text
+    assert 'name="username"' in response.text
+    assert 'type="password"' in response.text
+    assert 'name="continue_to"' in response.text
+
+
+async def test_failed_login_renders_the_form_with_an_error():
+    service = DevelopmentOidcService(
+        issuer="http://127.0.0.1:8765",
+        store=InMemoryDevelopmentOidcStore(),
+        seed_passwords=SEED_PASSWORDS,
+    )
+    app = await create_application(service)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/login",
+            data={
+                "username": ADMIN_USERNAME,
+                "password": "wrong-password",
+                "continue_to": "/authorize?state=opaque-state",
+            },
+        )
+
+    assert response.status_code == 401
+    assert '<p class="form-error" role="alert">Invalid username or password</p>' in response.text
+    assert '<main class="auth-shell">' in response.text
+    assert 'name="continue_to"' in response.text

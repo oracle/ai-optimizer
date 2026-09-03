@@ -18,6 +18,130 @@ from server.app.core.dev_oidc import DevelopmentOidcService
 LOGGER = logging.getLogger(__name__)
 
 
+def _login_page(continue_to: str, *, error: str | None = None, status_code: int = 200) -> HTMLResponse:
+    """Render the branded development sign-in page."""
+    continuation_value = escape(continue_to, quote=True)
+    error_message = f'<p class="form-error" role="alert">{escape(error)}</p>' if error else ""
+    return HTMLResponse(
+        f"""
+        <!doctype html>
+        <html lang="en">
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>Oracle AI Optimizer and Toolkit - Sign in</title>
+            <style>
+              :root {{
+                color-scheme: light;
+                font-family: "Source Sans 3", "Segoe UI", sans-serif;
+                color: #262626;
+                background: #f7f8fa;
+              }}
+              * {{ box-sizing: border-box; }}
+              body {{
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                min-height: 100vh;
+                margin: 0;
+                padding: 2rem 1rem;
+                background: radial-gradient(circle at top, #ffffff 0, #f7f8fa 55%, #eef1f5 100%);
+              }}
+              .auth-shell {{ width: min(100%, 28rem); }}
+              .brand {{ margin-bottom: 1.75rem; text-align: center; }}
+              .brand-wordmark {{
+                color: #5d5d5d;
+                font-size: clamp(1.5rem, 7vw, 2.35rem);
+                font-weight: 300;
+                letter-spacing: 0.13em;
+                line-height: 1;
+              }}
+              .brand-wordmark strong {{ font-weight: 400; }}
+              .brand-subtitle {{
+                margin-top: 0.45rem;
+                color: #5d5d5d;
+                font-size: 1.1rem;
+                letter-spacing: 0.2em;
+              }}
+              .brand-powered {{
+                margin-top: 0.6rem;
+                color: #777777;
+                font-size: 0.78rem;
+                font-style: italic;
+              }}
+              .brand-powered strong {{ color: #c74634; font-style: normal; letter-spacing: 0.08em; }}
+              .auth-card {{
+                padding: 2rem;
+                border: 1px solid #e2e5e9;
+                border-radius: 0.8rem;
+                background: #ffffff;
+                box-shadow: 0 0.75rem 2.5rem rgb(38 38 38 / 10%);
+              }}
+              h1 {{ margin: 0; font-size: 1.65rem; font-weight: 600; }}
+              .intro {{ margin: 0.55rem 0 1.5rem; color: #606770; line-height: 1.5; }}
+              label {{ display: block; margin: 1rem 0 0.4rem; font-weight: 600; }}
+              input {{
+                width: 100%;
+                padding: 0.7rem 0.8rem;
+                border: 1px solid #b9bec7;
+                border-radius: 0.35rem;
+                color: #262626;
+                background: #ffffff;
+                font: inherit;
+                font-size: 1rem;
+              }}
+              input:focus {{ border-color: #1476b8; outline: 0.15rem solid rgb(20 118 184 / 20%); }}
+              button {{
+                width: 100%;
+                margin-top: 1.5rem;
+                padding: 0.75rem 1rem;
+                border: 0;
+                border-radius: 0.35rem;
+                color: #ffffff;
+                background: #1476b8;
+                cursor: pointer;
+                font: inherit;
+                font-weight: 600;
+              }}
+              button:hover {{ background: #0f5f96; }}
+              .form-error {{
+                margin: 0 0 1rem;
+                padding: 0.75rem;
+                border: 1px solid #e0a7a0;
+                border-radius: 0.35rem;
+                color: #8d2116;
+                background: #fff4f2;
+              }}
+            </style>
+          </head>
+          <body>
+            <main class="auth-shell">
+              <header class="brand" aria-label="Oracle AI Optimizer and Toolkit">
+                <div class="brand-wordmark"><strong>AI</strong> OPTIMIZER</div>
+                <div class="brand-subtitle">&amp; TOOLKIT</div>
+                <div class="brand-powered">Powered by <strong>ORACLE</strong></div>
+              </header>
+              <section class="auth-card">
+                <h1>Sign in</h1>
+                <p class="intro">Sign in to continue to Oracle AI Optimizer and Toolkit.</p>
+                {error_message}
+                <form method="post" action="/login">
+                  <label for="username">Email</label>
+                  <input id="username" name="username" type="email" autocomplete="username" required>
+                  <label for="password">Password</label>
+                  <input id="password" name="password" type="password" autocomplete="current-password" required>
+                  <input name="continue_to" type="hidden" value="{continuation_value}">
+                  <button type="submit">Sign in</button>
+                </form>
+              </section>
+            </main>
+          </body>
+        </html>
+        """,
+        status_code=status_code,
+    )
+
+
 def _client_credentials(request: Request, client_id: str, client_secret: str) -> tuple[str, str]:
     """Read client credentials from HTTP Basic or form-post authentication."""
     scheme, _, encoded = request.headers.get("authorization", "").partition(" ")
@@ -63,18 +187,7 @@ async def create_application(service: DevelopmentOidcService) -> FastAPI:
     async def login_form(continue_to: str = "/"):
         if not continue_to.startswith("/authorize?"):
             return HTMLResponse("Invalid login continuation", status_code=400)
-        return HTMLResponse(
-            """
-            <!doctype html><title>Development sign in</title>
-            <form method="post" action="/login">
-              <label>Email <input name="username" autocomplete="username" required></label>
-              <label>Password <input name="password" type="password" autocomplete="current-password" required></label>
-              <input name="continue_to" type="hidden" value="%s">
-              <button type="submit">Sign in</button>
-            </form>
-            """
-            % escape(continue_to, quote=True),
-        )
+        return _login_page(continue_to)
 
     @app.post("/login")
     async def login(
@@ -87,7 +200,7 @@ async def create_application(service: DevelopmentOidcService) -> FastAPI:
             return JSONResponse({"error": "invalid_request"}, status_code=400)
         user = await service.authenticate(username, password)
         if user is None:
-            return HTMLResponse("Invalid username or password", status_code=401)
+            return _login_page(continue_to, error="Invalid username or password", status_code=401)
         request.session["login_session"] = await service.create_login_session(user)
         return RedirectResponse(continue_to, status_code=303)
 

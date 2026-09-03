@@ -111,7 +111,6 @@ class Settings(SettingsBase, BaseSettings):
     auth_dev_listen_port: int = Field(default=8765, ge=1, le=65535, exclude=True)
     auth_dev_admin_password: Optional[SecretStr] = Field(default=None, exclude=True)
     auth_dev_web_client_secret: Optional[SecretStr] = Field(default=None, exclude=True)
-    auth_dev_sync_bootstrap_password: bool = Field(default=False, exclude=True)
     # Retained solely to reject the retired AIO_CLIENT_PASSWORD setting with a
     # useful migration error instead of silently accepting a no-longer-effective
     # shared-state control.

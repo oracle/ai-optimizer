@@ -79,6 +79,9 @@ st.html(
 )
 st.logo(str(ASSETS_DIR / "logo.png"))
 
+# Left Hand Side - Navigation Initialization
+sidebar_navigation = {"": []}
+
 # Native Streamlit OIDC is opt-in through the deployment's ``[auth]``
 # secrets configuration. API calls use the provider-issued access token;
 # the ID token remains a Streamlit client credential.
@@ -91,7 +94,13 @@ if oidc_configured and not st.user.is_logged_in:
         st.sidebar.space(size="small")
         with st.sidebar.spinner("Starting server...", show_time=True):
             start_server()
-    st.button("Sign in", on_click=st.login)
+
+    def sign_in():
+        """Start the current Streamlit OIDC login flow."""
+        st.login()
+
+    sidebar_navigation[""].append(st.Page(sign_in, title="Sign in", icon="🔐"))
+    st.navigation(sidebar_navigation, position="sidebar", expanded=False).run()
     st.stop()
 
 if state.get("settings") is None:
@@ -112,9 +121,7 @@ if "optimizer_help" not in state:
 
 # Left Hand Side - Navigation
 chatbot = st.Page("content/chatbot.py", title="ChatBot", icon="💬", default=True)
-sidebar_navigation = {
-    "": [chatbot],
-}
+sidebar_navigation[""].append(chatbot)
 testbed = st.Page("content/testbed.py", title="Testbed", icon="🧪")
 sidebar_navigation[""].append(testbed)
 api_server = st.Page("content/api_server.py", title="API Server", icon="📡")
@@ -123,5 +130,14 @@ tools = st.Page("content/tools/tools.py", title="Tools", icon="🧰")
 sidebar_navigation[""].append(tools)
 config = st.Page("content/config/config.py", title="Configuration", icon="⚙️")
 sidebar_navigation[""].append(config)
+
+if oidc_configured and st.user.is_logged_in:
+
+    def sign_out():
+        """End the current Streamlit OIDC session."""
+        st.logout()
+
+    sidebar_navigation[""].append(st.Page(sign_out, title="Sign out", icon="🔓"))
+
 pg_sidebar = st.navigation(sidebar_navigation, position="sidebar", expanded=False)
 pg_sidebar.run()

@@ -129,6 +129,9 @@ class TestMainConnectionLogic:
             patch.object(real_st, "sidebar", sidebar),
             patch.object(real_st, "secrets", {"auth": {}}),
             patch.object(real_st, "user", user),
+            patch.object(real_st, "Page", side_effect=lambda *args, **kwargs: MagicMock()),
+            patch.object(real_st, "navigation", return_value=MagicMock()),
+            patch.object(real_st, "stop", side_effect=SystemExit),
             patch(f"{API_MODULE}._server_module_available", return_value=True),
             patch(f"{API_MODULE}.start_server"),
             patch(f"{API_MODULE}.get_server_settings", return_value={}),
@@ -141,6 +144,94 @@ class TestMainConnectionLogic:
         assert sidebar.method_calls.index(call.space(size="small")) < sidebar.method_calls.index(
             call.spinner("Starting server...", show_time=True)
         )
+
+    def test_signed_out_oidc_adds_signin_as_the_navigation_item(self):
+        """The native sign-in action is exposed as the authentication navigation item."""
+        import streamlit as real_st
+
+        state = AttrDict({"optimizer_client": "test-signin"})
+        sidebar = MagicMock()
+        sidebar.spinner.return_value = contextlib.nullcontext()
+        user = MagicMock(is_logged_in=False)
+        login = MagicMock()
+        pages = []
+        navigation_result = MagicMock()
+        navigation_result.run.side_effect = lambda: None
+
+        def page(*args, **kwargs):
+            page_result = MagicMock()
+            pages.append((args, kwargs, page_result))
+            return page_result
+
+        with (
+            patch.object(real_st, "session_state", state),
+            patch.object(real_st, "sidebar", sidebar),
+            patch.object(real_st, "secrets", {"auth": {}}),
+            patch.object(real_st, "user", user),
+            patch.object(real_st, "login", login),
+            patch.object(real_st, "Page", side_effect=page),
+            patch.object(real_st, "navigation", return_value=navigation_result),
+            patch.object(real_st, "button"),
+            patch.object(real_st, "stop", side_effect=SystemExit),
+            patch(f"{API_MODULE}._server_module_available", return_value=True),
+            patch(f"{API_MODULE}.start_server"),
+            patch(f"{API_MODULE}.get_server_settings", return_value={}),
+            patch(f"{API_MODULE}.api_get", return_value=[]),
+            patch("logging_config.configure_logging"),
+        ):
+            _remove_main_module()
+            with contextlib.suppress(SystemExit):
+                import client.app.main  # noqa: F401
+
+            pages[-1][0][0]()
+            login.assert_called_once_with()
+
+        assert pages[-1][1] == {"title": "Sign in", "icon": "🔐"}
+        assert pages[-1][0][0].__name__ == "sign_in"
+        assert len(pages) == 1
+
+    def test_signed_in_oidc_adds_signout_as_the_last_navigation_item(self):
+        """The native sign-out action is the final sidebar navigation item."""
+        import streamlit as real_st
+
+        state = AttrDict({"optimizer_client": "test-signout"})
+        sidebar = MagicMock()
+        user = MagicMock(is_logged_in=True)
+        logout = MagicMock()
+        pages = []
+        navigation_result = MagicMock()
+        navigation_result.run.side_effect = lambda: None
+
+        def page(*args, **kwargs):
+            page_result = MagicMock()
+            pages.append((args, kwargs, page_result))
+            return page_result
+
+        def navigation(*args, **kwargs):
+            return navigation_result
+
+        with (
+            patch.object(real_st, "session_state", state),
+            patch.object(real_st, "sidebar", sidebar),
+            patch.object(real_st, "secrets", {"auth": {}}),
+            patch.object(real_st, "user", user),
+            patch.object(real_st, "logout", logout),
+            patch.object(real_st, "Page", side_effect=page),
+            patch.object(real_st, "navigation", side_effect=navigation),
+            patch(f"{API_MODULE}._server_module_available", return_value=False),
+            patch(f"{API_MODULE}.get_server_settings", return_value={}),
+            patch(f"{API_MODULE}.api_get", return_value=[]),
+            patch("logging_config.configure_logging"),
+        ):
+            _remove_main_module()
+            import client.app.main  # noqa: F401
+
+            pages[-1][0][0]()
+            logout.assert_called_once_with()
+
+        assert pages[-1][1] == {"title": "Sign out", "icon": "🔓"}
+        assert pages[-1][0][0].__name__ == "sign_out"
+        sidebar.button.assert_not_called()
 
     def test_split_pod_retries_on_subsequent_rerun(self):
         """In split client images `_server_module_available()` is False, so

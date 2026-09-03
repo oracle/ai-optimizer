@@ -13,6 +13,7 @@ import re
 import secrets
 import shutil
 import sys
+import tomllib
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -133,37 +134,41 @@ def _prepare_development_oidc_streamlit_config(script_dir: Path, cookie_secret: 
         if not os.environ.get("AIO_AUTH_DEV_ADMIN_PASSWORD"):
             bootstrap_credential = load_or_create_bootstrap_credential(script_dir)
             os.environ["AIO_AUTH_DEV_ADMIN_PASSWORD"] = bootstrap_credential.password
-            os.environ["AIO_AUTH_DEV_SYNC_BOOTSTRAP_PASSWORD"] = "true"
-            if not os.environ.get("AIO_AUTH_DEV_WEB_CLIENT_SECRET"):
-                os.environ["AIO_AUTH_DEV_WEB_CLIENT_SECRET"] = bootstrap_credential.web_client_secret
         if not os.environ.get("AIO_AUTH_DEV_WEB_CLIENT_SECRET"):
-            os.environ["AIO_AUTH_DEV_WEB_CLIENT_SECRET"] = (
-                bootstrap_credential.web_client_secret
-                if bootstrap_credential is not None
-                else load_or_create_web_client_secret(script_dir)
+            os.environ["AIO_AUTH_DEV_WEB_CLIENT_SECRET"] = load_or_create_web_client_secret(
+                script_dir,
+                fallback=bootstrap_credential.web_client_secret if bootstrap_credential is not None else "",
             )
     config_dir = script_dir / "client" / "app" / ".streamlit"
     secrets_file = config_dir / "secrets.toml"
-    if secrets_file.exists():
-        if "AIO_AUTH_DEV_WEB_CLIENT_SECRET" not in os.environ:
-            return
-        contents = secrets_file.read_text(encoding="utf-8")
-        if 'client_id = "platform-web-client"' not in contents or 'client_secret = ""' not in contents:
-            return
-        secrets_file.write_text(
-            contents.replace(
-                'client_secret = ""',
-                f"client_secret = {json.dumps(os.environ['AIO_AUTH_DEV_WEB_CLIENT_SECRET'])}",
-            ),
-            encoding="utf-8",
-        )
-        secrets_file.chmod(0o600)
-        return
-    config_dir.mkdir(parents=True, exist_ok=True)
+    secrets_file_exists = secrets_file.exists()
     issuer = os.environ.get("AIO_AUTH_DEV_ISSUER", "http://127.0.0.1:8765").rstrip("/")
     redirect_uri = os.environ.get("AIO_AUTH_DEV_WEB_REDIRECT_URI", "http://localhost:8501/oauth2callback")
-    oidc_cookie_secret = cookie_secret or secrets.token_urlsafe(48)
     web_client_secret = os.environ["AIO_AUTH_DEV_WEB_CLIENT_SECRET"]
+    if secrets_file_exists:
+        contents = secrets_file.read_text(encoding="utf-8")
+        try:
+            auth_config = tomllib.loads(contents).get("auth", {})
+        except tomllib.TOMLDecodeError:
+            return
+        if not isinstance(auth_config, dict):
+            return
+        generated_config = (
+            auth_config.get("client_id") == "platform-web-client"
+            and auth_config.get("redirect_uri") == redirect_uri
+            and auth_config.get("server_metadata_url") == f"{issuer}/.well-known/openid-configuration"
+            and auth_config.get("client_kwargs") == {"scope": "openid profile email aio.api"}
+            and auth_config.get("expose_tokens") == "access"
+        )
+        placeholder_config = (
+            auth_config.get("client_id") == "platform-web-client" and auth_config.get("client_secret") == ""
+        )
+        if not generated_config and not placeholder_config:
+            return
+        oidc_cookie_secret = cookie_secret or auth_config.get("cookie_secret") or secrets.token_urlsafe(48)
+    else:
+        oidc_cookie_secret = cookie_secret or secrets.token_urlsafe(48)
+    config_dir.mkdir(parents=True, exist_ok=True)
     contents = "\n".join(
         (
             "[auth]",
@@ -177,13 +182,16 @@ def _prepare_development_oidc_streamlit_config(script_dir: Path, cookie_secret: 
             "",
         )
     )
-    try:
-        with secrets_file.open("x", encoding="utf-8") as streamlit_secrets:
-            streamlit_secrets.write(contents)
-        secrets_file.chmod(0o600)
-    except FileExistsError:
-        # A concurrent launcher or an operator-provided file won the race.
-        return
+    if secrets_file_exists:
+        secrets_file.write_text(contents, encoding="utf-8")
+    else:
+        try:
+            with secrets_file.open("x", encoding="utf-8") as streamlit_secrets:
+                streamlit_secrets.write(contents)
+        except FileExistsError:
+            # A concurrent launcher or an operator-provided file won the race.
+            return
+    secrets_file.chmod(0o600)
 
 
 def _uses_local_development_oidc(script_dir: Path) -> bool:
