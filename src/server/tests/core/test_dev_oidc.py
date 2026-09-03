@@ -350,6 +350,7 @@ async def test_discovery_advertises_the_default_root_issuer_endpoints():
     assert document["jwks_uri"] == "http://127.0.0.1:8765/jwks.json"
     assert document["authorization_endpoint"] == "http://127.0.0.1:8765/authorize"
     assert document["token_endpoint"] == "http://127.0.0.1:8765/token"
+    assert document["end_session_endpoint"] == "http://127.0.0.1:8765/logout"
     assert document["token_endpoint_auth_methods_supported"] == ["client_secret_basic", "client_secret_post"]
     assert document["scopes_supported"] == ["openid", "profile", "email", "aio.api", "aio.admin"]
 
@@ -422,6 +423,106 @@ async def test_authorization_code_flow_uses_login_and_returns_api_access_token()
     assert token.status_code == 200
     access_claims = jwt.decode(token.json()["access_token"], options={"verify_signature": False})
     assert access_claims["aud"] == "aio-api"
+
+
+async def test_get_logout_revokes_provider_session_and_redirects_to_registered_uri():
+    store = InMemoryDevelopmentOidcStore()
+    service = DevelopmentOidcService(
+        issuer="http://127.0.0.1:8765",
+        store=store,
+        seed_passwords=SEED_PASSWORDS,
+        web_client_secret=WEB_CLIENT_SECRET,
+    )
+    app = await create_application(service)
+    verifier = "E" * 64
+    params = {
+        "response_type": "code",
+        "client_id": "platform-web-client",
+        "redirect_uri": "http://localhost:8501/oauth2callback",
+        "scope": "openid profile email aio.api",
+        "nonce": "nonce-value",
+        "code_challenge": _pkce_challenge(verifier),
+        "code_challenge_method": "S256",
+    }
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        login_redirect = await client.get("/authorize", params=params, follow_redirects=False)
+        login = await client.post(
+            login_redirect.headers["location"],
+            data={
+                "username": ADMIN_USERNAME,
+                "password": "admin-password",
+                "continue_to": parse_qs(urlparse(login_redirect.headers["location"]).query)["continue_to"][0],
+            },
+            follow_redirects=False,
+        )
+        assert login.status_code == 303
+
+        logout = await client.get(
+            "/logout",
+            params={
+                "client_id": "platform-web-client",
+                "post_logout_redirect_uri": "http://localhost:8501/oauth2callback",
+            },
+            follow_redirects=False,
+        )
+
+        assert logout.status_code == 302
+        assert logout.headers["location"] == "http://localhost:8501/oauth2callback"
+        assert "aio_dev_oidc" not in client.cookies
+
+    assert len(store.login_sessions) == 1
+    assert next(iter(store.login_sessions.values())).revoked
+
+
+async def test_post_logout_accepts_form_encoded_parameters():
+    store = InMemoryDevelopmentOidcStore()
+    service = DevelopmentOidcService(
+        issuer="http://127.0.0.1:8765",
+        store=store,
+        seed_passwords=SEED_PASSWORDS,
+        web_client_secret=WEB_CLIENT_SECRET,
+    )
+    app = await create_application(service)
+    verifier = "F" * 64
+    params = {
+        "response_type": "code",
+        "client_id": "platform-web-client",
+        "redirect_uri": "http://localhost:8501/oauth2callback",
+        "scope": "openid profile email aio.api",
+        "nonce": "nonce-value",
+        "code_challenge": _pkce_challenge(verifier),
+        "code_challenge_method": "S256",
+    }
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        login_redirect = await client.get("/authorize", params=params, follow_redirects=False)
+        login = await client.post(
+            login_redirect.headers["location"],
+            data={
+                "username": ADMIN_USERNAME,
+                "password": "admin-password",
+                "continue_to": parse_qs(urlparse(login_redirect.headers["location"]).query)["continue_to"][0],
+            },
+            follow_redirects=False,
+        )
+        assert login.status_code == 303
+
+        logout = await client.post(
+            "/logout",
+            data={
+                "client_id": "platform-web-client",
+                "post_logout_redirect_uri": "http://localhost:8501/oauth2callback",
+            },
+            follow_redirects=False,
+        )
+
+        assert logout.status_code == 302
+        assert logout.headers["location"] == "http://localhost:8501/oauth2callback"
+        assert "aio_dev_oidc" not in client.cookies
+
+    assert len(store.login_sessions) == 1
+    assert next(iter(store.login_sessions.values())).revoked
 
 
 async def test_login_form_escapes_its_continuation_value():
