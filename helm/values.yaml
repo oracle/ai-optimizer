@@ -147,11 +147,15 @@ server:
     # Public Streamlit callback URL. It must end in /oauth2callback and be
     # reachable by the browser using the same origin as the Client ingress.
     webClientRedirectUri: ""
-    # -- Name of a Secret holding the development administrator password.
+    # -- Name of a retained Secret holding the development administrator password.
+    # Required when enabled unless passwordAutoGenerate is true or
+    # server.envSecret provides AIO_AUTH_DEV_ADMIN_PASSWORD.
     passwordSecretName: ""
     # -- Key inside passwordSecretName or the generated Secret.
     passwordSecretKey: "password"
-    # -- Generate a persistent password Secret for the bootstrapped administrator.
+    # -- Generate a retained password Secret for the bootstrapped administrator.
+    # Required when enabled unless passwordSecretName is configured or
+    # server.envSecret provides AIO_AUTH_DEV_ADMIN_PASSWORD.
     passwordAutoGenerate: false
     listenPort: 8765
     service:

@@ -239,8 +239,20 @@ former UI behavior. */}}
 
 {{/* Development OIDC administrator password Secret helpers. */}}
 {{- define "ai-optimizer.server.devOidc.password.validate" -}}
-{{- if and (default "" .Values.server.devOidc.passwordSecretName | trim) (default false .Values.server.devOidc.passwordAutoGenerate) -}}
+{{- $passwordSecretName := default "" .Values.server.devOidc.passwordSecretName | trim -}}
+{{- $passwordAutoGenerate := default false .Values.server.devOidc.passwordAutoGenerate -}}
+{{- $serverEnvSecret := .Values.server.envSecret | default dict -}}
+{{- $serverEnvSecretName := default "" $serverEnvSecret.secretName | trim -}}
+{{- $serverEnvContent := $serverEnvSecret.content | default dict -}}
+{{- $envPassword := "" -}}
+{{- if hasKey $serverEnvContent "AIO_AUTH_DEV_ADMIN_PASSWORD" -}}
+{{- $envPassword = get $serverEnvContent "AIO_AUTH_DEV_ADMIN_PASSWORD" | toString | trim -}}
+{{- end -}}
+{{- if and $passwordSecretName $passwordAutoGenerate -}}
 {{- fail "server.devOidc.passwordSecretName and server.devOidc.passwordAutoGenerate are mutually exclusive" -}}
+{{- end -}}
+{{- if and .Values.server.devOidc.enabled (not (or $passwordSecretName $passwordAutoGenerate $serverEnvSecretName $envPassword)) -}}
+{{- fail "server.devOidc.enabled requires server.devOidc.passwordSecretName, server.devOidc.passwordAutoGenerate=true, or server.envSecret with AIO_AUTH_DEV_ADMIN_PASSWORD so the bootstrap password is retrievable" -}}
 {{- end -}}
 {{- end -}}
 
@@ -283,6 +295,35 @@ Secret-change requires a reloader controller and is out of scope for this chart.
   {{- else -}}
 {{- printf "unresolved:%s:%s" $name $key | sha256sum -}}
   {{- end -}}
+{{- end -}}
+{{- end -}}
+
+
+{{- define "ai-optimizer.client.oidcSecretsToml" -}}
+[auth]
+redirect_uri = {{ required "server.devOidc.webClientRedirectUri is required when devOidc is enabled" .oidc.webClientRedirectUri | quote }}
+cookie_secret = {{ .cookieSecret | quote }}
+client_id = "platform-web-client"
+client_secret = {{ .webClientSecret | quote }}
+server_metadata_url = {{ printf "%s/.well-known/openid-configuration" (.oidc.issuer | trimSuffix "/") | quote }}
+client_kwargs = { scope = "openid profile email aio.api" }
+expose_tokens = "access"
+{{- end -}}
+
+
+{{- define "ai-optimizer.client.oidcSecretChecksum" -}}
+{{- $name := printf "%s-client-oidc" (include "ai-optimizer.fullname" .) -}}
+{{- $issuer := .Values.server.devOidc.issuer | trimSuffix "/" -}}
+{{- $redirect := .Values.server.devOidc.webClientRedirectUri -}}
+{{- $found := lookup "v1" "Secret" .Release.Namespace $name -}}
+{{- if and $found $found.data (hasKey $found.data "cookieSecret") (hasKey $found.data "webClientSecret") -}}
+{{- $cookieSecretData := index $found.data "cookieSecret" -}}
+{{- $webClientSecretData := index $found.data "webClientSecret" -}}
+{{- $secretsToml := include "ai-optimizer.client.oidcSecretsToml" (dict "oidc" .Values.server.devOidc "cookieSecret" ($cookieSecretData | b64dec) "webClientSecret" ($webClientSecretData | b64dec)) -}}
+{{- $desiredData := dict "cookieSecret" $cookieSecretData "webClientSecret" $webClientSecretData "secrets.toml" (printf "%s\n" $secretsToml | b64enc) -}}
+{{- printf "desired:%s:%s" $name (toJson $desiredData) | sha256sum -}}
+{{- else -}}
+{{- printf "unresolved:%s:%s:%s" $name $issuer $redirect | sha256sum -}}
 {{- end -}}
 {{- end -}}
 
