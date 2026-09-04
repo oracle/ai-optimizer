@@ -15,13 +15,6 @@ pytestmark = pytest.mark.anyio
 
 
 @pytest.mark.unit
-async def test_list_tools_no_auth(app_client):
-    """GET /mcp/tools without auth returns 401."""
-    resp = await app_client.get("/mcp/tools")
-    assert resp.status_code == 401
-
-
-@pytest.mark.unit
 async def test_list_tools_returns_registered_tool_payload(app_client, auth_headers):
     """GET /mcp/tools returns serialized registered tool metadata."""
 

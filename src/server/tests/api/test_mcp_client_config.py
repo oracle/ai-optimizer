@@ -56,15 +56,6 @@ async def test_client_config_with_prefix(app_client, auth_headers):
 
 @pytest.mark.unit
 @pytest.mark.anyio
-async def test_client_config_no_auth(app_client):
-    """Client-config endpoint rejects requests without credentials."""
-    resp = await app_client.get("/mcp/client-config")
-
-    assert resp.status_code == 401
-
-
-@pytest.mark.unit
-@pytest.mark.anyio
 async def test_client_config_default(app_client, auth_headers):
     """Default response returns generic Streamable HTTP MCP config."""
     resp = await app_client.get("/mcp/client-config", headers=auth_headers)

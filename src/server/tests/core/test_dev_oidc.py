@@ -21,12 +21,13 @@ from server.app.core.dev_oidc import (
     _decode_json_array,
 )
 from server.app.core.settings import _validate_issuer_url
+from server.tests.constants import test_auth as auth_creds
 
 pytestmark = pytest.mark.anyio
 
-ADMIN_USERNAME = "admin@example.test"
-SEED_PASSWORDS = {ADMIN_USERNAME: "admin-password"}
-WEB_CLIENT_SECRET = "web-client-secret"
+admin_creds = auth_creds["oidc_admin"]
+seed_values = {admin_creds["username"]: admin_creds["password"]}
+client_creds = auth_creds["oidc_client"]
 
 
 def _pkce_challenge(verifier: str) -> str:
@@ -117,13 +118,13 @@ async def test_development_provider_issues_distinct_id_and_api_access_tokens():
     service = DevelopmentOidcService(
         issuer="http://127.0.0.1:8765",
         store=InMemoryDevelopmentOidcStore(),
-        seed_passwords=SEED_PASSWORDS,
-        web_client_secret=WEB_CLIENT_SECRET,
+        seed_passwords=seed_values,
+        web_client_secret=client_creds["web_client_secret"],
     )
     await service.initialize()
     verifier = "A" * 64
     code = await service.create_authorization_code(
-        username=ADMIN_USERNAME,
+        username=admin_creds["username"],
         client_id="platform-web-client",
         redirect_uri="http://localhost:8501/oauth2callback",
         scope="openid profile email aio.api aio.admin",
@@ -133,7 +134,7 @@ async def test_development_provider_issues_distinct_id_and_api_access_tokens():
 
     tokens = await service.exchange_code(
         client_id="platform-web-client",
-        client_secret=WEB_CLIENT_SECRET,
+        client_secret=client_creds["web_client_secret"],
         code=code,
         redirect_uri="http://localhost:8501/oauth2callback",
         code_verifier=verifier,
@@ -160,13 +161,13 @@ async def test_development_provider_rejects_an_invalid_web_client_secret():
     service = DevelopmentOidcService(
         issuer="http://127.0.0.1:8765",
         store=InMemoryDevelopmentOidcStore(),
-        seed_passwords=SEED_PASSWORDS,
-        web_client_secret=WEB_CLIENT_SECRET,
+        seed_passwords=seed_values,
+        web_client_secret=client_creds["web_client_secret"],
     )
     await service.initialize()
     verifier = "C" * 64
     code = await service.create_authorization_code(
-        username=ADMIN_USERNAME,
+        username=admin_creds["username"],
         client_id="platform-web-client",
         redirect_uri="http://localhost:8501/oauth2callback",
         scope="openid profile email aio.api",
@@ -177,7 +178,7 @@ async def test_development_provider_rejects_an_invalid_web_client_secret():
     with pytest.raises(ValueError, match="Invalid client credentials"):
         await service.exchange_code(
             client_id="platform-web-client",
-            client_secret="wrong-secret",
+            client_secret=auth_creds["oidc_wrong_client"]["client_secret"],
             code=code,
             redirect_uri="http://localhost:8501/oauth2callback",
             code_verifier=verifier,
@@ -189,16 +190,16 @@ async def test_development_provider_seeds_only_the_administrator():
     service = DevelopmentOidcService(
         issuer="http://127.0.0.1:8765",
         store=store,
-        seed_passwords=SEED_PASSWORDS,
+        seed_passwords=seed_values,
     )
 
     await service.initialize()
 
-    administrator = await service.authenticate(ADMIN_USERNAME, "admin-password")
+    administrator = await service.authenticate(admin_creds["username"], admin_creds["password"])
     assert administrator is not None
     assert administrator.display_name == "ADMIN"
     assert administrator.scopes == frozenset({"openid", "profile", "email", "aio.api", "aio.admin"})
-    assert [user.username for user in store.users.values()] == [ADMIN_USERNAME]
+    assert [user.username for user in store.users.values()] == [admin_creds["username"]]
 
 
 async def test_configured_bootstrap_password_synchronizes_an_existing_administrator():
@@ -207,19 +208,19 @@ async def test_configured_bootstrap_password_synchronizes_an_existing_administra
     old_service = DevelopmentOidcService(
         issuer="http://127.0.0.1:8765",
         store=store,
-        seed_passwords={ADMIN_USERNAME: "old-generated-password"},
+        seed_passwords={admin_creds["username"]: auth_creds["oidc_old"]["password"]},
     )
     await old_service.initialize()
 
     service = DevelopmentOidcService(
         issuer="http://127.0.0.1:8765",
         store=store,
-        seed_passwords={ADMIN_USERNAME: "durable-launcher-password"},
+        seed_passwords={admin_creds["username"]: auth_creds["oidc_durable"]["password"]},
     )
     await service.initialize()
 
-    assert await service.authenticate(ADMIN_USERNAME, "old-generated-password") is None
-    assert await service.authenticate(ADMIN_USERNAME, "durable-launcher-password") is not None
+    assert await service.authenticate(admin_creds["username"], auth_creds["oidc_old"]["password"]) is None
+    assert await service.authenticate(admin_creds["username"], auth_creds["oidc_durable"]["password"]) is not None
 
 
 async def test_seed_user_accepts_the_winner_of_a_concurrent_unique_insert():
@@ -231,10 +232,10 @@ async def test_seed_user_accepts_the_winner_of_a_concurrent_unique_insert():
     service = DevelopmentOidcService(
         issuer="http://127.0.0.1:8765",
         store=store,
-        seed_passwords=SEED_PASSWORDS,
+        seed_passwords=seed_values,
     )
 
-    await service._seed_user(ADMIN_USERNAME, "ADMIN", {"aio.admin"})
+    await service._seed_user(admin_creds["username"], "ADMIN", {"aio.admin"})
 
     store.save_user.assert_awaited_once()
 
@@ -244,13 +245,13 @@ async def test_development_provider_registers_the_configured_streamlit_callback(
     service = DevelopmentOidcService(
         issuer="https://auth.example.test",
         store=InMemoryDevelopmentOidcStore(),
-        seed_passwords=SEED_PASSWORDS,
+        seed_passwords=seed_values,
         web_client_redirect_uri=callback,
     )
     await service.initialize()
 
     code = await service.create_authorization_code(
-        username=ADMIN_USERNAME,
+        username=admin_creds["username"],
         client_id="platform-web-client",
         redirect_uri=callback,
         scope="openid profile email aio.api",
@@ -261,16 +262,31 @@ async def test_development_provider_registers_the_configured_streamlit_callback(
     assert code
 
 
+def test_development_provider_default_callback_uses_client_listener(monkeypatch):
+    """Direct provider construction uses the shared browser-facing callback default."""
+    monkeypatch.setenv("AIO_CLIENT_ADDRESS", "0.0.0.0")
+    monkeypatch.setenv("AIO_CLIENT_PORT", "8502")
+    monkeypatch.setenv("AIO_CLIENT_SSL", "true")
+
+    service = DevelopmentOidcService(
+        issuer="https://auth.example.test",
+        store=InMemoryDevelopmentOidcStore(),
+        seed_passwords=seed_values,
+    )
+
+    assert service.web_client_redirect_uri == "https://localhost:8502/oauth2callback"
+
+
 async def test_authorization_codes_are_single_use_and_bound_to_pkce():
     service = DevelopmentOidcService(
         issuer="http://127.0.0.1:8765",
         store=InMemoryDevelopmentOidcStore(),
-        seed_passwords=SEED_PASSWORDS,
+        seed_passwords=seed_values,
     )
     await service.initialize()
     verifier = "B" * 64
     code = await service.create_authorization_code(
-        username=ADMIN_USERNAME,
+        username=admin_creds["username"],
         client_id="platform-web-client",
         redirect_uri="http://localhost:8501/oauth2callback",
         scope="openid profile email aio.api",
@@ -305,16 +321,16 @@ async def test_login_sessions_are_durable_and_can_be_revoked():
     service = DevelopmentOidcService(
         issuer="http://127.0.0.1:8765",
         store=InMemoryDevelopmentOidcStore(),
-        seed_passwords=SEED_PASSWORDS,
+        seed_passwords=seed_values,
     )
     await service.initialize()
-    user = await service.authenticate(ADMIN_USERNAME, "admin-password")
+    user = await service.authenticate(admin_creds["username"], admin_creds["password"])
     assert user is not None
 
     session_id = await service.create_login_session(user)
     session_user = await service.get_login_session_user(session_id)
     assert session_user is not None
-    assert session_user.username == ADMIN_USERNAME
+    assert session_user.username == admin_creds["username"]
 
     await service.revoke_login_session(session_id)
     assert await service.get_login_session_user(session_id) is None
@@ -324,25 +340,26 @@ async def test_administrator_can_provision_an_additional_development_user():
     service = DevelopmentOidcService(
         issuer="http://127.0.0.1:8765",
         store=InMemoryDevelopmentOidcStore(),
-        seed_passwords=SEED_PASSWORDS,
+        seed_passwords=seed_values,
     )
     await service.initialize()
 
     await service.provision_user(
-        username="carol@example.test",
-        email="carol@example.test",
+        **auth_creds["oidc_alternate"],
         display_name="Carol",
-        password="carol-password",
     )
 
-    assert await service.authenticate("carol@example.test", "carol-password") is not None
+    assert (
+        await service.authenticate(auth_creds["oidc_alternate"]["username"], auth_creds["oidc_alternate"]["password"])
+        is not None
+    )
 
 
 async def test_discovery_advertises_the_default_root_issuer_endpoints():
     service = DevelopmentOidcService(
         issuer="http://127.0.0.1:8765",
         store=InMemoryDevelopmentOidcStore(),
-        seed_passwords=SEED_PASSWORDS,
+        seed_passwords=seed_values,
     )
     document = await service.discovery_document()
 
@@ -359,7 +376,7 @@ async def test_fixed_mcp_client_has_a_client_id_metadata_document():
     service = DevelopmentOidcService(
         issuer="http://127.0.0.1:8765",
         store=InMemoryDevelopmentOidcStore(),
-        seed_passwords=SEED_PASSWORDS,
+        seed_passwords=seed_values,
     )
     await service.initialize()
 
@@ -374,8 +391,8 @@ async def test_authorization_code_flow_uses_login_and_returns_api_access_token()
     service = DevelopmentOidcService(
         issuer="http://127.0.0.1:8765",
         store=InMemoryDevelopmentOidcStore(),
-        seed_passwords=SEED_PASSWORDS,
-        web_client_secret=WEB_CLIENT_SECRET,
+        seed_passwords=seed_values,
+        web_client_secret=client_creds["web_client_secret"],
     )
     app = await create_application(service)
     verifier = "D" * 64
@@ -396,8 +413,7 @@ async def test_authorization_code_flow_uses_login_and_returns_api_access_token()
         login = await client.post(
             login_redirect.headers["location"],
             data={
-                "username": ADMIN_USERNAME,
-                "password": "admin-password",
+                **admin_creds,
                 "continue_to": parse_qs(urlparse(login_redirect.headers["location"]).query)["continue_to"][0],
             },
             follow_redirects=False,
@@ -416,7 +432,7 @@ async def test_authorization_code_flow_uses_login_and_returns_api_access_token()
             },
             headers={
                 "Authorization": "Basic "
-                + base64.b64encode(f"platform-web-client:{WEB_CLIENT_SECRET}".encode()).decode()
+                + base64.b64encode(f"platform-web-client:{client_creds['web_client_secret']}".encode()).decode()
             },
         )
 
@@ -430,8 +446,8 @@ async def test_get_logout_revokes_provider_session_and_redirects_to_registered_u
     service = DevelopmentOidcService(
         issuer="http://127.0.0.1:8765",
         store=store,
-        seed_passwords=SEED_PASSWORDS,
-        web_client_secret=WEB_CLIENT_SECRET,
+        seed_passwords=seed_values,
+        web_client_secret=client_creds["web_client_secret"],
     )
     app = await create_application(service)
     verifier = "E" * 64
@@ -450,8 +466,7 @@ async def test_get_logout_revokes_provider_session_and_redirects_to_registered_u
         login = await client.post(
             login_redirect.headers["location"],
             data={
-                "username": ADMIN_USERNAME,
-                "password": "admin-password",
+                **admin_creds,
                 "continue_to": parse_qs(urlparse(login_redirect.headers["location"]).query)["continue_to"][0],
             },
             follow_redirects=False,
@@ -480,8 +495,8 @@ async def test_post_logout_accepts_form_encoded_parameters():
     service = DevelopmentOidcService(
         issuer="http://127.0.0.1:8765",
         store=store,
-        seed_passwords=SEED_PASSWORDS,
-        web_client_secret=WEB_CLIENT_SECRET,
+        seed_passwords=seed_values,
+        web_client_secret=client_creds["web_client_secret"],
     )
     app = await create_application(service)
     verifier = "F" * 64
@@ -500,8 +515,7 @@ async def test_post_logout_accepts_form_encoded_parameters():
         login = await client.post(
             login_redirect.headers["location"],
             data={
-                "username": ADMIN_USERNAME,
-                "password": "admin-password",
+                **admin_creds,
                 "continue_to": parse_qs(urlparse(login_redirect.headers["location"]).query)["continue_to"][0],
             },
             follow_redirects=False,
@@ -529,7 +543,7 @@ async def test_login_form_escapes_its_continuation_value():
     service = DevelopmentOidcService(
         issuer="http://127.0.0.1:8765",
         store=InMemoryDevelopmentOidcStore(),
-        seed_passwords=SEED_PASSWORDS,
+        seed_passwords=seed_values,
     )
     app = await create_application(service)
     continuation = '/authorize?state="<script>alert(1)</script>'
@@ -546,7 +560,7 @@ async def test_login_form_matches_the_application_branding():
     service = DevelopmentOidcService(
         issuer="http://127.0.0.1:8765",
         store=InMemoryDevelopmentOidcStore(),
-        seed_passwords=SEED_PASSWORDS,
+        seed_passwords=seed_values,
     )
     app = await create_application(service)
 
@@ -568,7 +582,7 @@ async def test_failed_login_renders_the_form_with_an_error():
     service = DevelopmentOidcService(
         issuer="http://127.0.0.1:8765",
         store=InMemoryDevelopmentOidcStore(),
-        seed_passwords=SEED_PASSWORDS,
+        seed_passwords=seed_values,
     )
     app = await create_application(service)
 
@@ -576,8 +590,8 @@ async def test_failed_login_renders_the_form_with_an_error():
         response = await client.post(
             "/login",
             data={
-                "username": ADMIN_USERNAME,
-                "password": "wrong-password",
+                "username": admin_creds["username"],
+                "password": auth_creds["oidc_wrong"]["password"],
                 "continue_to": "/authorize?state=opaque-state",
             },
         )

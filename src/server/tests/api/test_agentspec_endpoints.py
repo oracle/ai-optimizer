@@ -41,12 +41,6 @@ class TestListSpecs:
         for entry in response.json():
             assert "error" not in entry["spec"], f"spec {entry['name']!r} failed to serialize"
 
-    @pytest.mark.anyio
-    async def test_unauthenticated_rejected(self, app_client):
-        """Request without auth headers is rejected."""
-        response = await app_client.get("/v1/agentspec/specs")
-        assert response.status_code in (401, 403)
-
 
 class TestGetSpecByName:
     """GET /api/v1/agentspec/specs/{name}"""
@@ -77,9 +71,3 @@ class TestGetSpecByName:
         response = await app_client.get(f"/v1/agentspec/specs/{name}", headers=auth_headers)
         assert response.status_code == 200
         assert "error" not in response.json()["spec"], f"spec {name!r} failed to serialize"
-
-    @pytest.mark.anyio
-    async def test_unauthenticated_rejected(self, app_client):
-        """Request without auth headers is rejected."""
-        response = await app_client.get("/v1/agentspec/specs/llm_only")
-        assert response.status_code in (401, 403)

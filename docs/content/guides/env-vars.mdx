@@ -116,7 +116,7 @@ Values supplied through `AIO_*` variables are reapplied at startup. You can chan
 | `AIO_AUTH_OIDC_ROLES_CLAIM`     | JWT claim containing roles or scopes used for administrator mapping.                                                                                                         | `roles`                                |
 | `AIO_AUTH_ADMIN_CLAIM_VALUES`   | JSON array of role/scope values that grant administrator authority.                                                                                                          | `["aio.admin"]`                        |
 | `AIO_AUTH_DEV_ISSUER`           | Built-in provider issuer. It must be an absolute root-path origin; plain HTTP is accepted only for loopback.                                                                 | `http://127.0.0.1:8765`                |
-| `AIO_AUTH_DEV_WEB_REDIRECT_URI` | Registered Streamlit callback URI for the built-in provider.                                                                                                                 | `http://localhost:8501/oauth2callback` |
+| `AIO_AUTH_DEV_WEB_REDIRECT_URI` | Registered Streamlit callback URI for the built-in provider. When unset, the entrypoint derives a browser-facing URI from the Client listener settings.                            | _(derived from Client listener)_      |
 | `AIO_AUTH_DEV_LISTEN_HOST`      | Built-in provider bind address.                                                                                                                                              | `127.0.0.1`                            |
 | `AIO_AUTH_DEV_LISTEN_PORT`      | Built-in provider listener port.                                                                                                                                             | `8765`                                 |
 | `AIO_AUTH_DEV_ADMIN_PASSWORD`   | Password for the bootstrapped `admin@example.test` development administrator. It is applied whenever the development provider starts. When unset, a random password is generated and retained locally for All-In-One startup. | _(generated)_ |
@@ -159,7 +159,11 @@ behind TLS for other deployments.
 
 When the Client is started through the platform entrypoint, development mode
 automatically creates its local Streamlit OIDC configuration using the issuer
-and callback settings above. In an All-In-One bare-metal installation, when
+and callback settings above. If `AIO_AUTH_DEV_WEB_REDIRECT_URI` is unset, its
+scheme, address, and port are derived from `AIO_CLIENT_SSL`,
+`AIO_CLIENT_ADDRESS`, and `AIO_CLIENT_PORT`. Local and wildcard bind addresses
+use `localhost` for the browser callback; other addresses are retained. In an
+All-In-One bare-metal installation, when
 the development administrator password is not configured, the launcher also
 creates and reuses a private local bootstrap credential. Retrieve it only from
 the machine that started All-In-One:

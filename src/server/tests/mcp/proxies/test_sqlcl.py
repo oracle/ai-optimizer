@@ -13,12 +13,12 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastmcp import Client
-from pydantic import SecretStr
 
 from server.app.core.mcp import mcp
 from server.app.core.settings import settings
 from server.app.database.schemas import DatabaseConfig
 from server.app.mcp.proxies import sqlcl
+from server.tests.constants import test_auth as auth_creds
 
 
 class _DummyClient:
@@ -129,8 +129,7 @@ async def test_create_connection_store_success(monkeypatch):
     await sqlcl._create_connection_store(
         sqlcl_binary="/usr/bin/sql",
         alias="TEST",
-        username="scott",
-        password="tiger",
+        **auth_creds["sqlcl"],
         dsn="db",
         env={"VAR": "1"},
         dbtools_home=sqlcl._DBTOOLS_HOME,
@@ -138,7 +137,10 @@ async def test_create_connection_store_success(monkeypatch):
 
     # Command uses flagged credentials rather than inline user/pass@dsn
     input_cmd = recorded["input"]
-    assert 'conn -save TEST -savepwd -user "scott" -password "tiger" -url "db"' in input_cmd
+    assert (
+        f'conn -save TEST -savepwd -user "{auth_creds["sqlcl"]["username"]}" '
+        f'-password "{auth_creds["sqlcl"]["password"]}" -url "db"' in input_cmd
+    )
     # No connmgr delete — the store is cleared up front
     assert "connmgr delete" not in input_cmd
     # -home flag passed to subprocess
@@ -173,16 +175,16 @@ async def test_create_connection_store_special_chars(monkeypatch):
     await sqlcl._create_connection_store(
         sqlcl_binary="/usr/bin/sql",
         alias="TEST",
-        username='user"name',
-        password="pa@ss/word",
+        **auth_creds["sqlcl_special"],
         dsn="db/service",
         env={},
         dbtools_home=sqlcl._DBTOOLS_HOME,
     )
 
     input_cmd = recorded["input"]
-    assert '-user "user\\"name"' in input_cmd
-    assert '-password "pa@ss/word"' in input_cmd
+    escaped_username = auth_creds["sqlcl_special"]["username"].replace('"', '\\"')
+    assert f'-user "{escaped_username}"' in input_cmd
+    assert f'-password "{auth_creds["sqlcl_special"]["password"]}"' in input_cmd
     assert '-url "db/service"' in input_cmd
 
 
@@ -224,8 +226,7 @@ async def test_create_connection_store_flattens_newlines_for_sqlcl_stdin(monkeyp
     await sqlcl._create_connection_store(
         sqlcl_binary="/usr/bin/sql",
         alias="TEST",
-        username="scott",
-        password="tiger",
+        **auth_creds["sqlcl"],
         dsn=multiline_dsn,
         env={},
         dbtools_home=sqlcl._DBTOOLS_HOME,
@@ -274,8 +275,7 @@ async def test_create_connection_store_timeout(monkeypatch, caplog):
     await sqlcl._create_connection_store(
         sqlcl_binary="/usr/bin/sql",
         alias="TEST",
-        username="scott",
-        password="tiger",
+        **auth_creds["sqlcl"],
         dsn="db",
         env={"VAR": "1"},
         dbtools_home=sqlcl._DBTOOLS_HOME,
@@ -385,7 +385,10 @@ async def test_register_sqlcl_proxy_success(monkeypatch):
     monkeypatch.setattr(sqlcl, "_create_connection_store", _fake_store)
 
     good = DatabaseConfig(
-        alias="CORE", username="scott", password=SecretStr("tiger"), dsn="db", config_dir="/tmp/custom"
+        alias="CORE",
+        **auth_creds["sqlcl"],
+        dsn="db",
+        config_dir="/tmp/custom",
     )
     bad = DatabaseConfig(alias="BAD")
     settings.database_configs = [good, bad]
@@ -457,7 +460,7 @@ async def test_register_sqlcl_proxy_store_error(monkeypatch, caplog):
     sqlcl._state.provider = None
 
     settings.database_configs = [
-        DatabaseConfig(alias="CORE", username="scott", password=SecretStr("tiger"), dsn="db"),
+        DatabaseConfig(alias="CORE", **auth_creds["sqlcl"], dsn="db"),
     ]
 
     caplog.set_level("ERROR")
@@ -483,8 +486,7 @@ async def test_ensure_sqlcl_saved_connection_recreates_alias(monkeypatch):
     settings.database_configs = [
         DatabaseConfig(
             alias="CORE",
-            username="scott",
-            password=SecretStr("tiger"),
+            **auth_creds["sqlcl"],
             dsn="db",
             config_dir="/tmp/custom",
         )
@@ -500,8 +502,8 @@ async def test_ensure_sqlcl_saved_connection_recreates_alias(monkeypatch):
     call = await_args.kwargs
     assert call["sqlcl_binary"] == sqlcl_binary
     assert call["alias"] == "CORE"
-    assert call["username"] == "scott"
-    assert call["password"] == "tiger"
+    assert call["username"] == auth_creds["sqlcl"]["username"]
+    assert call["password"] == auth_creds["sqlcl"]["password"]
     assert call["dsn"] == "db"
     assert call["env"]["TNS_ADMIN"] == "/tmp/custom"
     assert call["dbtools_home"] == sqlcl._DBTOOLS_HOME

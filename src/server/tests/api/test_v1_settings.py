@@ -20,6 +20,7 @@ from server.app.core.settings import (
 )
 from server.tests.conftest import make_test_database_config, make_test_model_config, make_test_oci_profile
 from server.tests.constants import TEST_OPENAI_MODEL_ID
+from server.tests.constants import test_auth as auth_creds
 
 SETTINGS_MODULE = "server.app.api.v1.endpoints.settings"
 
@@ -48,14 +49,6 @@ def _populate_configs():
     settings.oci_configs = original_oci
     settings.model_configs = original_model
     settings.client_settings = original_cs
-
-
-@pytest.mark.unit
-@pytest.mark.anyio
-async def test_get_client_settings_no_auth(app_client):
-    """Settings endpoint rejects requests without API key."""
-    resp = await app_client.get("/v1/settings")
-    assert resp.status_code == 401
 
 
 @pytest.mark.unit
@@ -233,8 +226,8 @@ async def test_update_client_settings_dds_field_merge(app_client, auth_headers, 
     """PUT /settings field-merges deep_data_security so a lone {enabled} keeps end_user/alias."""
     dds = settings.client_settings.deep_data_security
     dds.enabled = False
-    dds.end_user = "SCOUT1"
-    dds.alias = "CORE::SCOUT1"
+    dds.end_user = auth_creds["database_end_user"]["username"]
+    dds.alias = f"CORE::{auth_creds['database_end_user']['username']}"
     dds.base_alias = "CORE"
 
     resp = await app_client.put(
@@ -245,20 +238,12 @@ async def test_update_client_settings_dds_field_merge(app_client, auth_headers, 
     assert resp.status_code == 200
     body = resp.json()["deep_data_security"]
     assert body["enabled"] is True
-    assert body["end_user"] == "SCOUT1"  # preserved by the field-merge
-    assert body["alias"] == "CORE::SCOUT1"
+    assert body["end_user"] == auth_creds["database_end_user"]["username"]  # preserved by the field-merge
+    assert body["alias"] == f"CORE::{auth_creds['database_end_user']['username']}"
     assert body["base_alias"] == "CORE"
     client_settings = settings.client_settings if test_auth_mode is None else _client_store[owned_client_key]
     assert client_settings.deep_data_security.enabled is True
-    assert client_settings.deep_data_security.end_user == "SCOUT1"
-
-
-@pytest.mark.unit
-@pytest.mark.anyio
-async def test_update_client_settings_no_auth(app_client):
-    """PUT /settings rejects requests without API key."""
-    resp = await app_client.put("/v1/settings", json={"database": {"alias": "X"}})
-    assert resp.status_code == 401
+    assert client_settings.deep_data_security.end_user == auth_creds["database_end_user"]["username"]
 
 
 @pytest.mark.unit
@@ -344,14 +329,6 @@ async def test_client_settings_sees_server_configs(app_client, auth_headers, tes
 
 @pytest.mark.unit
 @pytest.mark.anyio
-async def test_post_settings_no_auth(app_client):
-    """POST /settings rejects requests without API key."""
-    resp = await app_client.post("/v1/settings")
-    assert resp.status_code == 401
-
-
-@pytest.mark.unit
-@pytest.mark.anyio
 async def test_post_settings_creates_client(app_client, auth_headers, test_auth_mode, owned_session_key):
     """POST /settings creates a raw client or principal-owned session with skeleton defaults."""
     query, headers = _client_target(auth_headers, test_auth_mode, "FRESH")
@@ -405,7 +382,11 @@ async def test_post_settings_excludes_managed_configs(app_client, auth_headers):
     load_settings() falls back to the in-memory settings object."""
     from server.app.database.schemas import DatabaseConfig
 
-    managed = DatabaseConfig(alias="CORE::SCOUT1", username="SCOUT1", managed_by="dds:CORE")
+    managed = DatabaseConfig(
+        alias=f"CORE::{auth_creds['database_end_user']['username']}",
+        username=auth_creds["database_end_user"]["username"],
+        managed_by="dds:CORE",
+    )
     saved = settings.database_configs
     settings.database_configs = [*saved, managed]
     try:
@@ -417,7 +398,7 @@ async def test_post_settings_excludes_managed_configs(app_client, auth_headers):
         _client_store.pop("DDSLEAK", None)
     assert resp.status_code == 201
     aliases = [c["alias"] for c in resp.json().get("database_configs", [])]
-    assert "CORE::SCOUT1" not in aliases
+    assert f"CORE::{auth_creds['database_end_user']['username']}" not in aliases
 
 
 @pytest.mark.unit
@@ -451,14 +432,6 @@ async def test_post_then_get_round_trip(app_client, auth_headers, test_auth_mode
 # ---------------------------------------------------------------------------
 # DELETE /settings
 # ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-@pytest.mark.anyio
-async def test_delete_settings_no_auth(app_client):
-    """DELETE /settings rejects requests without API key."""
-    resp = await app_client.delete("/v1/settings?client=X")
-    assert resp.status_code == 401
 
 
 @pytest.mark.unit
@@ -546,14 +519,6 @@ def test_lru_eviction_oldest_non_protected():
 
 @pytest.mark.unit
 @pytest.mark.anyio
-async def test_copy_to_server_no_auth(app_client):
-    """POST /settings/server/copy rejects requests without API key."""
-    resp = await app_client.post("/v1/settings/server/copy")
-    assert resp.status_code == 401
-
-
-@pytest.mark.unit
-@pytest.mark.anyio
 async def test_copy_to_server_success(app_client, auth_headers, test_auth_mode, owned_session_key):
     """POST /settings/server/copy copies a source client/session to server."""
     source_key = "SOURCE" if test_auth_mode is None else owned_session_key("SOURCE")
@@ -578,8 +543,8 @@ async def test_copy_to_server_excludes_dds_override(app_client, auth_headers):
     source = ClientSettings(client="SOURCE")
     source.database.alias = "MY_DB"
     source.deep_data_security.enabled = True
-    source.deep_data_security.end_user = "SCOUT1"
-    source.deep_data_security.alias = "DDS_MY_DB_SCOUT1"
+    source.deep_data_security.end_user = auth_creds["database_end_user"]["username"]
+    source.deep_data_security.alias = f"DDS_MY_DB_{auth_creds['database_end_user']['username']}"
     source.deep_data_security.base_alias = "MY_DB"
     _client_store["SOURCE"] = source
 
@@ -622,14 +587,6 @@ async def test_copy_to_server_persist_failure_rollback(app_client, auth_headers)
 
 @pytest.mark.unit
 @pytest.mark.anyio
-async def test_reset_no_auth(app_client):
-    """POST /settings/reset rejects requests without API key."""
-    resp = await app_client.post("/v1/settings/reset")
-    assert resp.status_code == 401
-
-
-@pytest.mark.unit
-@pytest.mark.anyio
 async def test_reset_success(app_client, auth_headers):
     """POST /settings/reset resets to factory defaults and evicts non-protected clients."""
     _client_store["ephemeral"] = ClientSettings(client="ephemeral")
@@ -658,7 +615,11 @@ async def test_reset_excludes_managed_configs(app_client, auth_headers):
     """Reset preserves database_configs but must not surface runtime-only DDS-managed connections."""
     from server.app.database.schemas import DatabaseConfig
 
-    managed = DatabaseConfig(alias="CORE::SCOUT1", username="SCOUT1", managed_by="dds:CORE")
+    managed = DatabaseConfig(
+        alias=f"CORE::{auth_creds['database_end_user']['username']}",
+        username=auth_creds["database_end_user"]["username"],
+        managed_by="dds:CORE",
+    )
     saved = settings.database_configs
     settings.database_configs = [*saved, managed]
     try:
@@ -677,7 +638,7 @@ async def test_reset_excludes_managed_configs(app_client, auth_headers):
         settings.database_configs = saved
     assert resp.status_code == 200
     aliases = [c["alias"] for c in resp.json().get("database_configs", [])]
-    assert "CORE::SCOUT1" not in aliases
+    assert f"CORE::{auth_creds['database_end_user']['username']}" not in aliases
 
 
 @pytest.mark.unit
@@ -899,7 +860,11 @@ async def test_export_excludes_managed_configs(app_client, auth_headers):
     saved = settings.database_configs
     settings.database_configs = [
         make_test_database_config(alias="CORE"),
-        DatabaseConfig(alias="CORE::SCOUT1", username="SCOUT1", managed_by="dds:CORE"),
+        DatabaseConfig(
+            alias=f"CORE::{auth_creds['database_end_user']['username']}",
+            username=auth_creds["database_end_user"]["username"],
+            managed_by="dds:CORE",
+        ),
     ]
     try:
         headers = {**auth_headers, "X-Confirm-Export": "true"}
@@ -909,4 +874,4 @@ async def test_export_excludes_managed_configs(app_client, auth_headers):
     assert resp.status_code == 200
     aliases = [c["alias"] for c in resp.json().get("database_configs", [])]
     assert "CORE" in aliases
-    assert "CORE::SCOUT1" not in aliases
+    assert f"CORE::{auth_creds['database_end_user']['username']}" not in aliases

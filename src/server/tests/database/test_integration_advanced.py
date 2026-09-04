@@ -33,6 +33,7 @@ from server.app.testbed.database import (
 )
 from server.tests.conftest import make_core_db_config, make_test_vs_config
 from server.tests.constants import TEST_OPENAI_EMBED_ID
+from server.tests.constants import test_auth as auth_creds
 
 pytestmark = [pytest.mark.db, pytest.mark.integration]
 
@@ -389,7 +390,7 @@ class TestConnectionTimeout:
     async def test_pool_acquire_with_bad_credentials_raises(self, configure_db_env):
         """Acquiring from a pool with wrong password raises oracledb.Error."""
         del configure_db_env
-        cfg = make_core_db_config(password="WRONG_PASSWORD_123")
+        cfg = make_core_db_config(**auth_creds["oracle_wrong"])
 
         pool = await create_pool(cfg)
         try:
@@ -402,7 +403,7 @@ class TestConnectionTimeout:
     async def test_init_core_database_bad_credentials_sets_unusable(self, configure_db_env):
         """init_core_database marks config as unusable on auth failure."""
         del configure_db_env
-        cfg = make_core_db_config(password="WRONG_PASSWORD_123")
+        cfg = make_core_db_config(**auth_creds["oracle_wrong"])
 
         with pytest.raises(oracledb.Error):
             await init_core_database(cfg)

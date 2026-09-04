@@ -9,7 +9,6 @@ Unit tests for the Deep Data Security 'connect as' tool-connection resolver and 
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from pydantic import SecretStr
 
 from server.app.core.settings import _client_store, resolve_client, settings
 from server.app.database.config import (
@@ -19,12 +18,13 @@ from server.app.database.config import (
     resolve_effective_tool_alias,
 )
 from server.app.database.schemas import DatabaseConfig
+from server.tests.constants import test_auth as auth_creds
 
 pytestmark = pytest.mark.unit
 
 
 def _owner_cfg(alias: str = "CORE") -> DatabaseConfig:
-    cfg = DatabaseConfig(alias=alias, username="OWNER")
+    cfg = DatabaseConfig(alias=alias, username=auth_creds["database_owner"]["username"])
     cfg.pool = object()  # type: ignore[assignment]
     cfg.usable = True
     return cfg
@@ -66,10 +66,12 @@ async def test_effective_alias_owner_when_disabled():
 async def test_effective_alias_owner_when_base_mismatch():
     """DDS configured for a different owner base is inactive — falls back to the owner."""
     owner = _owner_cfg("CORE")
-    managed = _managed_cfg("OTHER", "SCOUT1")
+    managed = _managed_cfg("OTHER", auth_creds["database_end_user"]["username"])
     settings.database_configs = [owner, managed]
     settings.client_settings.database.alias = "CORE"
-    _set_dds(enabled=True, end_user="SCOUT1", alias=managed.alias, base_alias="OTHER")
+    _set_dds(
+        enabled=True, end_user=auth_creds["database_end_user"]["username"], alias=managed.alias, base_alias="OTHER"
+    )
 
     assert resolve_effective_tool_alias() == "CORE"
     assert get_tool_db_config() is owner
@@ -77,10 +79,10 @@ async def test_effective_alias_owner_when_base_mismatch():
 
 async def test_effective_alias_managed_when_active():
     owner = _owner_cfg("CORE")
-    managed = _managed_cfg("CORE", "SCOUT1")
+    managed = _managed_cfg("CORE", auth_creds["database_end_user"]["username"])
     settings.database_configs = [owner, managed]
     settings.client_settings.database.alias = "CORE"
-    _set_dds(enabled=True, end_user="SCOUT1", alias=managed.alias, base_alias="CORE")
+    _set_dds(enabled=True, end_user=auth_creds["database_end_user"]["username"], alias=managed.alias, base_alias="CORE")
 
     assert resolve_effective_tool_alias() == managed.alias
     assert get_tool_db_config() is managed
@@ -90,7 +92,12 @@ async def test_effective_alias_raises_when_active_missing():
     owner = _owner_cfg("CORE")
     settings.database_configs = [owner]  # managed alias absent
     settings.client_settings.database.alias = "CORE"
-    _set_dds(enabled=True, end_user="SCOUT1", alias="CORE::SCOUT1", base_alias="CORE")
+    _set_dds(
+        enabled=True,
+        end_user=auth_creds["database_end_user"]["username"],
+        alias=f"CORE::{auth_creds['database_end_user']['username']}",
+        base_alias="CORE",
+    )
 
     with pytest.raises(DdsConnectionError):
         resolve_effective_tool_alias()
@@ -101,10 +108,10 @@ async def test_effective_alias_raises_when_active_missing():
 async def test_effective_alias_raises_when_active_unusable():
     """Never fall back to the owner when the managed connection exists but is unusable."""
     owner = _owner_cfg("CORE")
-    managed = _managed_cfg("CORE", "SCOUT1", usable=False)
+    managed = _managed_cfg("CORE", auth_creds["database_end_user"]["username"], usable=False)
     settings.database_configs = [owner, managed]
     settings.client_settings.database.alias = "CORE"
-    _set_dds(enabled=True, end_user="SCOUT1", alias=managed.alias, base_alias="CORE")
+    _set_dds(enabled=True, end_user=auth_creds["database_end_user"]["username"], alias=managed.alias, base_alias="CORE")
 
     with pytest.raises(DdsConnectionError):
         resolve_effective_tool_alias()
@@ -117,7 +124,7 @@ async def test_effective_alias_rejects_non_managed_alias():
     ordinary = _owner_cfg("PROD")  # ordinary usable config (managed_by=None)
     settings.database_configs = [owner, ordinary]
     settings.client_settings.database.alias = "CORE"
-    _set_dds(enabled=True, end_user="SCOUT1", alias="PROD", base_alias="CORE")
+    _set_dds(enabled=True, end_user=auth_creds["database_end_user"]["username"], alias="PROD", base_alias="CORE")
 
     with pytest.raises(DdsConnectionError):
         resolve_effective_tool_alias()
@@ -145,14 +152,14 @@ async def test_effective_alias_rejects_managed_alias_of_other_base():
 
 async def test_clear_dds_for_removes_managed_and_clears_settings():
     owner = _owner_cfg("CORE")
-    managed = _managed_cfg("CORE", "SCOUT1", with_pool=False)
+    managed = _managed_cfg("CORE", auth_creds["database_end_user"]["username"], with_pool=False)
     # Inject the pool with a locally-held close mock so we can assert it was awaited
     # (clear_dds_for nulls cfg.pool after closing, so we can't read it back afterwards).
     close = AsyncMock()
     managed.pool = MagicMock(close=close)  # type: ignore[assignment]
     settings.database_configs = [owner, managed]
     settings.client_settings.database.alias = "CORE"
-    _set_dds(enabled=True, end_user="SCOUT1", alias=managed.alias, base_alias="CORE")
+    _set_dds(enabled=True, end_user=auth_creds["database_end_user"]["username"], alias=managed.alias, base_alias="CORE")
 
     removed = await clear_dds_for(base_alias="CORE")
 
@@ -166,9 +173,9 @@ async def test_clear_dds_for_removes_managed_and_clears_settings():
 
 async def test_clear_dds_for_by_base_removes_all_for_that_base():
     """base_alias removes every managed connection owned by that base, but no other base."""
-    core_a = _managed_cfg("CORE", "SCOUT1")
+    core_a = _managed_cfg("CORE", auth_creds["database_end_user"]["username"])
     core_b = _managed_cfg("CORE", "AUDITOR")
-    other = _managed_cfg("OTHER", "SCOUT1")
+    other = _managed_cfg("OTHER", auth_creds["database_end_user"]["username"])
     settings.database_configs = [_owner_cfg("CORE"), core_a, core_b, other]
 
     removed = await clear_dds_for(base_alias="CORE")
@@ -179,7 +186,7 @@ async def test_clear_dds_for_by_base_removes_all_for_that_base():
 
 async def test_clear_dds_for_no_client_store_side_effects():
     """clear_dds_for clears matching per-client copies without creating new store entries."""
-    managed = _managed_cfg("CORE", "SCOUT1")
+    managed = _managed_cfg("CORE", auth_creds["database_end_user"]["username"])
     settings.database_configs = [_owner_cfg("CORE"), managed]
     settings.client_settings.database.alias = "CORE"
     _set_dds(enabled=False)  # CONFIGURED has no DDS setting
@@ -188,7 +195,7 @@ async def test_clear_dds_for_no_client_store_side_effects():
     _client_store.clear()
     cs = resolve_client("client-a")
     cs.deep_data_security.enabled = True
-    cs.deep_data_security.end_user = "SCOUT1"
+    cs.deep_data_security.end_user = auth_creds["database_end_user"]["username"]
     cs.deep_data_security.alias = managed.alias
     cs.deep_data_security.base_alias = "CORE"
     before = set(_client_store.keys())
@@ -203,8 +210,8 @@ async def test_clear_dds_for_no_client_store_side_effects():
 
 async def test_clear_dds_for_by_alias_is_scoped():
     """Clearing one managed alias must not remove a same-end-user connection on another base."""
-    core = _managed_cfg("CORE", "SCOUT1")
-    other = _managed_cfg("OTHER", "SCOUT1")  # same end user, different base
+    core = _managed_cfg("CORE", auth_creds["database_end_user"]["username"])
+    other = _managed_cfg("OTHER", auth_creds["database_end_user"]["username"])  # same end user, different base
     settings.database_configs = [_owner_cfg("CORE"), core, other]
 
     removed = await clear_dds_for(alias=core.alias)
@@ -229,8 +236,8 @@ async def test_persist_settings_excludes_managed_configs():
     """Backstop invariant: a managed config in settings.database_configs is never persisted."""
     from server.app.database import settings as dbsettings
 
-    owner = DatabaseConfig(alias="CORE", username="OWNER", password=SecretStr("pw"), dsn="dsn")
-    managed = _managed_cfg("CORE", "SCOUT1", with_pool=False)
+    owner = DatabaseConfig(alias="CORE", **auth_creds["database_owner"], dsn="dsn")
+    managed = _managed_cfg("CORE", auth_creds["database_end_user"]["username"], with_pool=False)
     settings.database_configs = [owner, managed]
 
     conn = AsyncMock()

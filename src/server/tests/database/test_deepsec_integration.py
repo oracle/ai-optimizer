@@ -19,6 +19,7 @@ import oracledb
 import pytest
 
 from server.app.deepsec import database as deepsec_db
+from server.tests.conftest import TEST_DB_CONFIG
 
 pytestmark = [pytest.mark.db, pytest.mark.integration]
 
@@ -93,9 +94,7 @@ async def test_data_grant_lifecycle(deepsec_conn):
 
         # Dropping an own data grant succeeds.
         await _exec(conn, f"DROP DATA GRANT {g_mask}")
-        remaining = await _exec(
-            conn, f"SELECT grant_name FROM user_data_grants WHERE grant_name LIKE '{PREFIX}%'"
-        )
+        remaining = await _exec(conn, f"SELECT grant_name FROM user_data_grants WHERE grant_name LIKE '{PREFIX}%'")
         names = {r[0] for r in (remaining or [])}
         assert g_mask not in names
         assert g_pred in names
@@ -116,7 +115,7 @@ async def test_end_user_lifecycle(deepsec_conn):
     eu = f"{PREFIX}_EU"
     await _safe(conn, f"DROP END USER {eu}")
     try:
-        await _exec(conn, f'CREATE END USER {eu} IDENTIFIED BY "OrA_41_3xPl0d3r"')
+        await _exec(conn, f'CREATE END USER {eu} IDENTIFIED BY "{TEST_DB_CONFIG["db_password"]}"')
         # End users surface in DBA_END_USERS (not USER_END_USERS), readable via the
         # SELECT grant added in conftest._write_startup_scripts.
         rows = await _exec(conn, f"SELECT username FROM dba_end_users WHERE username = '{eu}'")
@@ -189,8 +188,13 @@ async def test_case_sensitive_object_is_actionable(deepsec_conn):
         assert "MixedCol" in cols and "ID" in cols  # case preserved, columns resolve
 
         await deepsec_db.create_data_grant(
-            conn, name=grant, privileges=["SELECT"], object_name=tbl, grantee=role,
-            columns=["MixedCol"], all_columns_except=True,
+            conn,
+            name=grant,
+            privileges=["SELECT"],
+            object_name=tbl,
+            grantee=role,
+            columns=["MixedCol"],
+            all_columns_except=True,
         )
         mine = [g for g in await deepsec_db.list_data_grants(conn) if g["name"] == grant.upper()]
         assert mine and all(g["object_name"] == tbl for g in mine)
@@ -213,14 +217,10 @@ async def test_create_data_grant_duplicate_surfaces_error(deepsec_conn):
         await _exec(conn, f"CREATE DATA ROLE {role}")
         await _exec(conn, f"CREATE TABLE {tbl} (id NUMBER, secret VARCHAR2(20))")
         await conn.commit()
-        await deepsec_db.create_data_grant(
-            conn, name=grant, privileges=["SELECT"], object_name=tbl, grantee=role
-        )
+        await deepsec_db.create_data_grant(conn, name=grant, privileges=["SELECT"], object_name=tbl, grantee=role)
         # Same grant again -> ORA-00955; must propagate rather than be swallowed.
         with pytest.raises(oracledb.DatabaseError):
-            await deepsec_db.create_data_grant(
-                conn, name=grant, privileges=["SELECT"], object_name=tbl, grantee=role
-            )
+            await deepsec_db.create_data_grant(conn, name=grant, privileges=["SELECT"], object_name=tbl, grantee=role)
     finally:
         for stmt in cleanup:
             await _safe(conn, stmt)
@@ -255,8 +255,7 @@ async def test_catalog_boolean_columns_preserve_false(deepsec_conn):
         # Raw catalog value is a native Python bool, not 'YES'/'NO' text.
         raw = await _exec(
             conn,
-            "SELECT data_role, enabled_by_default FROM dba_data_roles "
-            f"WHERE data_role IN ('{role_en}', '{role_dis}')",
+            f"SELECT data_role, enabled_by_default FROM dba_data_roles WHERE data_role IN ('{role_en}', '{role_dis}')",
         )
         raw_vals = {r[0]: r[1] for r in (raw or [])}
         assert isinstance(raw_vals[role_dis], bool), f"expected bool, got {type(raw_vals[role_dis])!r}"

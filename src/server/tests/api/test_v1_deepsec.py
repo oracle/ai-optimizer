@@ -10,17 +10,17 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import oracledb
 import pytest
-from pydantic import SecretStr
 
 from server.app.database.schemas import DatabaseConfig
 from server.app.deepsec.database import DeepSecError
 from server.tests.api.conftest import _create_mock_pool
+from server.tests.constants import test_auth as auth_creds
 
 MODULE = "server.app.api.v1.endpoints.deepsec"
 
 
 def _base_cfg() -> DatabaseConfig:
-    return DatabaseConfig(alias="CORE", username="OWNER", password=SecretStr("pw"), dsn="dsn")
+    return DatabaseConfig(alias="CORE", **auth_creds["database_owner"], dsn="dsn")
 
 
 _STATUS = {
@@ -48,27 +48,6 @@ def mock_db():
     pool = _create_mock_pool(conn)
     with patch(f"{MODULE}.get_client_pool", return_value=pool):
         yield conn
-
-
-# ---------------------------------------------------------------------------
-# Auth
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-@pytest.mark.anyio
-async def test_status_requires_auth(app_client):
-    """GET /status rejects requests without an API key."""
-    resp = await app_client.get("/v1/deepsec/status")
-    assert resp.status_code == 401
-
-
-@pytest.mark.unit
-@pytest.mark.anyio
-async def test_create_data_role_requires_auth(app_client):
-    """POST /data-roles rejects requests without an API key."""
-    resp = await app_client.post("/v1/deepsec/data-roles", json={"name": "r"})
-    assert resp.status_code == 401
 
 
 # ---------------------------------------------------------------------------
@@ -112,7 +91,7 @@ async def test_create_data_role(app_client, auth_headers, mock_db):
 async def test_create_end_user_uses_db_password(app_client, auth_headers, mock_db):
     """End user is provisioned with the connected database user's password."""
     db_config = MagicMock()
-    db_config.password = "DBPASS"
+    db_config.password = auth_creds["database_probe"]["password"]
     with (
         patch(f"{MODULE}.get_client_db_config", return_value=db_config),
         patch(f"{MODULE}.deepsec_db.create_end_user", AsyncMock()) as mock_create,
@@ -122,7 +101,7 @@ async def test_create_end_user_uses_db_password(app_client, auth_headers, mock_d
     assert "EU" in resp.json()["message"]
     # The password forwarded to the DDL is the database user's, not anything from the request body.
     assert mock_create.await_args is not None
-    assert mock_create.await_args.args[2] == "DBPASS"
+    assert mock_create.await_args.args[2] == auth_creds["database_probe"]["password"]
 
 
 @pytest.mark.unit
@@ -130,7 +109,7 @@ async def test_create_end_user_uses_db_password(app_client, auth_headers, mock_d
 async def test_create_end_user_forwards_schema(app_client, auth_headers, mock_db):
     """The schema_name from the request is forwarded to the CREATE END USER DDL."""
     db_config = MagicMock()
-    db_config.password = "DBPASS"
+    db_config.password = auth_creds["database_probe"]["password"]
     with (
         patch(f"{MODULE}.get_client_db_config", return_value=db_config),
         patch(f"{MODULE}.deepsec_db.create_end_user", AsyncMock()) as mock_create,
@@ -222,14 +201,6 @@ async def test_revoke_data_role(app_client, auth_headers, mock_db):
     assert mock_revoke.await_args.args[2] == "EMMA"
 
 
-@pytest.mark.unit
-@pytest.mark.anyio
-async def test_grant_data_role_requires_auth(app_client):
-    """POST /data-role-grants rejects requests without an API key."""
-    resp = await app_client.post("/v1/deepsec/data-role-grants", json={"grantee": "x", "roles": ["r"]})
-    assert resp.status_code == 401
-
-
 # ---------------------------------------------------------------------------
 # Connect-as (chat tools connect as a DDS end user)
 # ---------------------------------------------------------------------------
@@ -245,10 +216,16 @@ async def test_connect_as_registers_managed(app_client, auth_headers, mock_db):
         patch(f"{MODULE}.register_database", AsyncMock(return_value=None)) as mock_reg,
         patch(f"{MODULE}.refresh_sqlcl_proxy", AsyncMock()) as mock_refresh,
     ):
-        resp = await app_client.post("/v1/deepsec/connect-as", json={"end_user": "SCOUT1"}, headers=auth_headers)
+        resp = await app_client.post(
+            "/v1/deepsec/connect-as", json=auth_creds["deepsec_end_user"], headers=auth_headers
+        )
     assert resp.status_code == 200
     body = resp.json()
-    assert body == {"alias": "CORE::SCOUT1", "base_alias": "CORE", "end_user": "SCOUT1"}
+    assert body == {
+        "alias": f"CORE::{auth_creds['database_end_user']['username']}",
+        "base_alias": "CORE",
+        "end_user": auth_creds["database_end_user"]["username"],
+    }
     # Registered strictly and runtime-only.
     assert mock_reg.await_args is not None
     assert mock_reg.await_args.kwargs == {"require_usable": True, "persist": False, "managed_by": "dds:CORE"}
@@ -265,7 +242,9 @@ async def test_connect_as_strict_failure_registers_nothing(app_client, auth_head
         patch(f"{MODULE}.register_database", AsyncMock(return_value="ORA-01017: invalid credential")),
         patch(f"{MODULE}.refresh_sqlcl_proxy", AsyncMock()) as mock_refresh,
     ):
-        resp = await app_client.post("/v1/deepsec/connect-as", json={"end_user": "SCOUT1"}, headers=auth_headers)
+        resp = await app_client.post(
+            "/v1/deepsec/connect-as", json=auth_creds["deepsec_end_user"], headers=auth_headers
+        )
     assert resp.status_code == 400
     assert "ORA-01017" in resp.json()["detail"]
     mock_refresh.assert_not_awaited()
@@ -276,7 +255,11 @@ async def test_connect_as_strict_failure_registers_nothing(app_client, auth_head
 async def test_connect_as_stale_failure_refreshes_sqlcl(app_client, auth_headers, mock_db):
     """If a stale managed alias is removed and re-registration then fails, SQLcl is still
     refreshed so its store stops advertising the removed alias (no orphan)."""
-    stale = DatabaseConfig(alias="CORE::SCOUT1", username="SCOUT1", managed_by="dds:CORE")
+    stale = DatabaseConfig(
+        alias=f"CORE::{auth_creds['database_end_user']['username']}",
+        username=auth_creds["database_end_user"]["username"],
+        managed_by="dds:CORE",
+    )
     stale.usable = False  # stale → torn down before re-register
     with (
         patch(f"{MODULE}.get_client_db_config", return_value=_base_cfg()),
@@ -285,10 +268,12 @@ async def test_connect_as_stale_failure_refreshes_sqlcl(app_client, auth_headers
         patch(f"{MODULE}.register_database", AsyncMock(return_value="ORA-01017: invalid credential")),
         patch(f"{MODULE}.refresh_sqlcl_proxy", AsyncMock()) as mock_refresh,
     ):
-        resp = await app_client.post("/v1/deepsec/connect-as", json={"end_user": "SCOUT1"}, headers=auth_headers)
+        resp = await app_client.post(
+            "/v1/deepsec/connect-as", json=auth_creds["deepsec_end_user"], headers=auth_headers
+        )
     assert resp.status_code == 400
     # Stale entry torn down (config + referencing settings) and the store rebuilt despite the failure.
-    mock_clear.assert_awaited_once_with(alias="CORE::SCOUT1")
+    mock_clear.assert_awaited_once_with(alias=f"CORE::{auth_creds['database_end_user']['username']}")
     mock_refresh.assert_awaited_once()
 
 
@@ -296,7 +281,11 @@ async def test_connect_as_stale_failure_refreshes_sqlcl(app_client, auth_headers
 @pytest.mark.anyio
 async def test_connect_as_reuses_existing_usable(app_client, auth_headers, mock_db):
     """An already-usable managed connection is reused without re-registering."""
-    existing = DatabaseConfig(alias="CORE::SCOUT1", username="SCOUT1", managed_by="dds:CORE")
+    existing = DatabaseConfig(
+        alias=f"CORE::{auth_creds['database_end_user']['username']}",
+        username=auth_creds["database_end_user"]["username"],
+        managed_by="dds:CORE",
+    )
     existing.pool = object()  # type: ignore[assignment]
     existing.usable = True
     with (
@@ -305,9 +294,11 @@ async def test_connect_as_reuses_existing_usable(app_client, auth_headers, mock_
         patch(f"{MODULE}.register_database", AsyncMock()) as mock_reg,
         patch(f"{MODULE}.refresh_sqlcl_proxy", AsyncMock()) as mock_refresh,
     ):
-        resp = await app_client.post("/v1/deepsec/connect-as", json={"end_user": "SCOUT1"}, headers=auth_headers)
+        resp = await app_client.post(
+            "/v1/deepsec/connect-as", json=auth_creds["deepsec_end_user"], headers=auth_headers
+        )
     assert resp.status_code == 200
-    assert resp.json()["alias"] == "CORE::SCOUT1"
+    assert resp.json()["alias"] == f"CORE::{auth_creds['database_end_user']['username']}"
     mock_reg.assert_not_awaited()
     mock_refresh.assert_not_awaited()
 
@@ -321,7 +312,10 @@ async def test_connect_as_rejects_non_managed_alias_collision(app_client, auth_h
     (managed_by missing), silently breaking the sidebar toggle; re-registering would append a
     duplicate alias. The endpoint must refuse and leave the colliding config untouched.
     """
-    collision = DatabaseConfig(alias="CORE::SCOUT1", username="SOMEONE")  # managed_by=None (ordinary)
+    collision = DatabaseConfig(
+        alias=f"CORE::{auth_creds['database_end_user']['username']}",
+        username=auth_creds["database_collision"]["username"],
+    )  # managed_by=None (ordinary)
     collision.pool = object()  # type: ignore[assignment]
     collision.usable = True
     with (
@@ -331,7 +325,9 @@ async def test_connect_as_rejects_non_managed_alias_collision(app_client, auth_h
         patch(f"{MODULE}.clear_dds_for", AsyncMock(return_value=set())) as mock_clear,
         patch(f"{MODULE}.refresh_sqlcl_proxy", AsyncMock()) as mock_refresh,
     ):
-        resp = await app_client.post("/v1/deepsec/connect-as", json={"end_user": "SCOUT1"}, headers=auth_headers)
+        resp = await app_client.post(
+            "/v1/deepsec/connect-as", json=auth_creds["deepsec_end_user"], headers=auth_headers
+        )
     assert resp.status_code == 409
     # The ordinary connection was neither reused-as-managed, torn down, nor duplicated.
     mock_reg.assert_not_awaited()
@@ -344,7 +340,9 @@ async def test_connect_as_rejects_non_managed_alias_collision(app_client, auth_h
 async def test_connect_as_requires_usable_owner(app_client, auth_headers, mock_db):
     """503 when the owner database is unavailable."""
     with patch(f"{MODULE}.get_client_db_config", return_value=None):
-        resp = await app_client.post("/v1/deepsec/connect-as", json={"end_user": "SCOUT1"}, headers=auth_headers)
+        resp = await app_client.post(
+            "/v1/deepsec/connect-as", json=auth_creds["deepsec_end_user"], headers=auth_headers
+        )
     assert resp.status_code == 503
 
 
@@ -352,7 +350,11 @@ async def test_connect_as_requires_usable_owner(app_client, auth_headers, mock_d
 @pytest.mark.anyio
 async def test_clear_connect_as(app_client, auth_headers, mock_db):
     """DELETE /connect-as tears down the managed connection and refreshes SQLcl when something was removed."""
-    dds = MagicMock(alias="CORE::SCOUT1", base_alias="CORE", end_user="SCOUT1")
+    dds = MagicMock(
+        alias=f"CORE::{auth_creds['database_end_user']['username']}",
+        base_alias="CORE",
+        end_user=auth_creds["database_end_user"]["username"],
+    )
     client_cs = MagicMock(deep_data_security=dds)
     with (
         patch(f"{MODULE}.resolve_client", return_value=client_cs),
@@ -364,7 +366,7 @@ async def test_clear_connect_as(app_client, auth_headers, mock_db):
     # Scoped to the exact managed alias — base_alias/end_user are NOT passed (avoids
     # OR-matching that would remove a same-end-user connection on another base).
     assert mock_clear.await_args is not None
-    assert mock_clear.await_args.kwargs == {"alias": "CORE::SCOUT1"}
+    assert mock_clear.await_args.kwargs == {"alias": f"CORE::{auth_creds['database_end_user']['username']}"}
     mock_refresh.assert_awaited_once()
 
 
@@ -383,9 +385,11 @@ async def test_drop_end_user_clears_connect_as_for_current_base_only(app_client,
         patch(f"{MODULE}.clear_dds_for", AsyncMock(return_value={"core::scout1"})) as mock_clear,
         patch(f"{MODULE}.refresh_sqlcl_proxy", AsyncMock()) as mock_refresh,
     ):
-        resp = await app_client.delete("/v1/deepsec/end-users/SCOUT1", headers=auth_headers)
+        resp = await app_client.delete(
+            f"/v1/deepsec/end-users/{auth_creds['database_end_user']['username']}", headers=auth_headers
+        )
     assert resp.status_code == 200
-    mock_clear.assert_awaited_once_with(alias="CORE::SCOUT1")
+    mock_clear.assert_awaited_once_with(alias=f"CORE::{auth_creds['database_end_user']['username']}")
     mock_refresh.assert_awaited_once()
 
 

@@ -14,7 +14,14 @@ from cryptography.hazmat.primitives.serialization import load_pem_private_key
 from cryptography.x509.oid import NameOID
 
 import net_addressing
-from net_addressing import connect_host, netloc, should_inject_server_port, verify_for_url
+from net_addressing import (
+    client_web_redirect_uri,
+    connect_host,
+    netloc,
+    parse_bool,
+    should_inject_server_port,
+    verify_for_url,
+)
 
 
 class TestConnectHost:
@@ -55,6 +62,32 @@ class TestNetloc:
 
     def test_dns_host(self):
         assert netloc("api.example.com", 443) == "api.example.com:443"
+
+
+class TestClientWebRedirectUri:
+    """Client bind addresses become browser-facing OIDC callback origins."""
+
+    def test_local_bind_addresses_use_documented_localhost_origin(self):
+        assert client_web_redirect_uri(address="0.0.0.0", port=8502) == "http://localhost:8502/oauth2callback"
+        assert client_web_redirect_uri(address="127.0.0.1", port=8502) == "http://localhost:8502/oauth2callback"
+        assert client_web_redirect_uri(address="[::1]", port=8502) == "http://localhost:8502/oauth2callback"
+
+    def test_external_listener_uses_configured_host_and_tls(self):
+        assert (
+            client_web_redirect_uri(address="optimizer.example.test", port=9443, ssl=True)
+            == "https://optimizer.example.test:9443/oauth2callback"
+        )
+
+    def test_ipv6_external_listener_is_bracketed(self):
+        assert client_web_redirect_uri(address="2001:db8::10", port=9443, ssl="true") == (
+            "https://[2001:db8::10]:9443/oauth2callback"
+        )
+
+    def test_tls_boolean_spellings_match_pydantic(self):
+        for value in ("1", "yes", "on", "true"):
+            assert parse_bool(value) is True
+            assert client_web_redirect_uri(port=9443, ssl=value) == "https://localhost:9443/oauth2callback"
+        assert parse_bool(" true ") is False
 
 
 class TestShouldInjectServerPort:

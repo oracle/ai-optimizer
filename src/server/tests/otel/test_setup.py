@@ -16,6 +16,7 @@ from unittest import mock
 import pytest
 
 from server.app.otel import setup
+from server.tests.constants import test_auth as auth_creds
 
 pytestmark = pytest.mark.unit
 
@@ -214,13 +215,13 @@ class TestInitLogs:
                 level=logging.INFO,
                 pathname="x",
                 lineno=0,
-                msg="connecting with password=hunter2 dsn=foo",
+                msg=f"connecting with password={auth_creds['hunter']['password']} dsn=foo",
                 args=(),
                 exc_info=None,
             )
             handler.filter(record)
 
-            assert "hunter2" not in record.getMessage(), (
+            assert auth_creds["hunter"]["password"] not in record.getMessage(), (
                 "configured field value should be normalized before OTLP export"
             )
         finally:
@@ -297,9 +298,7 @@ class TestInitLogs:
         original_handlers = list(root.handlers)
         try:
             setup._init_logs(resource)
-            handler = next(
-                h for h in root.handlers if isinstance(h, LoggingHandler) and h not in original_handlers
-            )
+            handler = next(h for h in root.handlers if isinstance(h, LoggingHandler) and h not in original_handlers)
 
             app_record = logging.LogRecord(
                 name="server.app.api.v1.chat",
@@ -326,11 +325,13 @@ class TestInitLogs:
         from opentelemetry.sdk._logs import ReadWriteLogRecord
 
         record = LogRecord(
-            body="login failed: password=hunter2",
+            body=f"login failed: password={auth_creds['hunter']['password']}",
             attributes={
                 "exception.type": "ValueError",
-                "exception.message": "boom: password=hunter2 dsn=foo",
-                "exception.stacktrace": "Traceback (most recent call last)\n  oracle://user:hunter2@db",
+                "exception.message": f"boom: password={auth_creds['hunter']['password']} dsn=foo",
+                "exception.stacktrace": (
+                    f"Traceback (most recent call last)\n  oracle://user:{auth_creds['hunter']['password']}@db"
+                ),
                 "code.filepath": "x.py",
             },
         )
@@ -345,9 +346,9 @@ class TestInitLogs:
         for key in ("exception.message", "exception.stacktrace"):
             value = attrs[key]
             assert isinstance(value, str)
-            assert "hunter2" not in value
+            assert auth_creds["hunter"]["password"] not in value
         assert isinstance(body, str)
-        assert "hunter2" not in body
+        assert auth_creds["hunter"]["password"] not in body
         # Non-credential attributes are preserved unchanged.
         assert attrs["code.filepath"] == "x.py"
         assert attrs["exception.type"] == "ValueError"
@@ -371,9 +372,7 @@ class TestInitLogs:
 
         from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 
-        assert add_processor.call_count == 2, (
-            f"expected 2 processor registrations, got {add_processor.call_count}"
-        )
+        assert add_processor.call_count == 2, f"expected 2 processor registrations, got {add_processor.call_count}"
         first = add_processor.call_args_list[0].args[0]
         second = add_processor.call_args_list[1].args[0]
         assert isinstance(first, setup._RedactingLogProcessor)
@@ -452,9 +451,7 @@ class TestInstrumentLibraries:
             setup._init_logs(Resource.create({}))
             setup._instrument_libraries()
 
-            new_otel_handlers = [
-                h for h in root.handlers if _is_otel_handler(h) and h not in original_handlers
-            ]
+            new_otel_handlers = [h for h in root.handlers if _is_otel_handler(h) and h not in original_handlers]
             assert len(new_otel_handlers) == 1, (
                 f"expected exactly one OTel handler on root, got {len(new_otel_handlers)}: "
                 f"{[type(h).__module__ + '.' + type(h).__name__ for h in new_otel_handlers]}"

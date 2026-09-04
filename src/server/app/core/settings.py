@@ -18,6 +18,7 @@ from urllib.parse import urlparse
 from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
+from net_addressing import client_web_redirect_uri
 from server.app.core.paths import PROJECT_ROOT
 from server.app.core.schemas import ClientSettings
 from server.app.core.secrets import SecretField
@@ -92,6 +93,9 @@ class Settings(SettingsBase, BaseSettings):
     db_pool_size: int = Field(default=5, exclude=True)
 
     max_clients: int = Field(default=64, ge=1, exclude=True)
+    client_address: str = Field(default="localhost", exclude=True)
+    client_port: int = Field(default=8501, ge=1, le=65535, exclude=True)
+    client_ssl: bool = Field(default=False, exclude=True)
 
     # Principal authentication. A deployment selects OIDC bearer validation or
     # a trusted identity-proxy adapter.
@@ -106,7 +110,7 @@ class Settings(SettingsBase, BaseSettings):
     auth_oidc_required_scopes: Annotated[list[str], NoDecode] = Field(default_factory=lambda: ["aio.api"], exclude=True)
     auth_oidc_roles_claim: str = Field(default="roles", exclude=True)
     auth_dev_issuer: str = Field(default="http://127.0.0.1:8765", exclude=True)
-    auth_dev_web_redirect_uri: str = Field(default="http://localhost:8501/oauth2callback", exclude=True)
+    auth_dev_web_redirect_uri: str = Field(default="", exclude=True)
     auth_dev_listen_host: str = Field(default="127.0.0.1", exclude=True)
     auth_dev_listen_port: int = Field(default=8765, ge=1, le=65535, exclude=True)
     auth_dev_admin_password: Optional[SecretStr] = Field(default=None, exclude=True)
@@ -136,6 +140,17 @@ class Settings(SettingsBase, BaseSettings):
                 return json.loads(value)
             return [item.strip() for item in value.split(",") if item.strip()]
         return value
+
+    @model_validator(mode="after")
+    def _derive_auth_dev_web_redirect_uri(self) -> "Settings":
+        """Keep the built-in provider callback aligned with the Client listener."""
+        if not self.auth_dev_web_redirect_uri.strip():
+            self.auth_dev_web_redirect_uri = client_web_redirect_uri(
+                address=self.client_address,
+                port=self.client_port,
+                ssl=self.client_ssl,
+            )
+        return self
 
     # OCI CLI — applied to DEFAULT profile at startup (excluded from serialization)
     oci_cli_auth: Optional[str] = Field(default=None, exclude=True)

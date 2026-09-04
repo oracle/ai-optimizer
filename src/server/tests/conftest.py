@@ -24,7 +24,8 @@ from docker.errors import DockerException
 from httpx import ASGITransport, AsyncClient
 
 import server.app.core.environ  # noqa: F401  # side-effect: populates env defaults
-from server.tests.constants import TEST_OLLAMA_MODEL_ID, TEST_OPENAI_EMBED_ID, TEST_OPENAI_MODEL_ID
+from server.tests.constants import TEST_DB_DSN, TEST_OLLAMA_MODEL_ID, TEST_OPENAI_EMBED_ID, TEST_OPENAI_MODEL_ID
+from server.tests.constants import test_auth as auth_creds
 
 logging.getLogger("LiteLLM").setLevel(logging.WARNING)
 
@@ -134,9 +135,9 @@ def owned_client_key(owned_session_key):
 # ---------------------------------------------------------------------------
 
 TEST_DB_CONFIG = {
-    "db_username": "PYTEST",
-    "db_password": "OrA_41_3xPl0d3r",
-    "db_dsn": "//localhost:1525/FREEPDB1",
+    "db_username": auth_creds["oracle"]["username"],
+    "db_password": auth_creds["oracle"]["password"],
+    "db_dsn": TEST_DB_DSN,
 }
 
 ORACLE_IMAGE = "container-registry.oracle.com/database/free:latest-lite"
@@ -298,7 +299,7 @@ async def app_client():
 
 def make_test_database_config(**overrides) -> DatabaseConfig:
     """Standard TEST database config used across API tests."""
-    defaults = {"alias": "TEST", "username": "testuser", "password": "secret", "wallet_password": "wallet_secret"}
+    defaults = {"alias": "TEST", **auth_creds["generic"]}
     return DatabaseConfig(**{**defaults, **overrides})
 
 
@@ -318,7 +319,7 @@ def make_test_oci_profile(**overrides) -> OciProfileConfig:
 
 def make_test_model_config(**overrides) -> ModelConfig:
     """Standard test model config used across API tests."""
-    defaults = {"id": "test-model", "type": "ll", "provider": "openai", "api_key": "sk-secret-key"}
+    defaults = {"id": "test-model", "type": "ll", "provider": "openai", **auth_creds["model"]}
     # ``usable`` is a computed field derived from ``status``; translate the legacy shortcut.
     if "usable" in overrides:
         overrides.setdefault("status", "available" if overrides.pop("usable") else "unreachable")
@@ -420,7 +421,7 @@ async def embed_core_pool(oracle_db_container, monkeypatch):
 # ---------------------------------------------------------------------------
 
 MOCK_SERVER_URL = "http://127.0.0.1:8001/mcp"
-MOCK_API_KEY = "test-key"
+MOCK_API_KEY = auth_creds["api"]["api_key"]
 
 SAMPLE_CLIENT_SETTINGS = {
     "ll_model": {

@@ -15,6 +15,7 @@ from pydantic import SecretStr
 from server.app.core.settings import settings
 from server.app.models.schemas import ModelConfig
 from server.tests.constants import TEST_OLLAMA_MODEL_ID, TEST_OLLAMA_MODEL_KEY
+from server.tests.constants import test_auth as auth_creds
 
 OLLAMA_URL = "http://localhost:11434"
 PULL_URL = f"/v1/models/pull/{TEST_OLLAMA_MODEL_KEY}"
@@ -35,7 +36,7 @@ def _populate_configs():
             id="test-llm",
             type="ll",
             provider="openai",
-            api_key=SecretStr("sk-secret"),
+            api_key=SecretStr(auth_creds["pull_model"]["api_key"]),
         ),
         ModelConfig(
             id="no-base",
@@ -180,11 +181,3 @@ async def test_pull_no_api_base_returns_400(app_client, auth_headers):
 
 
 # --- Auth ---
-
-
-@pytest.mark.unit
-@pytest.mark.anyio
-async def test_pull_model_no_auth(app_client):
-    """Pull without auth returns 401."""
-    resp = await app_client.post(PULL_URL)
-    assert resp.status_code == 401

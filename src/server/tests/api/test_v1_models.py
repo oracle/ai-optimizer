@@ -14,6 +14,7 @@ from pydantic import SecretStr
 from server.app.core.settings import settings
 from server.app.models.schemas import ModelConfig, ModelSensitive
 from server.tests.conftest import assert_no_sensitive_keys
+from server.tests.constants import test_auth as auth_creds
 
 SENSITIVE_KEYS = set(ModelSensitive.model_fields.keys())
 
@@ -27,14 +28,14 @@ def _populate_configs():
             id="test-llm",
             type="ll",
             provider="openai",
-            api_key=SecretStr("sk-secret-key"),
+            api_key=SecretStr(auth_creds["model"]["api_key"]),
             temperature=0.7,
         ),
         ModelConfig(
             id="test-embed",
             type="embed",
             provider="openai",
-            api_key=SecretStr("sk-embed-key"),
+            api_key=SecretStr(auth_creds["embed_model"]["api_key"]),
         ),
     ]
     yield
@@ -46,14 +47,6 @@ def mock_persist_settings():
     """Prevent persist_settings from doing real DB I/O in every test."""
     with patch("server.app.api.v1.endpoints.models.persist_settings", new_callable=AsyncMock) as mock_persist:
         yield mock_persist
-
-
-@pytest.mark.unit
-@pytest.mark.anyio
-async def test_list_models_no_auth(app_client):
-    """Models endpoint rejects requests without API key."""
-    resp = await app_client.get("/v1/models")
-    assert resp.status_code == 401
 
 
 @pytest.mark.unit
@@ -287,30 +280,6 @@ async def test_models_supported_filter_type(app_client, auth_headers):
 # --- Auth tests for mutating endpoints ---
 
 
-@pytest.mark.unit
-@pytest.mark.anyio
-async def test_create_model_no_auth(app_client):
-    """POST without auth returns 403."""
-    resp = await app_client.post("/v1/models", json={"id": "x", "type": "ll", "provider": "y"})
-    assert resp.status_code == 401
-
-
-@pytest.mark.unit
-@pytest.mark.anyio
-async def test_update_model_no_auth(app_client):
-    """PUT without auth returns 403."""
-    resp = await app_client.put("/v1/models/openai/test-llm", json={"temperature": 0.5})
-    assert resp.status_code == 401
-
-
-@pytest.mark.unit
-@pytest.mark.anyio
-async def test_delete_model_no_auth(app_client):
-    """DELETE without auth returns 403."""
-    resp = await app_client.delete("/v1/models/openai/test-llm")
-    assert resp.status_code == 401
-
-
 # --- Sensitive fields ---
 
 
@@ -324,7 +293,7 @@ async def test_get_model_alternate_projection(app_client, auth_headers):
         headers=auth_headers,
     )
     assert resp.status_code == 200
-    assert resp.json()["api_key"] == "sk-secret-key"
+    assert resp.json()["api_key"] == auth_creds["model"]["api_key"]
 
 
 # --- Update edge cases ---

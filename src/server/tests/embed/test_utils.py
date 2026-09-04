@@ -14,6 +14,7 @@ import pytest
 
 from server.app.database.schemas import DatabaseConfig
 from server.app.embed.utils import _run_sql_query_sync, run_sql_query
+from server.tests.constants import test_auth as auth_creds
 
 MODULE = "server.app.embed.utils"
 
@@ -21,7 +22,7 @@ pytestmark = [pytest.mark.unit]
 
 
 def _make_db_config(**overrides) -> DatabaseConfig:
-    defaults = {"alias": "TEST", "username": "test", "password": "test", "dsn": "test:1521/pdb"}
+    defaults = {"alias": "TEST", **auth_creds["simple"], "dsn": "test:1521/pdb"}
     return DatabaseConfig(**{**defaults, **overrides})
 
 
@@ -226,9 +227,7 @@ class TestRunSqlQuerySync:
             mock_create.return_value.__enter__ = MagicMock(return_value=mock_conn)
             mock_create.return_value.__exit__ = MagicMock(return_value=False)
 
-            result = _run_sql_query_sync(
-                _make_db_config(), "SELECT my_pkg.do_dml() FROM dual", str(tmp_path)
-            )
+            result = _run_sql_query_sync(_make_db_config(), "SELECT my_pkg.do_dml() FROM dual", str(tmp_path))
 
         assert result == ""
 

@@ -16,6 +16,7 @@ from server.app.embed.schemas import VectorStoreConfig
 from server.app.models.schemas import ModelIdentity
 from server.app.oci.schemas import OciProfileConfig
 from server.tests.constants import TEST_OPENAI_EMBED_ID
+from server.tests.constants import test_auth as auth_creds
 
 MODULE = "server.app.embed.refresh"
 
@@ -23,7 +24,7 @@ pytestmark = [pytest.mark.unit, pytest.mark.anyio]
 
 
 def _make_db_config(**overrides) -> DatabaseConfig:
-    defaults = {"alias": "TEST", "username": "test", "password": "test", "dsn": "test:1521/pdb"}
+    defaults = {"alias": "TEST", **auth_creds["simple"], "dsn": "test:1521/pdb"}
     return DatabaseConfig(**{**defaults, **overrides})
 
 

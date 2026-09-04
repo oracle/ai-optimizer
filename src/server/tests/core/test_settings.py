@@ -25,6 +25,7 @@ from server.app.core.settings import (
 )
 from server.app.models.schemas import ModelConfig
 from server.tests.constants import TEST_OPENAI_MODEL_ID
+from server.tests.constants import test_auth as auth_creds
 
 pytestmark = [pytest.mark.unit]
 
@@ -118,6 +119,25 @@ def test_deployment_mode_is_not_a_supported_setting():
     assert "deployment_mode" not in Settings.model_fields
 
 
+def test_development_oidc_callback_defaults_to_browser_facing_client_listener(monkeypatch):
+    """The provider callback follows the client listener when no URI is configured."""
+    for name in (
+        "AIO_AUTH_DEV_WEB_REDIRECT_URI",
+        "AIO_AUTH_MODE",
+        "AIO_DB_USERNAME",
+        "AIO_DB_PASSWORD",
+        "AIO_DB_DSN",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("AIO_CLIENT_ADDRESS", "0.0.0.0")
+    monkeypatch.setenv("AIO_CLIENT_PORT", "8502")
+    monkeypatch.setenv("AIO_CLIENT_SSL", "true")
+
+    configured = _SettingsWithoutEnvFile()
+
+    assert configured.auth_dev_web_redirect_uri == "https://localhost:8502/oauth2callback"
+
+
 def test_development_is_not_a_supported_authentication_mode():
     with pytest.raises(ValueError, match="Input should be"):
         Settings.model_validate({"auth_mode": "development"})
@@ -128,8 +148,8 @@ def test_database_defaults_to_development_authentication(monkeypatch):
     monkeypatch.delenv("AIO_AUTH_MODE", raising=False)
 
     configured = _SettingsWithoutEnvFile(
-        db_username="optimizer",
-        db_password=SecretStr("database-password"),
+        db_username=auth_creds["settings_database"]["db_username"],
+        db_password=SecretStr(auth_creds["settings_database"]["db_password"]),
         db_dsn="db.example.test/service",
     )
 
@@ -150,8 +170,8 @@ def test_explicit_authentication_mode_overrides_database_default():
     """External identity adapters retain explicit operator selection."""
     configured = _SettingsWithoutEnvFile(
         auth_mode="proxy",
-        db_username="optimizer",
-        db_password=SecretStr("database-password"),
+        db_username=auth_creds["settings_database"]["db_username"],
+        db_password=SecretStr(auth_creds["settings_database"]["db_password"]),
         db_dsn="db.example.test/service",
     )
 
@@ -160,7 +180,7 @@ def test_explicit_authentication_mode_overrides_database_default():
 
 def test_client_password_is_rejected(monkeypatch):
     """The retired client password must not silently appear to protect shared state."""
-    monkeypatch.setenv("AIO_CLIENT_PASSWORD", "retired-password")
+    monkeypatch.setenv("AIO_CLIENT_PASSWORD", auth_creds["retired_client"]["password"])
 
     with pytest.raises(ValueError, match="AIO_AUTH_DEV_ADMIN_PASSWORD"):
         _SettingsWithoutEnvFile()
