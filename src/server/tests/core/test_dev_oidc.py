@@ -261,6 +261,21 @@ async def test_development_provider_registers_the_configured_streamlit_callback(
     assert code
 
 
+def test_development_provider_default_callback_uses_client_listener(monkeypatch):
+    """Direct provider construction uses the shared browser-facing callback default."""
+    monkeypatch.setenv("AIO_CLIENT_ADDRESS", "0.0.0.0")
+    monkeypatch.setenv("AIO_CLIENT_PORT", "8502")
+    monkeypatch.setenv("AIO_CLIENT_SSL", "true")
+
+    service = DevelopmentOidcService(
+        issuer="https://auth.example.test",
+        store=InMemoryDevelopmentOidcStore(),
+        seed_passwords=SEED_PASSWORDS,
+    )
+
+    assert service.web_client_redirect_uri == "https://localhost:8502/oauth2callback"
+
+
 async def test_authorization_codes_are_single_use_and_bound_to_pkce():
     service = DevelopmentOidcService(
         issuer="http://127.0.0.1:8765",

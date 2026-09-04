@@ -25,6 +25,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from jwt.algorithms import RSAAlgorithm
 
+from net_addressing import client_web_redirect_uri
 from server.app.database.config import get_core_pool
 from server.app.database.sql import execute_sql
 
@@ -32,7 +33,7 @@ DEFAULT_ISSUER = "http://127.0.0.1:8765"
 API_AUDIENCE = "aio-api"
 WEB_CLIENT_ID = "platform-web-client"
 MCP_CLIENT_METADATA_PATH = "/mcp-client-metadata.json"
-DEFAULT_WEB_CLIENT_REDIRECT_URI = "http://localhost:8501/oauth2callback"
+DEFAULT_WEB_CLIENT_REDIRECT_URI = client_web_redirect_uri()
 STANDARD_SCOPES = frozenset({"openid", "profile", "email"})
 API_SCOPES = frozenset({"aio.api", "aio.admin"})
 SUPPORTED_SCOPES = STANDARD_SCOPES | API_SCOPES
@@ -442,13 +443,13 @@ class DevelopmentOidcService:
         store: DevelopmentOidcStore,
         seed_passwords: dict[str, str],
         web_client_secret: str = "",
-        web_client_redirect_uri: str = DEFAULT_WEB_CLIENT_REDIRECT_URI,
+        web_client_redirect_uri: str | None = None,
     ):
         self.issuer = issuer.rstrip("/")
         self.store = store
         self.seed_passwords = seed_passwords
         self.web_client_secret = web_client_secret
-        self.web_client_redirect_uri = web_client_redirect_uri
+        self.web_client_redirect_uri = web_client_redirect_uri or client_web_redirect_uri()
 
     @property
     def mcp_client_id(self) -> str:

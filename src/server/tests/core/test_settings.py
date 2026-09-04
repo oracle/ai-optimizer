@@ -118,6 +118,25 @@ def test_deployment_mode_is_not_a_supported_setting():
     assert "deployment_mode" not in Settings.model_fields
 
 
+def test_development_oidc_callback_defaults_to_browser_facing_client_listener(monkeypatch):
+    """The provider callback follows the client listener when no URI is configured."""
+    for name in (
+        "AIO_AUTH_DEV_WEB_REDIRECT_URI",
+        "AIO_AUTH_MODE",
+        "AIO_DB_USERNAME",
+        "AIO_DB_PASSWORD",
+        "AIO_DB_DSN",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("AIO_CLIENT_ADDRESS", "0.0.0.0")
+    monkeypatch.setenv("AIO_CLIENT_PORT", "8502")
+    monkeypatch.setenv("AIO_CLIENT_SSL", "true")
+
+    configured = _SettingsWithoutEnvFile()
+
+    assert configured.auth_dev_web_redirect_uri == "https://localhost:8502/oauth2callback"
+
+
 def test_development_is_not_a_supported_authentication_mode():
     with pytest.raises(ValueError, match="Input should be"):
         Settings.model_validate({"auth_mode": "development"})

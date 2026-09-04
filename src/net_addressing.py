@@ -39,6 +39,33 @@ LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"}) | WILDCARD_HOSTS
 K8S_SERVICE_SUFFIXES = (".svc", ".svc.cluster.local")
 
 
+def parse_bool(value: bool | str | None) -> bool:
+    """Parse boolean environment values using Pydantic-compatible true spellings."""
+    if isinstance(value, bool):
+        return value
+    return isinstance(value, str) and value.casefold() in {"1", "true", "t", "yes", "y", "on"}
+
+
+def client_web_redirect_uri(
+    address: str | None = None,
+    port: int | str | None = None,
+    ssl: bool | str | None = None,
+) -> str:
+    """Build a browser-facing OIDC callback from the Client listener settings."""
+    configured_address = address if address is not None else os.environ.get("AIO_CLIENT_ADDRESS")
+    listener_address = (configured_address or "localhost").strip()
+    normalized_address = listener_address.strip("[]").casefold()
+    browser_host = "localhost" if normalized_address in LOCAL_HOSTS else listener_address
+    if ":" in browser_host and not browser_host.startswith("["):
+        browser_host = f"[{browser_host}]"
+
+    configured_port = port if port is not None else os.environ.get("AIO_CLIENT_PORT", "8501")
+    client_port = str(configured_port)
+    configured_ssl = ssl if ssl is not None else os.environ.get("AIO_CLIENT_SSL", "false")
+    scheme = "https" if parse_bool(configured_ssl) else "http"
+    return f"{scheme}://{browser_host}:{client_port}/oauth2callback"
+
+
 def connect_host(host: str | None) -> str:
     """Return a dialable host for a bind/configured host.
 
