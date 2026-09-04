@@ -163,13 +163,13 @@ def _prepare_development_oidc_streamlit_config(script_dir: Path, cookie_secret: 
             return
         generated_config = (
             auth_config.get("client_id") == "platform-web-client"
-            and auth_config.get("server_metadata_url") == f"{issuer}/.well-known/openid-configuration"
             and auth_config.get("client_kwargs") == {"scope": "openid profile email aio.api"}
             and auth_config.get("expose_tokens") == "access"
             and (
                 _GENERATED_OIDC_CONFIG_MARKER in contents
                 or (
-                    isinstance(auth_config.get("redirect_uri"), str)
+                    auth_config.get("server_metadata_url") == f"{issuer}/.well-known/openid-configuration"
+                    and isinstance(auth_config.get("redirect_uri"), str)
                     and auth_config.get("redirect_uri") in {redirect_uri, _LEGACY_DEFAULT_WEB_REDIRECT_URI}
                 )
             )
