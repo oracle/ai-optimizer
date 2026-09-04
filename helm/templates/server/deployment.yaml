@@ -25,6 +25,9 @@ spec:
       annotations:
         checksum/server-env-secret: {{ include "ai-optimizer.server.envSecretChecksum" . | quote }}
         checksum/server-dev-oidc-password-secret: {{ include "ai-optimizer.server.devOidc.passwordSecretChecksum" . | quote }}
+        {{- if and .Values.server.devOidc.enabled .Values.client.enabled }}
+        checksum/client-oidc-secret: {{ include "ai-optimizer.client.oidcSecretChecksum" . | quote }}
+        {{- end }}
         {{- with .Values.server.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}

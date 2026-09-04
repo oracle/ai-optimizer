@@ -24,7 +24,7 @@ spec:
         checksum/client-cookie-secret: {{ include "ai-optimizer.client.cookieSecretChecksum" . | quote }}
         checksum/client-env-secret: {{ include "ai-optimizer.client.envSecretChecksum" . | quote }}
         {{- if .Values.server.devOidc.enabled }}
-        checksum/client-oidc-secret: {{ printf "%s:%s" .Values.server.devOidc.issuer .Values.server.devOidc.webClientRedirectUri | sha256sum | quote }}
+        checksum/client-oidc-secret: {{ include "ai-optimizer.client.oidcSecretChecksum" . | quote }}
         {{- end }}
         {{- with .Values.client.podAnnotations }}
         {{- toYaml . | nindent 8 }}

@@ -145,6 +145,94 @@ def test_development_oidc_renders_streamlit_access_token_configuration():
     assert any(mount["mountPath"] == "/app/.streamlit/secrets.toml" for mount in mounts)
 
 
+def test_development_oidc_requires_retrievable_admin_password():
+    result = _render(
+        "client.cookieSecret=cccccccccccccccccccccccccccccccc",
+        "server.devOidc.enabled=true",
+        "server.devOidc.issuer=https://auth.example.test",
+        "server.devOidc.webClientRedirectUri=https://optimizer.example.test/oauth2callback",
+    )
+
+    assert result.returncode != 0
+    assert "server.devOidc.passwordSecretName" in result.stderr
+    assert "server.devOidc.passwordAutoGenerate" in result.stderr
+    assert "server.envSecret" in result.stderr
+
+
+@pytest.mark.parametrize(
+    "env_secret_source",
+    [
+        "server.envSecret.content.AIO_AUTH_DEV_ADMIN_PASSWORD=operator-password",
+        "server.envSecret.secretName=operator-server-env",
+    ],
+)
+def test_development_oidc_accepts_admin_password_from_server_env_secret(env_secret_source):
+    result = _render(
+        "client.cookieSecret=cccccccccccccccccccccccccccccccc",
+        "server.devOidc.enabled=true",
+        "server.devOidc.issuer=https://auth.example.test",
+        "server.devOidc.webClientRedirectUri=https://optimizer.example.test/oauth2callback",
+        env_secret_source,
+    )
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_development_oidc_accepts_numeric_zero_from_server_env_secret():
+    result = _render(
+        "client.cookieSecret=cccccccccccccccccccccccccccccccc",
+        "server.devOidc.enabled=true",
+        "server.devOidc.issuer=https://auth.example.test",
+        "server.devOidc.webClientRedirectUri=https://optimizer.example.test/oauth2callback",
+        "server.envSecret.content.AIO_AUTH_DEV_ADMIN_PASSWORD=0",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "AIO_AUTH_DEV_ADMIN_PASSWORD=0" in _server_env_content(_docs(result.stdout))
+
+
+def test_development_oidc_checksum_rolls_client_and_server_deployments():
+    common = (
+        "client.cookieSecret=cccccccccccccccccccccccccccccccc",
+        "server.devOidc.enabled=true",
+        "server.devOidc.webClientRedirectUri=https://optimizer.example.test/oauth2callback",
+        "server.devOidc.passwordAutoGenerate=true",
+    )
+    first = _render(*common, "server.devOidc.issuer=https://auth-one.example.test")
+    second = _render(*common, "server.devOidc.issuer=https://auth-two.example.test")
+
+    assert first.returncode == 0, first.stderr
+    assert second.returncode == 0, second.stderr
+    first_docs = _docs(first.stdout)
+    second_docs = _docs(second.stdout)
+    first_client_annotations = _client_deployment(first_docs)["spec"]["template"]["metadata"]["annotations"]
+    second_client_annotations = _client_deployment(second_docs)["spec"]["template"]["metadata"]["annotations"]
+    first_server_annotations = _server_deployment(first_docs)["spec"]["template"]["metadata"]["annotations"]
+    second_server_annotations = _server_deployment(second_docs)["spec"]["template"]["metadata"]["annotations"]
+
+    client_key = "checksum/client-oidc-secret"
+    assert first_client_annotations.get(client_key)
+    assert second_client_annotations.get(client_key)
+    assert first_client_annotations[client_key] != second_client_annotations[client_key]
+    assert first_server_annotations.get(client_key)
+    assert second_server_annotations.get(client_key)
+    assert first_server_annotations[client_key] != second_server_annotations[client_key]
+
+
+def test_development_oidc_checksum_hashes_desired_secret_data():
+    helpers_tpl = (CHART_DIR / "templates" / "_helpers.tpl").read_text()
+    oidc_helper = helpers_tpl.split('define "ai-optimizer.client.oidcSecretChecksum"', 1)[1].split(
+        'define "ai-optimizer.server.devOidc.passwordSecretChecksum"', 1
+    )[0]
+    oidc_secret_tpl = (CHART_DIR / "templates" / "client" / "oidc-secret.yaml").read_text()
+
+    assert 'lookup "v1" "Secret" .Release.Namespace $name' in oidc_helper
+    assert 'include "ai-optimizer.client.oidcSecretsToml"' in oidc_helper
+    assert 'include "ai-optimizer.client.oidcSecretsToml"' in oidc_secret_tpl
+    assert "toJson $desiredData" in oidc_helper
+    assert "toJson $found.data" not in oidc_helper
+
+
 @pytest.mark.parametrize(
     "legacy_value",
     [
