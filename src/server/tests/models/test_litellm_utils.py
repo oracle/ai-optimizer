@@ -14,6 +14,7 @@ from pydantic import SecretStr
 from server.app.core.settings import settings
 from server.app.models.litellm_embeddings import LiteLLMEmbeddings
 from server.app.models.litellm_utils import (
+    OCI_LITELLM_EXTRA_HEADERS,
     SMALL_MODEL_THRESHOLD_B,
     LiteLlmModelSpec,
     extract_parameter_count,
@@ -347,6 +348,7 @@ def test_to_litellm_kwargs_oci_with_signer():
     assert result["oci_region"] == "us-chicago-1"
     assert result["oci_compartment_id"] == "ocid1.compartment.oc1..test"
     assert result["oci_signer"] is mock_signer
+    assert result["extra_headers"] == OCI_LITELLM_EXTRA_HEADERS
 
 
 @pytest.mark.unit
@@ -369,6 +371,7 @@ def test_to_litellm_kwargs_oci_without_signer():
     assert result["oci_fingerprint"] == "aa:bb:cc"
     assert result["oci_key_file"] == "/path/to/key"
     assert "oci_signer" not in result
+    assert result["extra_headers"] == OCI_LITELLM_EXTRA_HEADERS
 
 
 @pytest.mark.unit

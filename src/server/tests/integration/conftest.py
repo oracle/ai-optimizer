@@ -26,6 +26,7 @@ import pytest
 from dotenv import load_dotenv
 
 from server.app.core.settings import settings
+from server.app.models.litellm_utils import OCI_LITELLM_EXTRA_HEADERS
 
 _REPO_ROOT = Path(__file__).resolve().parents[4]
 _ENV_PYTEST = _REPO_ROOT / ".env.pytest"
@@ -158,4 +159,5 @@ def live_oci_litellm_kwargs() -> dict:
         "oci_key_file": config["key_file"],
         "oci_compartment_id": os.environ["AIO_GENAI_COMPARTMENT_ID"],
         "oci_region": os.environ["AIO_GENAI_REGION"],
+        "extra_headers": dict(OCI_LITELLM_EXTRA_HEADERS),
     }

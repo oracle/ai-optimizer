@@ -8,7 +8,7 @@ LiteLLM configuration builder and embedding client factory.
 
 import logging
 import re
-from typing import Optional
+from typing import Final, Optional
 from urllib.parse import urlparse
 
 import litellm
@@ -24,6 +24,8 @@ from server.app.oci.schemas import OciProfileConfig
 from server.app.runtime.ollama_tools import normalize_ollama_provider
 
 LOGGER = logging.getLogger(__name__)
+
+OCI_LITELLM_EXTRA_HEADERS: Final[dict[str, str]] = {"Accept-Encoding": "identity"}
 
 #############################################################################
 # CPU OPTIMIZATION
@@ -122,11 +124,13 @@ def build_oci_litellm_params(oci_profile: OciProfileConfig) -> dict:
     either an ``oci_signer`` (for instance principal / workload identity) or
     individual API-key fields (``oci_tenancy``, ``oci_user``, ``oci_fingerprint``,
     and either ``oci_key`` for inline PEM content or ``oci_key_file`` for a
-    filesystem path). LiteLLM's OCI provider accepts either key form.
+    filesystem path), plus headers that keep OCI SSE responses uncompressed.
+    LiteLLM's OCI provider accepts either key form.
     """
     params: dict[str, object] = {
         "oci_region": oci_profile.genai_region,
         "oci_compartment_id": oci_profile.genai_compartment_id,
+        "extra_headers": dict(OCI_LITELLM_EXTRA_HEADERS),
     }
     signer = get_signer(oci_profile)
     if signer:
@@ -324,9 +328,7 @@ def get_client_embed(
     provider = embedding_model.provider or ""
     model_id = embedding_model.id or ""
 
-    model_cfg = find_model(
-        provider, model_id, model_type="embed", enabled_only=False, case_insensitive=True
-    )
+    model_cfg = find_model(provider, model_id, model_type="embed", enabled_only=False, case_insensitive=True)
     if model_cfg is None:
         raise ValueError(f"Embedding model {provider}/{model_id} not found in model_configs")
     # Lowercase because find_model matched case-insensitively but stored casing
