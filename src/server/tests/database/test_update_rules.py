@@ -16,7 +16,6 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi import HTTPException
-from pydantic import SecretStr
 
 from server.app.api.v1.endpoints.databases import update_database
 from server.app.core.settings import settings
@@ -24,6 +23,7 @@ from server.app.database.config import close_pool
 from server.app.database.registry import test_connection as _test_connection
 from server.app.database.schemas import DatabaseConfig, DatabaseUpdate
 from server.tests.conftest import make_core_db_config
+from server.tests.constants import test_auth as auth_creds
 
 pytestmark = [pytest.mark.db, pytest.mark.integration]
 
@@ -47,7 +47,9 @@ async def usable_config(configure_db_env):
 @pytest.fixture
 async def unusable_config():
     """A non-CORE DatabaseConfig that has never been connected."""
-    cfg = DatabaseConfig(alias="INTEG", username="BADUSER", password=SecretStr("badpw"), dsn="//localhost:9999/NOPE")
+    cfg = DatabaseConfig.model_validate(
+        {"alias": "INTEG", **auth_creds["database_invalid"], "dsn": "//localhost:9999/NOPE"}
+    )
     original = settings.database_configs[:]
     settings.database_configs.append(cfg)
     yield cfg

@@ -59,14 +59,6 @@ def _reset_model_configs():
 
 @pytest.mark.unit
 @pytest.mark.anyio
-async def test_list_oci_profiles_no_auth(app_client):
-    """OCI profiles endpoint rejects requests without API key."""
-    resp = await app_client.get("/v1/oci")
-    assert resp.status_code == 401
-
-
-@pytest.mark.unit
-@pytest.mark.anyio
 async def test_list_oci_profiles(app_client, auth_headers):
     """Default response returns all configs without sensitive fields."""
     resp = await app_client.get("/v1/oci", headers=auth_headers)

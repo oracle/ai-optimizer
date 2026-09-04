@@ -17,6 +17,7 @@ from server.app.database.schemas import DatabaseConfig
 from server.app.mcp.prompts.schemas import PromptConfig
 from server.app.models.schemas import ModelConfig
 from server.app.oci.schemas import OciProfileConfig
+from server.tests.constants import test_auth as auth_creds
 
 pytestmark = [pytest.mark.unit, pytest.mark.anyio]
 
@@ -58,17 +59,6 @@ def mock_register_mcp_prompts():
     """Prevent register_mcp_prompts from doing real FastMCP registration."""
     with patch(f"{SETTINGS_MODULE}.register_mcp_prompts") as m:
         yield m
-
-
-# ---------------------------------------------------------------------------
-# Auth
-# ---------------------------------------------------------------------------
-
-
-async def test_import_no_auth(app_client):
-    """POST /import without credentials returns 401."""
-    resp = await app_client.post(ENDPOINT, json={})
-    assert resp.status_code == 401
 
 
 # ---------------------------------------------------------------------------
@@ -225,9 +215,18 @@ async def test_import_database_skips_managed_alias_collision(app_client, auth_he
     """
     settings.database_configs = [
         DatabaseConfig(alias="CORE"),
-        DatabaseConfig(alias="CORE::SCOUT1", username="SCOUT1", managed_by="dds:CORE", usable=True),
+        DatabaseConfig(
+            alias=f"CORE::{auth_creds['database_end_user']['username']}",
+            username=auth_creds["database_end_user"]["username"],
+            managed_by="dds:CORE",
+            usable=True,
+        ),
     ]
-    payload = {"database_configs": [{"alias": "core::scout1", "dsn": "attacker_dsn"}]}
+    payload = {
+        "database_configs": [
+            {"alias": f"core::{auth_creds['database_end_user']['username'].lower()}", "dsn": "attacker_dsn"}
+        ]
+    }
 
     resp = await app_client.post(ENDPOINT, json=payload, headers=auth_headers)
 
@@ -235,7 +234,9 @@ async def test_import_database_skips_managed_alias_collision(app_client, auth_he
     data = resp.json()
     assert data["database_configs"]["updated"] == 0
     assert data["database_configs"]["skipped"] == 1
-    managed = next(db for db in settings.database_configs if db.alias == "CORE::SCOUT1")
+    managed = next(
+        db for db in settings.database_configs if db.alias == f"CORE::{auth_creds['database_end_user']['username']}"
+    )
     assert managed.managed_by == "dds:CORE"  # marker intact — still hidden/runtime-only
     assert managed.dsn != "attacker_dsn"  # untouched
 

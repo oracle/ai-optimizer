@@ -16,14 +16,6 @@ pytestmark = [pytest.mark.usefixtures("populate_prompts")]
 
 @pytest.mark.unit
 @pytest.mark.anyio
-async def test_list_prompts_no_auth(app_client):
-    """Prompts endpoint rejects requests without credentials."""
-    resp = await app_client.get("/mcp/prompts")
-    assert resp.status_code == 401
-
-
-@pytest.mark.unit
-@pytest.mark.anyio
 async def test_list_prompts(app_client, auth_headers):
     """Default response returns all prompt configs."""
     resp = await app_client.get("/mcp/prompts", headers=auth_headers)

@@ -18,6 +18,7 @@ from server.app.models.schemas import (
     ModelUpdate,
 )
 from server.tests.constants import TEST_OPENAI_MODEL_ID
+from server.tests.constants import test_auth as auth_creds
 
 # ---------------------------------------------------------------------------
 # ModelSensitive
@@ -29,8 +30,8 @@ class TestModelSensitive:
 
     def test_api_key_set(self):
         """api_key stores the provided value."""
-        m = ModelSensitive(api_key=SecretStr("sk-test"))
-        assert reveal(m.api_key) == "sk-test"
+        m = ModelSensitive(api_key=SecretStr(auth_creds["generic_model"]["api_key"]))
+        assert reveal(m.api_key) == auth_creds["generic_model"]["api_key"]
 
 
 # ---------------------------------------------------------------------------
@@ -154,27 +155,27 @@ class TestSensitiveFieldRendering:
     """``api_key`` renders masked by default."""
 
     def test_repr_is_masked(self):
-        cfg = ModelConfig(type="ll", api_key=SecretStr("sk-secret"))
+        cfg = ModelConfig(type="ll", api_key=SecretStr(auth_creds["masked_model"]["api_key"]))
         assert "sk-secret" not in repr(cfg)
 
     def test_default_dump_is_masked(self):
-        cfg = ModelConfig(type="ll", api_key=SecretStr("sk-secret"))
+        cfg = ModelConfig(type="ll", api_key=SecretStr(auth_creds["masked_model"]["api_key"]))
         dumped = cfg.model_dump()
         assert dumped["api_key"] == "**********"
 
     def test_default_dump_json_is_masked(self):
-        cfg = ModelConfig(type="ll", api_key=SecretStr("sk-secret"))
+        cfg = ModelConfig(type="ll", api_key=SecretStr(auth_creds["masked_model"]["api_key"]))
         dumped_json = cfg.model_dump_json()
         assert "sk-secret" not in dumped_json
         assert "**********" in dumped_json
 
     def test_reveal_context_unmasks(self):
-        cfg = ModelConfig(type="ll", api_key=SecretStr("sk-secret"))
+        cfg = ModelConfig(type="ll", api_key=SecretStr(auth_creds["masked_model"]["api_key"]))
         dumped = cfg.model_dump(context={REVEAL_KEY: True})
         assert dumped["api_key"] == "sk-secret"
 
     def test_reveal_context_unmasks_json(self):
-        cfg = ModelConfig(type="ll", api_key=SecretStr("sk-secret"))
+        cfg = ModelConfig(type="ll", api_key=SecretStr(auth_creds["masked_model"]["api_key"]))
         dumped_json = cfg.model_dump_json(context={REVEAL_KEY: True})
         assert "sk-secret" in dumped_json
         assert "**********" not in dumped_json

@@ -12,7 +12,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import oracledb
 import pytest
-from pydantic import SecretStr
 
 from server.app.database.config import close_pool
 from server.app.database.objects import SCHEMA_DDL
@@ -27,6 +26,7 @@ from server.app.database.schemas import DatabaseConfig
 from server.app.database.sql import execute_sql
 from server.app.embed.schemas import VectorStoreConfig
 from server.tests.conftest import make_core_db_config
+from server.tests.constants import test_auth as auth_creds
 
 # ---------------------------------------------------------------------------
 # Unit tests (no database required)
@@ -110,7 +110,7 @@ def _make_mock_pool(conn):
 @pytest.mark.unit
 async def test_test_connection_success():
     """test_connection sets usable=True, stores pool, and discovers vector stores."""
-    cfg = DatabaseConfig(alias="TEST", username="u", password=SecretStr("p"), dsn="d")
+    cfg = DatabaseConfig(alias="TEST", **auth_creds["short"], dsn="d")
     mock_conn = AsyncMock()
     mock_pool = _make_mock_pool(mock_conn)
 
@@ -128,7 +128,7 @@ async def test_test_connection_success():
 @pytest.mark.unit
 async def test_test_connection_failure():
     """test_connection sets usable=False, closes pool, and re-raises on failure."""
-    cfg = DatabaseConfig(alias="TEST", username="u", password=SecretStr("p"), dsn="d")
+    cfg = DatabaseConfig(alias="TEST", **auth_creds["short"], dsn="d")
 
     with (
         patch(
@@ -149,7 +149,7 @@ async def test_test_connection_failure():
 @pytest.mark.unit
 async def test_init_core_database_success():
     """init_core_database runs DDL and returns the pool on success."""
-    cfg = DatabaseConfig(alias="CORE", username="u", password=SecretStr("p"), dsn="d")
+    cfg = DatabaseConfig(alias="CORE", **auth_creds["short"], dsn="d")
     mock_conn = AsyncMock()
     mock_pool = _make_mock_pool(mock_conn)
 
@@ -174,7 +174,7 @@ async def test_init_core_database_success():
 @pytest.mark.unit
 async def test_init_core_database_failure():
     """init_core_database cleans up pool, sets usable=False, and re-raises."""
-    cfg = DatabaseConfig(alias="CORE", username="u", password=SecretStr("p"), dsn="d")
+    cfg = DatabaseConfig(alias="CORE", **auth_creds["short"], dsn="d")
 
     with (
         patch(
@@ -196,7 +196,7 @@ async def test_init_core_database_failure():
 @pytest.mark.unit
 async def test_refresh_db_vector_stores_replaces_cached_list():
     """Refresh overwrites the cached vector_stores list with live discovery output."""
-    cfg = DatabaseConfig(alias="TEST", username="u", password=SecretStr("p"), dsn="d")
+    cfg = DatabaseConfig(alias="TEST", **auth_creds["short"], dsn="d")
     cfg.usable = True
     cfg.pool = _make_mock_pool(AsyncMock())
     cfg.vector_stores = [VectorStoreConfig(vector_store="STALE")]
@@ -214,7 +214,7 @@ async def test_refresh_db_vector_stores_replaces_cached_list():
 @pytest.mark.unit
 async def test_refresh_db_vector_stores_clears_when_table_dropped():
     """An out-of-band DROP TABLE shows up as an empty discovery result."""
-    cfg = DatabaseConfig(alias="TEST", username="u", password=SecretStr("p"), dsn="d")
+    cfg = DatabaseConfig(alias="TEST", **auth_creds["short"], dsn="d")
     cfg.usable = True
     cfg.pool = _make_mock_pool(AsyncMock())
     cfg.vector_stores = [VectorStoreConfig(vector_store="GONE")]
@@ -232,7 +232,7 @@ async def test_refresh_db_vector_stores_clears_when_table_dropped():
 @pytest.mark.unit
 async def test_refresh_db_vector_stores_noop_without_pool():
     """No discovery is attempted when the config has no live pool."""
-    cfg = DatabaseConfig(alias="TEST", username="u", password=SecretStr("p"), dsn="d")
+    cfg = DatabaseConfig(alias="TEST", **auth_creds["short"], dsn="d")
     cached = [VectorStoreConfig(vector_store="CACHED")]
     cfg.vector_stores = cached
 
@@ -250,7 +250,7 @@ async def test_refresh_db_vector_stores_discards_result_after_pool_rotation():
     Simulates a ``PUT /v1/databases/{alias}`` rotating the pool while a
     ``GET /v1/settings`` refresh against the old pool is still mid-flight.
     """
-    cfg = DatabaseConfig(alias="TEST", username="u", password=SecretStr("p"), dsn="d")
+    cfg = DatabaseConfig(alias="TEST", **auth_creds["short"], dsn="d")
     cfg.usable = True
     cfg.pool = _make_mock_pool(AsyncMock())
 
@@ -279,7 +279,7 @@ async def test_refresh_db_vector_stores_discards_result_after_pool_rotation():
 @pytest.mark.unit
 async def test_refresh_db_vector_stores_bounded_when_discovery_hangs():
     """A hung discovery must not block beyond the requested timeout."""
-    cfg = DatabaseConfig(alias="TEST", username="u", password=SecretStr("p"), dsn="d")
+    cfg = DatabaseConfig(alias="TEST", **auth_creds["short"], dsn="d")
     cfg.usable = True
     cfg.pool = _make_mock_pool(AsyncMock())
     cached = [VectorStoreConfig(vector_store="CACHED")]
@@ -303,7 +303,7 @@ async def test_refresh_db_vector_stores_bounded_when_discovery_hangs():
 @pytest.mark.unit
 async def test_refresh_db_vector_stores_keeps_cache_on_db_error():
     """A discovery failure logs and leaves the cached list untouched."""
-    cfg = DatabaseConfig(alias="TEST", username="u", password=SecretStr("p"), dsn="d")
+    cfg = DatabaseConfig(alias="TEST", **auth_creds["short"], dsn="d")
     cfg.usable = True
     cfg.pool = _make_mock_pool(AsyncMock())
     cached = [VectorStoreConfig(vector_store="CACHED")]

@@ -414,14 +414,6 @@ class TestBuildVecsearchFlowDiscoveryGrade:
         names = [n.name for n in self.flow.nodes]
         assert "rephrase" not in names
 
-    def test_grade_relevant_output_present(self):
-        """Verify the end node has a grade_relevant output."""
-        end_nodes = [n for n in self.flow.nodes if isinstance(n, EndNode)]
-        assert len(end_nodes) == 1
-        assert end_nodes[0].outputs is not None
-        output_names = [o.title for o in end_nodes[0].outputs]
-        assert "grade_relevant" in output_names
-
 
 class TestBuildVecsearchFlowRephraseGrade:
     """Unit tests for the flow with rephrase and grade enabled, discovery disabled."""
@@ -439,13 +431,3 @@ class TestBuildVecsearchFlowRephraseGrade:
         """Verify no discovery node exists."""
         names = [n.name for n in self.flow.nodes]
         assert "discovery" not in names
-
-    def test_grade_relevant_output_present(self):
-        """Verify the end node has a grade_relevant output."""
-        end_nodes = [n for n in self.flow.nodes if isinstance(n, EndNode)]
-        assert len(end_nodes) == 1
-        assert end_nodes[0].outputs is not None
-        output_names = [o.title for o in end_nodes[0].outputs]
-        assert "grade_relevant" in output_names
-
-

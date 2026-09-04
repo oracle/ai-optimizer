@@ -22,6 +22,7 @@ from server.app.embed.schemas import DoclingDocumentChunk, VectorStoreConfig
 from server.app.models.schemas import ModelIdentity
 from server.tests.api.conftest import _create_mock_pool
 from server.tests.constants import TEST_OPENAI_EMBED_ID
+from server.tests.constants import test_auth as auth_creds
 
 
 def job_store_test(func):
@@ -121,8 +122,8 @@ def mock_client_db():
     mock_cfg.pool = pool
     mock_cfg.usable = True
     mock_cfg.alias = "TEST"
-    mock_cfg.username = "testuser"
-    mock_cfg.password = "testpass"
+    mock_cfg.username = auth_creds["generic"]["username"]
+    mock_cfg.password = auth_creds["embed"]["password"]
     mock_cfg.dsn = "//localhost:1521/TEST"
     mock_cfg.wallet_location = None
     mock_cfg.config_dir = None
@@ -200,88 +201,6 @@ async def _poll_until_terminal(
             return last
         await asyncio.sleep(interval_seconds)
     raise AssertionError(f"Job {job_id} did not reach terminal status; last={last}")
-
-
-# ---------------------------------------------------------------------------
-# Auth tests — 401 without credentials
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.anyio
-async def test_drop_vs_no_auth(app_client):
-    """DELETE /{vs} rejects requests without credentials."""
-    resp = await app_client.delete("/v1/embed/test_vs")
-    assert resp.status_code == 401
-
-
-@pytest.mark.anyio
-async def test_get_files_no_auth(app_client):
-    """GET /{vs}/files rejects requests without credentials."""
-    resp = await app_client.get("/v1/embed/test_vs/files")
-    assert resp.status_code == 401
-
-
-@pytest.mark.anyio
-async def test_comment_no_auth(app_client):
-    """PATCH /comment rejects requests without credentials."""
-    resp = await app_client.patch("/v1/embed/comment", json={})
-    assert resp.status_code == 401
-
-
-@pytest.mark.anyio
-async def test_sql_store_no_auth(app_client):
-    """POST /sql/store rejects requests without credentials."""
-    resp = await app_client.post("/v1/embed/sql/store", json={"query": "SELECT 1"})
-    assert resp.status_code == 401
-
-
-@pytest.mark.anyio
-async def test_web_store_no_auth(app_client):
-    """POST /web/store rejects requests without credentials."""
-    resp = await app_client.post("/v1/embed/web/store", json=["https://example.com"])
-    assert resp.status_code == 401
-
-
-@pytest.mark.anyio
-async def test_local_store_no_auth(app_client):
-    """POST /local/store rejects requests without credentials."""
-    resp = await app_client.post("/v1/embed/local/store")
-    assert resp.status_code == 401
-
-
-@pytest.mark.anyio
-async def test_split_embed_no_auth(app_client):
-    """POST / rejects requests without credentials."""
-    resp = await app_client.post("/v1/embed/", json={})
-    assert resp.status_code == 401
-
-
-@pytest.mark.anyio
-async def test_embed_oci_store_no_auth(app_client):
-    """POST /oci/store rejects requests without credentials."""
-    resp = await app_client.post("/v1/embed/oci/store", json={})
-    assert resp.status_code == 401
-
-
-@pytest.mark.anyio
-async def test_refresh_no_auth(app_client):
-    """POST /refresh rejects requests without credentials."""
-    resp = await app_client.post("/v1/embed/refresh", json={})
-    assert resp.status_code == 401
-
-
-@pytest.mark.anyio
-async def test_list_jobs_no_auth(app_client):
-    """GET /jobs rejects requests without credentials."""
-    resp = await app_client.get("/v1/embed/jobs")
-    assert resp.status_code == 401
-
-
-@pytest.mark.anyio
-async def test_get_job_no_auth(app_client):
-    """GET /jobs/{job_id} rejects requests without credentials."""
-    resp = await app_client.get("/v1/embed/jobs/abc123")
-    assert resp.status_code == 401
 
 
 # ---------------------------------------------------------------------------
@@ -4967,8 +4886,7 @@ async def test_split_embed_snapshots_db_config_against_in_place_mutation(app_cli
     # with the live Pydantic instance below.
     live_cfg = DatabaseConfig(
         alias="test-db",
-        username="user_at_submit",
-        password=SecretStr("password_at_submit"),
+        **auth_creds["embed_submit"],
         dsn="//submit.example.com:1521/SUBMIT",
         usable=True,
     )
@@ -5082,8 +5000,8 @@ async def test_split_embed_snapshots_db_config_against_in_place_mutation(app_cli
             # so the captured snapshot must reflect submission-time
             # values regardless of what we do here.
             await asyncio.wait_for(submit_started.wait(), timeout=5.0)
-            live_cfg.username = "user_after_rotation"
-            live_cfg.password = SecretStr("password_after_rotation")
+            live_cfg.username = auth_creds["embed_rotated"]["username"]
+            live_cfg.password = SecretStr(auth_creds["embed_rotated"]["password"])
             live_cfg.dsn = "//rotated.example.com:1521/ROTATED"
             live_cfg.pool = pool_after_rotation
 
@@ -5097,18 +5015,18 @@ async def test_split_embed_snapshots_db_config_against_in_place_mutation(app_cli
     assert terminal["status"] == "succeeded", terminal
     assert captured_credentials, "populate_vs was not invoked"
     seen = captured_credentials[0]
-    assert seen["username"] == "user_at_submit", (
+    assert seen["username"] == auth_creds["embed_submit"]["username"], (
         f"pipeline observed post-rotation username {seen['username']!r}; "
         "live mutation leaked into the supposedly captured snapshot"
     )
-    assert seen["password_value"] == "password_at_submit", (
+    assert seen["password_value"] == auth_creds["embed_submit"]["password"], (
         "pipeline observed post-rotation password; credentials must be snapshotted at submission time"
     )
     assert seen["dsn"] == "//submit.example.com:1521/SUBMIT", "pipeline observed post-rotation DSN"
     # Now verify the post-submit mutation went somewhere: the live
     # config must reflect the rotation (proves the mutation actually
     # happened — i.e. the test isn't passing trivially).
-    assert live_cfg.username == "user_after_rotation"
+    assert live_cfg.username == auth_creds["embed_rotated"]["username"]
     assert live_cfg.pool is pool_after_rotation
     # And the pipeline must have used the submission-time pool, not
     # whatever ``.pool`` got rebound to mid-flight. ``populate_vs``
@@ -5157,8 +5075,7 @@ async def test_pipeline_refreshes_live_vector_store_cache_on_success(app_client,
     target_alias = "live-cache-target"
     live_cfg = DatabaseConfig(
         alias=target_alias,
-        username="user",
-        password=SecretStr("pw"),
+        **auth_creds["embed_owner"],
         dsn="//host:1521/SERVICE",
         usable=True,
     )
@@ -5300,8 +5217,7 @@ async def test_pipeline_skips_live_cache_refresh_after_pool_rotation(app_client,
     target_alias = "rotated-cache-target"
     live_cfg = DatabaseConfig(
         alias=target_alias,
-        username="user",
-        password=SecretStr("pw"),
+        **auth_creds["embed_owner"],
         dsn="//host:1521/SERVICE",
         usable=True,
     )

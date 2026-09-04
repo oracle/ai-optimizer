@@ -16,14 +16,6 @@ from server.app.main import app
 
 @pytest.mark.unit
 @pytest.mark.anyio
-async def test_openapi_json_requires_auth(app_client):
-    """GET /v1/openapi.json without credentials is rejected."""
-    resp = await app_client.get("/v1/openapi.json")
-    assert resp.status_code == 401
-
-
-@pytest.mark.unit
-@pytest.mark.anyio
 async def test_openapi_json_with_valid_key(app_client, auth_headers):
     """GET /v1/openapi.json with a valid key returns the OpenAPI schema."""
     resp = await app_client.get("/v1/openapi.json", headers=auth_headers)

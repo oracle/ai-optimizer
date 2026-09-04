@@ -24,6 +24,7 @@ from server.app.database.config import (
 )
 from server.app.database.schemas import DatabaseConfig
 from server.tests.conftest import make_core_db_config
+from server.tests.constants import test_auth as auth_creds
 
 # ---------------------------------------------------------------------------
 # Unit tests (no database required)
@@ -33,14 +34,14 @@ from server.tests.conftest import make_core_db_config
 @pytest.mark.unit
 async def test_has_required_credentials_true():
     """has_required_credentials() returns True when all fields are set."""
-    cfg = DatabaseConfig(alias="TEST", username="u", password=SecretStr("p"), dsn="dsn")
+    cfg = DatabaseConfig(alias="TEST", **auth_creds["short"], dsn="dsn")
     assert has_required_credentials(cfg)
 
 
 @pytest.mark.unit
 async def test_has_required_credentials_false():
     """has_required_credentials() returns False when password is missing."""
-    cfg = DatabaseConfig(alias="TEST", username="u", password=None, dsn="dsn")
+    cfg = DatabaseConfig(alias="TEST", username=auth_creds["short"]["username"], password=None, dsn="dsn")
     assert has_required_credentials(cfg) is False
 
 
@@ -88,7 +89,7 @@ async def test_close_pool_swallows_error():
 @pytest.mark.unit
 async def test_create_pool_missing_credentials():
     """create_pool() raises ValueError and sets usable=False when credentials missing."""
-    cfg = DatabaseConfig(alias="TEST", username="u", password=None, dsn="dsn")
+    cfg = DatabaseConfig(alias="TEST", username=auth_creds["short"]["username"], password=None, dsn="dsn")
     with pytest.raises(ValueError, match="missing credentials"):
         await create_pool(cfg)
     assert cfg.usable is False
@@ -99,7 +100,7 @@ async def test_create_pool_strips_retry_params():
     """create_pool() strips retry_count and retry_delay from the DSN."""
     dsn = "(description=(retry_count=20)(retry_delay=3)(address=(host=db.example.com)(port=1521)))"
     expected_dsn = "(description=(address=(host=db.example.com)(port=1521)))"
-    cfg = DatabaseConfig(alias="TEST", username="u", password=SecretStr("p"), dsn=dsn)
+    cfg = DatabaseConfig(alias="TEST", **auth_creds["short"], dsn=dsn)
 
     with patch("server.app.database.config.oracledb.create_pool_async", new_callable=MagicMock) as mock_create:
         await create_pool(cfg)
@@ -112,7 +113,7 @@ async def test_create_pool_strips_retry_params():
 async def test_create_pool_strips_retry_params_case_insensitive():
     """Retry param stripping is case-insensitive."""
     dsn = "(description=(RETRY_COUNT=5)(Retry_Delay=10)(address=(host=h)))"
-    cfg = DatabaseConfig(alias="TEST", username="u", password=SecretStr("p"), dsn=dsn)
+    cfg = DatabaseConfig(alias="TEST", **auth_creds["short"], dsn=dsn)
 
     with patch("server.app.database.config.oracledb.create_pool_async", new_callable=MagicMock) as mock_create:
         await create_pool(cfg)
@@ -137,7 +138,7 @@ async def test_create_pool_preserves_retry_like_text_inside_quoted_values():
         # Literal "(retry_count=5)" inside a quoted value — must survive.
         '(SECURITY=(MY_WALLET_DIRECTORY="/opt/wallets/(retry_count=5)/prod")))'
     )
-    cfg = DatabaseConfig(alias="TEST", username="u", password=SecretStr("p"), dsn=dsn)
+    cfg = DatabaseConfig(alias="TEST", **auth_creds["short"], dsn=dsn)
 
     with patch("server.app.database.config.oracledb.create_pool_async", new_callable=MagicMock) as mock_create:
         await create_pool(cfg)
@@ -156,7 +157,7 @@ async def test_create_pool_strips_outside_quoted_value_even_with_retry_like_cont
         "(ADDRESS=(HOST=h))"
         '(SECURITY=(MY_WALLET_DIRECTORY="/keep/(retry_count=5)/me")))'
     )
-    cfg = DatabaseConfig(alias="TEST", username="u", password=SecretStr("p"), dsn=dsn)
+    cfg = DatabaseConfig(alias="TEST", **auth_creds["short"], dsn=dsn)
 
     with patch("server.app.database.config.oracledb.create_pool_async", new_callable=MagicMock) as mock_create:
         await create_pool(cfg)
@@ -188,7 +189,7 @@ async def test_create_pool_strips_retry_params_from_docstyle_multiline_descripto
         "  (CONNECT_DATA = (SERVICE_NAME = svc))\n"
         ")"
     )
-    cfg = DatabaseConfig(alias="TEST", username="u", password=SecretStr("p"), dsn=docstyle_dsn)
+    cfg = DatabaseConfig(alias="TEST", **auth_creds["short"], dsn=docstyle_dsn)
 
     with patch("server.app.database.config.oracledb.create_pool_async", new_callable=MagicMock) as mock_create:
         await create_pool(cfg)
@@ -206,7 +207,12 @@ async def test_create_pool_strips_retry_params_from_docstyle_multiline_descripto
 @pytest.mark.unit
 async def test_create_pool_tcp_connect_timeout_from_config():
     """create_pool() passes tcp_connect_timeout from config."""
-    cfg = DatabaseConfig(alias="TEST", username="u", password=SecretStr("p"), dsn="dsn", tcp_connect_timeout=10)
+    cfg = DatabaseConfig(
+        alias="TEST",
+        **auth_creds["short"],
+        dsn="dsn",
+        tcp_connect_timeout=10,
+    )
 
     with patch("server.app.database.config.oracledb.create_pool_async", new_callable=MagicMock) as mock_create:
         await create_pool(cfg)
@@ -219,7 +225,10 @@ async def test_create_pool_tcp_connect_timeout_from_config():
 async def test_create_pool_wallet_defaults():
     """Wallet password without location defaults location to config_dir."""
     cfg = DatabaseConfig(
-        alias="TEST", username="u", password=SecretStr("p"), dsn="dsn", wallet_password=SecretStr("secret")
+        alias="TEST",
+        **auth_creds["short"],
+        dsn="dsn",
+        wallet_password=SecretStr(auth_creds["generic"]["password"]),
     )
     cfg.config_dir = "/opt/wallet"
 
@@ -228,7 +237,7 @@ async def test_create_pool_wallet_defaults():
 
     mock_create.assert_called_once()
     _, kwargs = mock_create.call_args
-    assert kwargs["wallet_password"] == "secret"
+    assert kwargs["wallet_password"] == auth_creds["generic"]["password"]
     assert kwargs["wallet_location"] == "/opt/wallet"
 
 
@@ -237,10 +246,9 @@ async def test_create_pool_wallet_location_preserved():
     """Provided wallet_location is passed through unchanged."""
     cfg = DatabaseConfig(
         alias="TEST",
-        username="u",
-        password=SecretStr("p"),
+        **auth_creds["short"],
         dsn="dsn",
-        wallet_password=SecretStr("secret"),
+        wallet_password=SecretStr(auth_creds["generic"]["password"]),
         wallet_location="/wallet/path",
     )
 
@@ -260,7 +268,7 @@ async def test_create_pool_wallet_location_preserved():
 @pytest.mark.unit
 async def test_create_sync_connection_missing_credentials():
     """create_sync_connection() raises ValueError when credentials missing."""
-    cfg = DatabaseConfig(alias="TEST", username="u", password=None, dsn="dsn")
+    cfg = DatabaseConfig(alias="TEST", username=auth_creds["short"]["username"], password=None, dsn="dsn")
     with pytest.raises(ValueError, match="missing credentials"):
         create_sync_connection(cfg)
 
@@ -268,14 +276,14 @@ async def test_create_sync_connection_missing_credentials():
 @pytest.mark.unit
 async def test_create_sync_connection_basic():
     """create_sync_connection() passes credentials to oracledb.connect."""
-    cfg = DatabaseConfig(alias="TEST", username="u", password=SecretStr("p"), dsn="dsn")
+    cfg = DatabaseConfig(alias="TEST", **auth_creds["short"], dsn="dsn")
 
     with patch("server.app.database.config.oracledb.connect") as mock_connect:
         create_sync_connection(cfg)
 
     _, kwargs = mock_connect.call_args
-    assert kwargs["user"] == "u"
-    assert kwargs["password"] == "p"
+    assert kwargs["user"] == auth_creds["short"]["username"]
+    assert kwargs["password"] == auth_creds["short"]["password"]
     assert kwargs["dsn"] == "dsn"
 
 
@@ -284,7 +292,7 @@ async def test_create_sync_connection_strips_retry():
     """create_sync_connection() strips retry_count and retry_delay from DSN."""
     dsn = "(description=(retry_count=20)(retry_delay=3)(address=(host=h)(port=1521)))"
     expected = "(description=(address=(host=h)(port=1521)))"
-    cfg = DatabaseConfig(alias="TEST", username="u", password=SecretStr("p"), dsn=dsn)
+    cfg = DatabaseConfig(alias="TEST", **auth_creds["short"], dsn=dsn)
 
     with patch("server.app.database.config.oracledb.connect") as mock_connect:
         create_sync_connection(cfg)
@@ -297,7 +305,10 @@ async def test_create_sync_connection_strips_retry():
 async def test_create_sync_connection_wallet_defaults():
     """Wallet password without location defaults to config_dir."""
     cfg = DatabaseConfig(
-        alias="TEST", username="u", password=SecretStr("p"), dsn="dsn", wallet_password=SecretStr("secret")
+        alias="TEST",
+        **auth_creds["short"],
+        dsn="dsn",
+        wallet_password=SecretStr(auth_creds["generic"]["password"]),
     )
     cfg.config_dir = "/opt/wallet"
 
@@ -305,7 +316,7 @@ async def test_create_sync_connection_wallet_defaults():
         create_sync_connection(cfg)
 
     _, kwargs = mock_connect.call_args
-    assert kwargs["wallet_password"] == "secret"
+    assert kwargs["wallet_password"] == auth_creds["generic"]["password"]
     assert kwargs["wallet_location"] == "/opt/wallet"
 
 

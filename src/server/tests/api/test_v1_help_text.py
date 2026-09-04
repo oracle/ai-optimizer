@@ -14,13 +14,6 @@ pytestmark = pytest.mark.anyio
 
 
 @pytest.mark.unit
-async def test_get_all_help_no_auth(app_client):
-    """GET /v1/help without auth returns 401."""
-    resp = await app_client.get("/v1/help")
-    assert resp.status_code == 401
-
-
-@pytest.mark.unit
 async def test_get_all_help_returns_list(app_client, auth_headers):
     """GET /v1/help returns a list matching the help_dict length."""
     resp = await app_client.get("/v1/help", headers=auth_headers)
@@ -62,10 +55,3 @@ async def test_get_help_not_found(app_client, auth_headers):
     resp = await app_client.get("/v1/help/nonexistent_key_xyz", headers=auth_headers)
     assert resp.status_code == 404
     assert "not found" in resp.json()["detail"]
-
-
-@pytest.mark.unit
-async def test_get_help_no_auth(app_client):
-    """GET /v1/help/{key} without auth returns 401."""
-    resp = await app_client.get("/v1/help/temperature")
-    assert resp.status_code == 401

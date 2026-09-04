@@ -9,6 +9,7 @@ import pytest
 
 from dev_auth_credentials import BootstrapCredential
 from server.app import dev_oidc_admin
+from server.tests.constants import test_auth as auth_creds
 
 
 def test_show_bootstrap_password_prints_locally_generated_credential(monkeypatch, capsys):
@@ -17,13 +18,18 @@ def test_show_bootstrap_password_prints_locally_generated_credential(monkeypatch
         dev_oidc_admin,
         "read_bootstrap_credential",
         lambda _path: BootstrapCredential(
-            username="admin@example.test", password="generated-password", web_client_secret="web-client-secret"
+            **{
+                **auth_creds["oidc_admin"],
+                **auth_creds["oidc_bootstrap"],
+                **auth_creds["oidc_client"],
+            }
         ),
     )
 
     dev_oidc_admin._show_bootstrap_password()
 
-    assert capsys.readouterr().out == "Username: admin@example.test\nPassword: generated-password\n"
+    bootstrap_creds = {**auth_creds["oidc_admin"], **auth_creds["oidc_bootstrap"]}
+    assert capsys.readouterr().out == "".join(f"{field.title()}: {value}\n" for field, value in bootstrap_creds.items())
 
 
 def test_show_bootstrap_password_fails_when_no_local_credential_exists(monkeypatch):

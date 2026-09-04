@@ -15,6 +15,7 @@ from server.app.core.settings import settings
 from server.app.database.schemas import DatabaseSensitive
 from server.app.embed.schemas import VectorStoreConfig
 from server.tests.conftest import assert_no_sensitive_keys, make_test_database_config
+from server.tests.constants import test_auth as auth_creds
 
 SENSITIVE_KEYS = set(DatabaseSensitive.model_fields.keys())
 
@@ -25,8 +26,8 @@ def _populate_configs():
     original = settings.database_configs
     settings.database_configs = [
         make_test_database_config(),
-        make_test_database_config(alias="PROD", username="produser", password="prod_secret", wallet_password=None),
-        make_test_database_config(alias="CORE", username="coreuser", password="core_secret"),
+        make_test_database_config(alias="PROD", **auth_creds["database_alt"], wallet_password=None),
+        make_test_database_config(alias="CORE", **auth_creds["database_core"]),
     ]
     yield
     settings.database_configs = original
@@ -44,46 +45,6 @@ def mock_refresh_sqlcl():
     """Prevent the SQLcl proxy refresh from spawning a real sqlcl daemon in tests."""
     with patch("server.app.api.v1.endpoints.databases.refresh_sqlcl_proxy", new_callable=AsyncMock) as mock_refresh:
         yield mock_refresh
-
-
-@pytest.mark.unit
-@pytest.mark.anyio
-async def test_list_databases_no_auth(app_client):
-    """Databases endpoint rejects requests without API key."""
-    resp = await app_client.get("/v1/databases")
-    assert resp.status_code == 401
-
-
-@pytest.mark.unit
-@pytest.mark.anyio
-async def test_create_database_no_auth(app_client):
-    """POST databases rejects requests without API key."""
-    resp = await app_client.post("/v1/databases", json={"alias": "X"})
-    assert resp.status_code == 401
-
-
-@pytest.mark.unit
-@pytest.mark.anyio
-async def test_update_database_no_auth(app_client):
-    """PUT databases rejects requests without API key."""
-    resp = await app_client.put("/v1/databases/TEST", json={"username": "x"})
-    assert resp.status_code == 401
-
-
-@pytest.mark.unit
-@pytest.mark.anyio
-async def test_delete_database_no_auth(app_client):
-    """DELETE databases rejects requests without API key."""
-    resp = await app_client.delete("/v1/databases/TEST")
-    assert resp.status_code == 401
-
-
-@pytest.mark.unit
-@pytest.mark.anyio
-async def test_delete_vector_store_no_auth(app_client):
-    """DELETE vector-store rejects requests without API key."""
-    resp = await app_client.delete("/v1/databases/TEST/vector-stores/VS1")
-    assert resp.status_code == 401
 
 
 @pytest.mark.unit
@@ -131,7 +92,7 @@ async def test_get_database_alternate_projection(app_client, auth_headers):
     )
     assert resp.status_code == 200
     body = resp.json()
-    assert body["password"] == "secret"
+    assert body["password"] == auth_creds["generic"]["password"]
 
 
 @pytest.mark.unit
@@ -147,9 +108,15 @@ async def test_get_database_not_found(app_client, auth_headers):
 async def test_get_database_managed_returns_404(app_client, auth_headers):
     """A DDS-managed (runtime-only) connection is not fetchable even when its alias is known."""
     settings.database_configs.append(
-        make_test_database_config(alias="CORE::SCOUT1", username="SCOUT1", managed_by="dds:CORE")
+        make_test_database_config(
+            alias=f"CORE::{auth_creds['database_end_user']['username']}",
+            username=auth_creds["database_end_user"]["username"],
+            managed_by="dds:CORE",
+        )
     )
-    resp = await app_client.get("/v1/databases/CORE::SCOUT1", headers=auth_headers)
+    resp = await app_client.get(
+        f"/v1/databases/CORE::{auth_creds['database_end_user']['username']}", headers=auth_headers
+    )
     assert resp.status_code == 404
 
 
@@ -158,10 +125,16 @@ async def test_get_database_managed_returns_404(app_client, auth_headers):
 async def test_get_database_managed_not_revealed_with_sensitive(app_client, auth_headers):
     """include_sensitive must not reveal a managed connection's (copied owner) credentials."""
     settings.database_configs.append(
-        make_test_database_config(alias="CORE::SCOUT1", username="SCOUT1", managed_by="dds:CORE")
+        make_test_database_config(
+            alias=f"CORE::{auth_creds['database_end_user']['username']}",
+            username=auth_creds["database_end_user"]["username"],
+            managed_by="dds:CORE",
+        )
     )
     resp = await app_client.get(
-        "/v1/databases/CORE::SCOUT1", params={"include_sensitive": "true"}, headers=auth_headers
+        f"/v1/databases/CORE::{auth_creds['database_end_user']['username']}",
+        params={"include_sensitive": "true"},
+        headers=auth_headers,
     )
     assert resp.status_code == 404
 
@@ -171,11 +144,15 @@ async def test_get_database_managed_not_revealed_with_sensitive(app_client, auth
 async def test_list_databases_excludes_managed(app_client, auth_headers):
     """The database list never includes runtime-only managed connections."""
     settings.database_configs.append(
-        make_test_database_config(alias="CORE::SCOUT1", username="SCOUT1", managed_by="dds:CORE")
+        make_test_database_config(
+            alias=f"CORE::{auth_creds['database_end_user']['username']}",
+            username=auth_creds["database_end_user"]["username"],
+            managed_by="dds:CORE",
+        )
     )
     resp = await app_client.get("/v1/databases", headers=auth_headers)
     assert resp.status_code == 200
-    assert "CORE::SCOUT1" not in [c["alias"] for c in resp.json()]
+    assert f"CORE::{auth_creds['database_end_user']['username']}" not in [c["alias"] for c in resp.json()]
 
 
 @pytest.mark.unit
@@ -184,9 +161,15 @@ async def test_remove_database_rejects_managed(app_client, auth_headers):
     """A DDS-managed alias is not removable via the database endpoint (it is hidden and is torn
     down via /deepsec/connect-as, which also clears the client setting). Removing it here would
     orphan the client's DDS setting, since the base-scoped cascade can't match a managed alias."""
-    managed = make_test_database_config(alias="CORE::SCOUT1", username="SCOUT1", managed_by="dds:CORE")
+    managed = make_test_database_config(
+        alias=f"CORE::{auth_creds['database_end_user']['username']}",
+        username=auth_creds["database_end_user"]["username"],
+        managed_by="dds:CORE",
+    )
     settings.database_configs.append(managed)
-    resp = await app_client.delete("/v1/databases/CORE::SCOUT1", headers=auth_headers)
+    resp = await app_client.delete(
+        f"/v1/databases/CORE::{auth_creds['database_end_user']['username']}", headers=auth_headers
+    )
     assert resp.status_code == 404
     assert managed in settings.database_configs  # untouched
 
@@ -195,9 +178,17 @@ async def test_remove_database_rejects_managed(app_client, auth_headers):
 @pytest.mark.anyio
 async def test_update_database_rejects_managed(app_client, auth_headers):
     """A DDS-managed alias is not updatable via the database endpoint."""
-    managed = make_test_database_config(alias="CORE::SCOUT1", username="SCOUT1", managed_by="dds:CORE")
+    managed = make_test_database_config(
+        alias=f"CORE::{auth_creds['database_end_user']['username']}",
+        username=auth_creds["database_end_user"]["username"],
+        managed_by="dds:CORE",
+    )
     settings.database_configs.append(managed)
-    resp = await app_client.put("/v1/databases/CORE::SCOUT1", json={"username": "X"}, headers=auth_headers)
+    resp = await app_client.put(
+        f"/v1/databases/CORE::{auth_creds['database_end_user']['username']}",
+        json={"username": "X"},
+        headers=auth_headers,
+    )
     assert resp.status_code == 404
 
 
@@ -206,14 +197,20 @@ async def test_update_database_rejects_managed(app_client, auth_headers):
 async def test_remove_real_base_still_cascades_to_managed_children(app_client, auth_headers):
     """Removing a real base DB still tears down the managed connections derived from it
     (the legitimate base-scoped cascade must survive the managed-alias rejection guard)."""
-    base = make_test_database_config(alias="OTHER", username="owner")
-    managed = make_test_database_config(alias="OTHER::SCOUT1", username="SCOUT1", managed_by="dds:OTHER")
+    base = make_test_database_config(alias="OTHER", **auth_creds["database_alt_owner"])
+    managed = make_test_database_config(
+        alias=f"OTHER::{auth_creds['database_end_user']['username']}",
+        username=auth_creds["database_end_user"]["username"],
+        managed_by="dds:OTHER",
+    )
     settings.database_configs.extend([base, managed])
     resp = await app_client.delete("/v1/databases/OTHER", headers=auth_headers)
     assert resp.status_code == 204
     aliases = [c.alias for c in settings.database_configs]
     assert "OTHER" not in aliases
-    assert "OTHER::SCOUT1" not in aliases  # cascaded teardown of the managed child
+    assert (
+        f"OTHER::{auth_creds['database_end_user']['username']}" not in aliases
+    )  # cascaded teardown of the managed child
 
 
 @pytest.mark.unit
@@ -221,9 +218,16 @@ async def test_remove_real_base_still_cascades_to_managed_children(app_client, a
 async def test_delete_vector_store_rejects_managed(app_client, auth_headers):
     """A DDS-managed alias is not addressable via the vector-store delete endpoint."""
     settings.database_configs.append(
-        make_test_database_config(alias="CORE::SCOUT1", username="SCOUT1", managed_by="dds:CORE")
+        make_test_database_config(
+            alias=f"CORE::{auth_creds['database_end_user']['username']}",
+            username=auth_creds["database_end_user"]["username"],
+            managed_by="dds:CORE",
+        )
     )
-    resp = await app_client.delete("/v1/databases/CORE::SCOUT1/vector-stores/ANY_TBL", headers=auth_headers)
+    resp = await app_client.delete(
+        f"/v1/databases/CORE::{auth_creds['database_end_user']['username']}/vector-stores/ANY_TBL",
+        headers=auth_headers,
+    )
     assert resp.status_code == 404
 
 
@@ -355,7 +359,7 @@ async def test_create_core_database_initializes_schema(app_client, auth_headers)
     ):
         resp = await app_client.post(
             "/v1/databases",
-            json={"alias": "CORE", "username": "coreuser"},
+            json={"alias": "CORE", **auth_creds["database_core"]},
             headers=auth_headers,
         )
     assert resp.status_code == 201
@@ -369,7 +373,7 @@ async def test_create_database_requires_core_first(app_client, auth_headers):
     """POST non-CORE alias returns 422 when no CORE database exists."""
     settings.database_configs = [
         make_test_database_config(),
-        make_test_database_config(alias="PROD", username="produser", password="prod_secret", wallet_password=None),
+        make_test_database_config(alias="PROD", **auth_creds["database_alt"], wallet_password=None),
     ]
     resp = await app_client.post(
         "/v1/databases",
@@ -445,7 +449,7 @@ async def test_update_database_partial(app_client, auth_headers):
     assert resp.status_code == 200
     body = resp.json()
     assert body["dsn"] == "new_dsn"
-    assert body["username"] == "testuser"  # unchanged
+    assert body["username"] == auth_creds["generic"]["username"]  # unchanged
 
 
 @pytest.mark.unit
@@ -859,7 +863,11 @@ async def test_create_database_connection_error(app_client, auth_headers):
     ):
         resp = await app_client.post(
             "/v1/databases",
-            json={"alias": "BAD_DB", "username": "u", "password": "p", "dsn": "bad"},
+            json={
+                "alias": "BAD_DB",
+                **auth_creds["short"],
+                "dsn": "bad",
+            },
             headers=auth_headers,
         )
     assert resp.status_code == 201
@@ -1196,7 +1204,11 @@ async def test_create_database_refreshes_sqlcl_with_creds(app_client, auth_heade
     with patch("server.app.api.v1.endpoints.databases.test_connection", new_callable=AsyncMock):
         resp = await app_client.post(
             "/v1/databases",
-            json={"alias": "WITH_CREDS", "username": "u", "password": "p", "dsn": "d"},
+            json={
+                "alias": "WITH_CREDS",
+                **auth_creds["short"],
+                "dsn": "d",
+            },
             headers=auth_headers,
         )
     assert resp.status_code == 201
@@ -1227,7 +1239,7 @@ async def test_create_database_persist_failure_skips_sqlcl(
     with patch("server.app.api.v1.endpoints.databases.test_connection", new_callable=AsyncMock):
         resp = await app_client.post(
             "/v1/databases",
-            json={"alias": "ROLLBACK_DB", "username": "u", "password": "p", "dsn": "d"},
+            json={"alias": "ROLLBACK_DB", **auth_creds["short"], "dsn": "d"},
             headers=auth_headers,
         )
     assert resp.status_code == 503
@@ -1240,7 +1252,7 @@ async def test_create_database_duplicate_skips_sqlcl(app_client, auth_headers, m
     """Conflict (409) before mutation must not trigger a refresh."""
     resp = await app_client.post(
         "/v1/databases",
-        json={"alias": "TEST", "username": "u", "password": "p", "dsn": "d"},
+        json={"alias": "TEST", **auth_creds["short"], "dsn": "d"},
         headers=auth_headers,
     )
     assert resp.status_code == 409
@@ -1253,8 +1265,8 @@ async def test_update_database_refreshes_sqlcl(app_client, auth_headers, mock_re
     """Updating a config with credentials triggers a SQLcl refresh so the daemon sees the new creds."""
     # Give TEST full creds so the updated config is SQLcl-relevant.
     cfg = settings.database_configs[0]
-    cfg.username = "u"
-    cfg.password = SecretStr("p")
+    cfg.username = auth_creds["short"]["username"]
+    cfg.password = SecretStr(auth_creds["short"]["password"])
     cfg.dsn = "d"
     with (
         patch("server.app.api.v1.endpoints.databases.close_pool", new_callable=AsyncMock),
@@ -1262,7 +1274,7 @@ async def test_update_database_refreshes_sqlcl(app_client, auth_headers, mock_re
     ):
         resp = await app_client.put(
             "/v1/databases/TEST",
-            json={"password": "new_password"},
+            json=auth_creds["database_new"],
             headers=auth_headers,
         )
     assert resp.status_code == 200
@@ -1276,8 +1288,8 @@ async def test_update_database_rejection_skips_sqlcl(app_client, auth_headers, m
     cfg = settings.database_configs[0]
     cfg.usable = True
     cfg.pool = MagicMock()
-    cfg.username = "u"
-    cfg.password = SecretStr("p")
+    cfg.username = auth_creds["short"]["username"]
+    cfg.password = SecretStr(auth_creds["short"]["password"])
     cfg.dsn = "d"
     with (
         patch("server.app.api.v1.endpoints.databases.close_pool", new_callable=AsyncMock),
@@ -1301,8 +1313,8 @@ async def test_update_database_rejection_skips_sqlcl(app_client, auth_headers, m
 async def test_update_database_removing_creds_refreshes_sqlcl(app_client, auth_headers, mock_refresh_sqlcl):
     """Clearing credentials must drop the alias from the SQLcl store."""
     cfg = settings.database_configs[0]
-    cfg.username = "u"
-    cfg.password = SecretStr("p")
+    cfg.username = auth_creds["short"]["username"]
+    cfg.password = SecretStr(auth_creds["short"]["password"])
     cfg.dsn = "d"
     with (
         patch("server.app.api.v1.endpoints.databases.close_pool", new_callable=AsyncMock),

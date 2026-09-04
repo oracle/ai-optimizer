@@ -23,6 +23,7 @@ from server.app.database.schemas import DatabaseConfig
 from server.app.models.schemas import ModelConfig
 from server.app.oci.schemas import OciProfileConfig
 from server.tests.constants import TEST_OPENAI_MODEL_ID, TEST_OPENAI_MODEL_ID_MIXEDCASE
+from server.tests.constants import test_auth as auth_creds
 
 pytestmark = pytest.mark.unit
 
@@ -154,7 +155,7 @@ def test_migrate_legacy_settings_renames_database_fields():
 def test_migrate_legacy_settings_noop_for_current_shape():
     """A 2.1-shaped payload passes through unchanged."""
     current = {
-        "database_configs": [{"alias": "CORE", "username": "coreuser", "dsn": "//c/s"}],
+        "database_configs": [{"alias": "CORE", "username": auth_creds["database_core"]["username"], "dsn": "//c/s"}],
         "model_configs": [{"id": "m1", "provider": "openai", "type": "ll"}],
         "oci_configs": [{"auth_profile": "DEFAULT"}],
     }
