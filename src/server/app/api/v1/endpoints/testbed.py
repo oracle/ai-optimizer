@@ -17,6 +17,7 @@ from typing import Annotated, Optional
 
 from fastapi import (
     APIRouter,
+    Depends,
     File,
     Form,
     Header,
@@ -32,11 +33,13 @@ from giskard.rag.base import AgentAnswer
 from litellm.exceptions import APIConnectionError
 from pydantic import ValidationError
 
+from server.app.api.deps import require_principal
 from server.app.api.v1.endpoints._helpers import _safe_filename_or_400
 from server.app.api.v1.endpoints.chat import get_request_orchestrator
 from server.app.api.v1.schemas.chat import MessageResponse
 from server.app.api.v1.schemas.common import ClientId
 from server.app.api.v1.schemas.testbed import Evaluation, EvaluationReport, QASetData, QASets, RejectedFile
+from server.app.core.auth import Principal
 from server.app.core.error_detail import response_error_detail
 from server.app.core.file_utils import get_temp_directory, safe_filename
 from server.app.core.settings import resolve_client
@@ -46,6 +49,7 @@ from server.app.mcp.tools.schemas import get_oci_profile
 from server.app.models.litellm_utils import LiteLlmModelSpec
 from server.app.models.schemas import ModelIdentity
 from server.app.testbed.database import (
+    OwnedTestsetNotFoundError,
     delete_testset,
     get_evaluations,
     get_testset_qa,
@@ -89,38 +93,50 @@ def _require_core_pool():
 
 
 @auth.get("/testsets", response_model=list[QASets])
-async def list_testsets():
+async def list_testsets(principal: Annotated[Principal, Depends(require_principal)]):
     """Get all stored testsets."""
     pool = _require_core_pool()
     async with pool.acquire() as conn:
-        return await get_testsets(conn)
+        return await get_testsets(conn, principal.ownership_key)
 
 
 @auth.get("/evaluations", response_model=list[Evaluation])
-async def list_evaluations(tid: Annotated[TestsetId, Query()]):
+async def list_evaluations(
+    tid: Annotated[TestsetId, Query()],
+    principal: Annotated[Principal, Depends(require_principal)],
+):
     """Get evaluations for a testset."""
     pool = _require_core_pool()
     async with pool.acquire() as conn:
-        return await get_evaluations(conn, tid.upper())
+        return await get_evaluations(conn, tid.upper(), principal.ownership_key)
 
 
 @auth.get("/evaluation", response_model=EvaluationReport)
-async def get_evaluation(eid: Annotated[EvalId, Query()]):
+async def get_evaluation(
+    eid: Annotated[EvalId, Query()],
+    principal: Annotated[Principal, Depends(require_principal)],
+):
     """Get a single evaluation report."""
     pool = _require_core_pool()
     async with pool.acquire() as conn:
-        result = await process_report(conn, eid.upper())
+        result = await process_report(conn, eid.upper(), principal.ownership_key)
     if not result:
         raise HTTPException(status_code=404, detail=f"Evaluation not found: {eid}")
     return result
 
 
 @auth.get("/testset_qa", response_model=QASetData)
-async def get_testset_qa_endpoint(tid: Annotated[TestsetId, Query()]):
+async def get_testset_qa_endpoint(
+    tid: Annotated[TestsetId, Query()],
+    principal: Annotated[Principal, Depends(require_principal)],
+):
     """Get Q&A data for a testset."""
     pool = _require_core_pool()
     async with pool.acquire() as conn:
-        return await get_testset_qa(conn, tid.upper())
+        result = await get_testset_qa(conn, tid.upper(), principal.ownership_key)
+    if result is None:
+        raise HTTPException(status_code=404, detail=f"Testset not found: {tid}")
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -129,11 +145,16 @@ async def get_testset_qa_endpoint(tid: Annotated[TestsetId, Query()]):
 
 
 @auth.delete("/testset_delete/{tid}", response_model=MessageResponse)
-async def delete_testset_endpoint(tid: Annotated[TestsetId, PathParam()]):
+async def delete_testset_endpoint(
+    tid: Annotated[TestsetId, PathParam()],
+    principal: Annotated[Principal, Depends(require_principal)],
+):
     """Delete a testset and its Q&A records."""
     pool = _require_core_pool()
     async with pool.acquire() as conn:
-        await delete_testset(conn, tid.upper())
+        deleted = await delete_testset(conn, tid.upper(), principal.ownership_key)
+    if not deleted:
+        raise HTTPException(status_code=404, detail=f"Testset not found: {tid}")
     return MessageResponse(message=f"TestSet: {tid} deleted.")
 
 
@@ -146,6 +167,7 @@ async def delete_testset_endpoint(tid: Annotated[TestsetId, PathParam()]):
 async def upload_testset(
     files: Annotated[list[UploadFile], File()],
     name: Annotated[TestsetName, Form()],
+    principal: Annotated[Principal, Depends(require_principal)],
     tid: Annotated[Optional[TestsetId], Form()] = None,
 ):
     """Upload JSONL/JSON files to create or update a testset."""
@@ -179,14 +201,26 @@ async def upload_testset(
 
     try:
         async with pool.acquire() as conn:
-            db_id = await upsert_qa(conn, name, created, json.dumps(all_qa), tid)
+            db_id = await upsert_qa(
+                conn,
+                name,
+                created,
+                json.dumps(all_qa),
+                owner=principal.ownership_key,
+                tid=tid,
+            )
             await conn.commit()
+    except OwnedTestsetNotFoundError as ex:
+        raise HTTPException(status_code=404, detail=f"Testset not found: {tid}") from ex
     except Exception as ex:
         LOGGER.error("An exception occurred: %s", ex)
         raise HTTPException(status_code=500, detail="Unexpected Error.") from ex
 
     async with pool.acquire() as conn:
-        return await get_testset_qa(conn, db_id)
+        result = await get_testset_qa(conn, db_id, principal.ownership_key)
+    if result is None:
+        raise HTTPException(status_code=500, detail="Failed to load testset after upload")
+    return result
 
 
 @auth.post("/testset_generate", response_model=QASetData)
@@ -195,6 +229,7 @@ async def generate_testset_endpoint(
     name: Annotated[TestsetName, Form()],
     ll_model: Annotated[str, Form()],
     embed_model: Annotated[str, Form()],
+    principal: Annotated[Principal, Depends(require_principal)],
     questions: Annotated[QuestionCount, Form()] = 2,
     client: Annotated[ClientId, Header()] = "server",
 ):
@@ -247,9 +282,11 @@ async def generate_testset_endpoint(
             await _process_pdf_file(
                 disk_path, temp_directory, name, embed_config, ll_config, file_questions, full_testsets
             )
-        db_id = await _store_generated_testset(full_testsets, name, pool)
+        db_id = await _store_generated_testset(full_testsets, name, pool, principal.ownership_key)
         async with pool.acquire() as conn:
-            qa_result = await get_testset_qa(conn, db_id)
+            qa_result = await get_testset_qa(conn, db_id, principal.ownership_key)
+        if qa_result is None:
+            raise HTTPException(status_code=500, detail="Failed to load generated testset")
         return QASetData(qa_data=qa_result["qa_data"], rejected_files=rejected)
 
     except KeyError as ex:
@@ -286,6 +323,7 @@ async def evaluate_testset(
     tid: Annotated[TestsetId, Query()],
     judge: str,
     request: Request,
+    principal: Annotated[Principal, Depends(require_principal)],
     client: Annotated[ClientId, Header()] = "server",
 ):
     """Run an evaluation against a testset using the configured chatbot and judge model."""
@@ -304,7 +342,7 @@ async def evaluate_testset(
 
     try:
         pool = _require_core_pool()
-        loaded_testset = await _load_testset_from_db(pool, tid, temp_directory)
+        loaded_testset = await _load_testset_from_db(pool, tid, temp_directory, principal.ownership_key)
         judge_config, judge_prompt = _get_judge_config(judge, client)
         answers = await _collect_answers(loaded_testset, client, request)
         report = await _run_giskard_evaluation(loaded_testset, answers, judge_config, judge_prompt)
@@ -317,15 +355,18 @@ async def evaluate_testset(
                 correctness=report.correctness,
                 settings_json=json.dumps(cs.model_dump(mode="json")),
                 rag_report=_serialise_report(report),
+                owner=principal.ownership_key,
             )
             await conn.commit()
 
         async with pool.acquire() as conn:
-            result = await process_report(conn, eid)
+            result = await process_report(conn, eid, principal.ownership_key)
         if not result:
             raise HTTPException(status_code=500, detail="Failed to load evaluation report after insert")
         return result
 
+    except OwnedTestsetNotFoundError as ex:
+        raise HTTPException(status_code=404, detail=f"Testset not found: {tid}") from ex
     finally:
         cs.ll_model.chat_history, cs.vector_search.grade = originals
         shutil.rmtree(temp_directory, ignore_errors=True)
@@ -407,21 +448,33 @@ async def _process_pdf_file(
         destination.write(source.read())
 
 
-async def _store_generated_testset(full_testsets: Path, name: str, pool) -> str:
+async def _store_generated_testset(
+    full_testsets: Path,
+    name: str,
+    pool,
+    owner: tuple[str, str],
+) -> str:
     """Read the combined JSONL file and persist the testset in the database."""
     with open(full_testsets, "rb") as fh:
         content = jsonl_to_json_content(fh.read())
     created = datetime.now().isoformat()
     async with pool.acquire() as conn:
-        db_id = await upsert_qa(conn, name, created, content)
+        db_id = await upsert_qa(conn, name, created, content, owner=owner)
         await conn.commit()
     return db_id
 
 
-async def _load_testset_from_db(pool, tid: str, temp_directory: Path):
+async def _load_testset_from_db(
+    pool,
+    tid: str,
+    temp_directory: Path,
+    owner: tuple[str, str],
+):
     """Load a QATestset from the database via a temporary file."""
     async with pool.acquire() as conn:
-        testset_data = await get_testset_qa(conn, tid.upper())
+        testset_data = await get_testset_qa(conn, tid.upper(), owner)
+    if testset_data is None:
+        raise OwnedTestsetNotFoundError(tid)
     qa_test = "\n".join(item if isinstance(item, str) else json.dumps(item) for item in testset_data["qa_data"])
     temp_file = temp_directory / f"{tid}_output.txt"
     temp_file.write_text(qa_test, encoding="utf-8")

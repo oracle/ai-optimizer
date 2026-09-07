@@ -24,11 +24,13 @@ from server.app.database.sql import execute_sql
 from server.app.embed.vector_store import generate_vs_metadata, update_vs_comment
 from server.app.models.schemas import ModelIdentity
 from server.app.testbed.database import (
+    OwnedTestsetNotFoundError,
     delete_testset,
     get_evaluations,
     get_testset_qa,
     get_testsets,
     insert_evaluation,
+    process_report,
     upsert_qa,
 )
 from server.tests.conftest import make_core_db_config, make_test_vs_config
@@ -36,6 +38,9 @@ from server.tests.constants import TEST_OPENAI_EMBED_ID
 from server.tests.constants import test_auth as auth_creds
 
 pytestmark = [pytest.mark.db, pytest.mark.integration]
+
+OWNER_A = ("integration-issuer", "integration-subject")
+OWNER_B = ("integration-issuer", "other-subject")
 
 
 # ---------------------------------------------------------------------------
@@ -136,26 +141,27 @@ class TestCascadeDeletes:
         conn = schema_connection
 
         qa = json.dumps([{"question": "Q1?", "answer": "A1"}])
-        tid = await upsert_qa(conn, "Cascade QA Test", "2026-01-01T00:00:00.000", qa)
+        tid = await upsert_qa(conn, "Cascade QA Test", "2026-01-01T00:00:00.000", qa, owner=OWNER_A)
         await conn.commit()
 
         # Verify Q&A exists
-        qa_data = await get_testset_qa(conn, tid)
+        qa_data = await get_testset_qa(conn, tid, OWNER_A)
+        assert qa_data is not None
         assert len(qa_data["qa_data"]) == 1
 
         # Delete the parent testset
-        await delete_testset(conn, tid)
+        await delete_testset(conn, tid, OWNER_A)
 
         # Q&A should be gone (cascade)
-        qa_data = await get_testset_qa(conn, tid)
-        assert qa_data["qa_data"] == []
+        qa_data = await get_testset_qa(conn, tid, OWNER_A)
+        assert qa_data is None
 
     async def test_delete_testset_cascades_to_evaluations(self, schema_connection):
         """Deleting a testset removes its child evaluation records."""
         conn = schema_connection
 
         qa = json.dumps([{"question": "Q?", "answer": "A"}])
-        tid = await upsert_qa(conn, "Cascade Eval Test", "2026-01-02T00:00:00.000", qa)
+        tid = await upsert_qa(conn, "Cascade Eval Test", "2026-01-02T00:00:00.000", qa, owner=OWNER_A)
         await conn.commit()
 
         eid = await insert_evaluation(
@@ -165,19 +171,20 @@ class TestCascadeDeletes:
             correctness=0.75,
             settings_json='{"model": "test"}',
             rag_report={"report": {}, "correct_by_topic": {}, "failures": {}},
+            owner=OWNER_A,
         )
         await conn.commit()
 
         # Verify evaluation exists
-        evals = await get_evaluations(conn, tid)
+        evals = await get_evaluations(conn, tid, OWNER_A)
         assert len(evals) == 1
         assert evals[0]["eid"] == eid
 
         # Delete parent
-        await delete_testset(conn, tid)
+        await delete_testset(conn, tid, OWNER_A)
 
         # Evaluations should be gone
-        evals = await get_evaluations(conn, tid)
+        evals = await get_evaluations(conn, tid, OWNER_A)
         assert evals == []
 
     async def test_testset_not_found_after_delete(self, schema_connection):
@@ -185,16 +192,116 @@ class TestCascadeDeletes:
         conn = schema_connection
 
         qa = json.dumps([{"question": "Q?", "answer": "A"}])
-        tid = await upsert_qa(conn, "Delete Visibility Test", "2026-01-03T00:00:00.000", qa)
+        tid = await upsert_qa(conn, "Delete Visibility Test", "2026-01-03T00:00:00.000", qa, owner=OWNER_A)
         await conn.commit()
 
-        testsets = await get_testsets(conn)
+        testsets = await get_testsets(conn, OWNER_A)
         assert any(t["tid"] == tid for t in testsets)
 
-        await delete_testset(conn, tid)
+        await delete_testset(conn, tid, OWNER_A)
 
-        testsets = await get_testsets(conn)
+        testsets = await get_testsets(conn, OWNER_A)
         assert not any(t["tid"] == tid for t in testsets)
+
+    async def test_testsets_are_isolated_by_principal(self, schema_connection):
+        """A principal cannot list, read, evaluate, or delete another principal's testset."""
+        conn = schema_connection
+        qa = json.dumps([{"question": "Q?", "answer": "A"}])
+        tid = await upsert_qa(
+            conn,
+            "Principal Isolation Test",
+            "2026-01-04T00:00:00.000",
+            qa,
+            owner=OWNER_A,
+        )
+        await conn.commit()
+
+        try:
+            assert any(item["tid"] == tid for item in await get_testsets(conn, OWNER_A))
+            assert not any(item["tid"] == tid for item in await get_testsets(conn, OWNER_B))
+            assert await get_testset_qa(conn, tid, OWNER_B) is None
+            assert await get_evaluations(conn, tid, OWNER_B) == []
+            with pytest.raises(OwnedTestsetNotFoundError):
+                await insert_evaluation(
+                    conn,
+                    tid=tid,
+                    evaluated="2026-01-04T00:00:01.000",
+                    correctness=0.5,
+                    settings_json='{"model": "other"}',
+                    rag_report={"report": {}, "correct_by_topic": {}, "failures": {}},
+                    owner=OWNER_B,
+                )
+            assert await delete_testset(conn, tid, OWNER_B) is False
+            assert await get_testset_qa(conn, tid, OWNER_A) is not None
+
+            eid = await insert_evaluation(
+                conn,
+                tid=tid,
+                evaluated="2026-01-04T00:00:02.000",
+                correctness=0.75,
+                settings_json='{"model": "test"}',
+                rag_report={"report": {}, "correct_by_topic": {}, "failures": {}},
+                owner=OWNER_A,
+            )
+            await conn.commit()
+            assert await get_evaluations(conn, tid, OWNER_A)
+            assert await process_report(conn, eid, OWNER_B) is None
+        finally:
+            await delete_testset(conn, tid, OWNER_A)
+
+
+# ---------------------------------------------------------------------------
+# Principal ownership migration
+# ---------------------------------------------------------------------------
+
+
+class TestPrincipalOwnershipMigration:
+    """Verify existing testbed schemas receive the ownership columns."""
+
+    async def test_legacy_testsets_receive_owner_columns(self, schema_connection):
+        conn = schema_connection
+        from server.app.database.objects import RENAME_DDL, SCHEMA_DDL
+
+        conn.autocommit = True
+        try:
+            await execute_sql(conn, "DROP TABLE aio_testset_qa CASCADE CONSTRAINTS PURGE")
+            await execute_sql(conn, "DROP TABLE aio_evaluations CASCADE CONSTRAINTS PURGE")
+            await execute_sql(conn, "DROP TABLE aio_testsets CASCADE CONSTRAINTS PURGE")
+            await execute_sql(
+                conn,
+                """
+                CREATE TABLE aio_testsets (
+                    tid     RAW(16) DEFAULT SYS_GUID(),
+                    name    VARCHAR2(255) NOT NULL,
+                    created TIMESTAMP(9) WITH LOCAL TIME ZONE,
+                    CONSTRAINT aio_testsets_pk PRIMARY KEY (tid),
+                    CONSTRAINT aio_testsets_uq UNIQUE (name, created)
+                )
+                """,
+            )
+
+            for ddl in RENAME_DDL:
+                await execute_sql(conn, ddl)
+
+            columns = await execute_sql(
+                conn,
+                """
+                SELECT column_name
+                  FROM user_tab_columns
+                 WHERE table_name='AIO_TESTSETS'
+                   AND column_name IN ('OWNER_ISSUER', 'OWNER_SUBJECT')
+                 ORDER BY column_name
+                """,
+            )
+            assert columns == [("OWNER_ISSUER",), ("OWNER_SUBJECT",)]
+
+            # The migration is idempotent.
+            for ddl in RENAME_DDL:
+                await execute_sql(conn, ddl)
+        finally:
+            await execute_sql(conn, "DROP TABLE aio_testsets CASCADE CONSTRAINTS PURGE")
+            for ddl in SCHEMA_DDL:
+                await execute_sql(conn, ddl)
 
 
 # ---------------------------------------------------------------------------
@@ -326,6 +433,7 @@ class TestConcurrentAccess:
                         f"Concurrent Test {i}",
                         f"2026-02-{i + 1:02d}T00:00:00.000",
                         qa,
+                        owner=OWNER_A,
                     )
                     await conn.commit()
                     return tid
@@ -337,7 +445,7 @@ class TestConcurrentAccess:
             # Cleanup
             for tid in tids:
                 async with pool.acquire() as conn:
-                    await delete_testset(conn, tid)
+                    await delete_testset(conn, tid, OWNER_A)
         finally:
             await close_pool(pool)
 
