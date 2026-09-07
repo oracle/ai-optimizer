@@ -80,7 +80,7 @@ def migrate_legacy_settings(data):
     return migrated
 
 
-def ensure_core_alias(db_configs: list, client_settings=None, client_store: Optional[dict] = None) -> None:
+def ensure_core_alias(db_configs: list, client_settings=None, client_store: Optional[dict] = None) -> Optional[str]:
     """Ensure *db_configs* contains an entry with the exact alias ``"CORE"``.
 
     If an entry already matches case-insensitively, its alias is normalised
@@ -90,14 +90,17 @@ def ensure_core_alias(db_configs: list, client_settings=None, client_store: Opti
     Any *client_settings* and *client_store* entries whose database alias
     matched the old value are updated to ``"CORE"`` so that downstream
     lookups remain valid.
+
+    Returns the previous alias when an entry is promoted or normalized, else
+    ``None`` when no alias change was needed.
     """
     if not db_configs:
-        return
+        return None
     # Determine which alias (if any) needs to become "CORE"
     old_alias: Optional[str] = None
     for cfg in db_configs:
         if cfg.alias == "CORE":
-            return  # exact match — nothing to do
+            return None  # exact match — nothing to do
     for cfg in db_configs:
         if cfg.alias.upper() == "CORE":
             old_alias = cfg.alias
@@ -113,6 +116,7 @@ def ensure_core_alias(db_configs: list, client_settings=None, client_store: Opti
     for cs in (client_store or {}).values():
         if cs.database.alias == old_alias:
             cs.database.alias = "CORE"
+    return old_alias
 
 
 def load_config_file(path: Optional[Path] = None) -> Optional[SettingsBase]:
