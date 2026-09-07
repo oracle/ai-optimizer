@@ -100,6 +100,34 @@ def test_principal_authenticated_chat_forwards_bearer_credential_and_session(mon
     }
 
 
+def test_principal_request_orchestrators_are_cached_per_credential(monkeypatch):
+    monkeypatch.setattr(settings, "auth_mode", "dev")
+
+    def make_request(authorization: str, session_id: str = "streamlit-session") -> Request:
+        return Request(
+            {
+                "type": "http",
+                "method": "POST",
+                "path": "/v1/chat/completions",
+                "headers": [
+                    (b"authorization", authorization.encode()),
+                    (b"x-aio-session", session_id.encode()),
+                ],
+            }
+        )
+
+    first = chat_endpoint._request_orchestrator(make_request("Bearer cache-token-a"))
+    same_credential = chat_endpoint._request_orchestrator(make_request("Bearer cache-token-a"))
+    other_credential = chat_endpoint._request_orchestrator(make_request("Bearer cache-token-b"))
+    other_session = chat_endpoint._request_orchestrator(make_request("Bearer cache-token-a", "other-session"))
+
+    assert same_credential is first
+    assert other_credential is not first
+    assert other_session is not first
+    assert other_credential._session_cache is not first._session_cache
+    assert other_credential._stream_locks is not first._stream_locks
+
+
 @pytest.mark.unit
 @pytest.mark.anyio
 async def test_streams_happy_path(app_client, auth_headers, monkeypatch):

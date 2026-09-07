@@ -8,7 +8,7 @@ LangGraph chat orchestration — routing, session management, memory, and stream
 
 import asyncio
 import logging
-from collections import defaultdict
+from collections import OrderedDict, defaultdict
 from typing import Any, AsyncGenerator, Awaitable, Callable, Dict, Optional, Union
 
 from langchain_core.messages import AIMessage, HumanMessage
@@ -18,6 +18,7 @@ from server.app.agentspec.adapters.mcp import McpCredential, connect_sqlcl_datab
 from server.app.api.v1.schemas.chat import SqlMetadata, TokenUsage, VsMetadata
 from server.app.core.schemas import ClientSettings
 from server.app.core.secrets import reveal
+from server.app.core.settings import settings
 from server.app.database.config import resolve_effective_tool_alias
 from server.app.mcp.prompts.registry import require_factory_text
 from server.app.models.litellm_utils import build_oci_litellm_params, find_model
@@ -91,8 +92,11 @@ class ChatOrchestrator:
         self._api_key = api_key
         self._resolve_client = resolve_client
         self._session_cache: Dict[tuple, tuple[Any, Dict[str, Any], Dict[str, Any]]] = {}
+        self._credential_orchestrators: OrderedDict[tuple, "ChatOrchestrator"] = OrderedDict()
         self._build_lock = asyncio.Lock()
         self._stream_locks: Dict[tuple, asyncio.Lock] = defaultdict(asyncio.Lock)
+        self._active_requests = 0
+        self._invalidated_lock_keys: set[tuple] = set()
         self.history = HistoryStore()
 
     @property
@@ -100,16 +104,57 @@ class ChatOrchestrator:
         """Return the current MCP credential, invoking the callable if needed."""
         return self._api_key() if callable(self._api_key) else self._api_key
 
+    @property
+    def has_in_flight_requests(self) -> bool:
+        """Whether this orchestrator is currently serving a request."""
+        return self._active_requests > 0
+
+    def _request_started(self) -> None:
+        """Mark a request as active for eviction and invalidation coordination."""
+        self._active_requests += 1
+
+    def _request_finished(self) -> None:
+        """Release request activity and clean locks deferred by invalidation."""
+        self._active_requests -= 1
+        if self._active_requests == 0:
+            for key in self._invalidated_lock_keys:
+                self._stream_locks.pop(key, None)
+            self._invalidated_lock_keys.clear()
+
     def for_bearer_credential(self, authorization: str) -> "ChatOrchestrator":
         """Create a request-scoped tool orchestrator that retains bearer authentication."""
-        orchestrator = ChatOrchestrator(self._server_url, authorization, self._resolve_client)
-        orchestrator.history = self.history
-        return orchestrator
+        return self._get_credential_orchestrator(
+            (("authorization", authorization),),
+            authorization,
+        )
 
     def for_request_headers(self, headers: dict[str, str]) -> "ChatOrchestrator":
         """Create a request-scoped tool orchestrator with trusted proxy headers."""
-        orchestrator = ChatOrchestrator(self._server_url, headers, self._resolve_client)
+        cache_key = tuple(sorted((name.lower(), value) for name, value in headers.items()))
+        return self._get_credential_orchestrator(cache_key, dict(headers))
+
+    def _get_credential_orchestrator(self, cache_key: tuple, credential: McpCredential) -> "ChatOrchestrator":
+        """Return the cached orchestrator for one authenticated MCP context."""
+        orchestrator = self._credential_orchestrators.get(cache_key)
+        if orchestrator is not None:
+            self._credential_orchestrators.move_to_end(cache_key)
+            return orchestrator
+
+        while len(self._credential_orchestrators) >= max(1, settings.max_clients):
+            evict_key = next(
+                (
+                    key
+                    for key, candidate in self._credential_orchestrators.items()
+                    if not candidate.has_in_flight_requests
+                ),
+                None,
+            )
+            if evict_key is None:
+                break
+            self._credential_orchestrators.pop(evict_key)
+        orchestrator = ChatOrchestrator(self._server_url, credential, self._resolve_client)
         orchestrator.history = self.history
+        self._credential_orchestrators[cache_key] = orchestrator
         return orchestrator
 
     @staticmethod
@@ -180,7 +225,12 @@ class ChatOrchestrator:
         """Remove all cached sessions for the given client."""
         for k in self._keys_for_client(client):
             del self._session_cache[k]
-            self._stream_locks.pop(k, None)
+            if self.has_in_flight_requests:
+                self._invalidated_lock_keys.add(k)
+            else:
+                self._stream_locks.pop(k, None)
+        for orchestrator in list(self._credential_orchestrators.values()):
+            orchestrator.invalidate_session(client)
 
     def clear_history(self, client: str) -> None:
         """Clear conversation history and invalidate sessions for a client."""
@@ -346,6 +396,13 @@ class ChatOrchestrator:
                 new_session = await self._build_flow_session(cs)
             if new_session is not None and key in self._session_cache:
                 self._session_cache[key] = (new_session, cs_dict, new_identity)
+        for cache_key, orchestrator in list(self._credential_orchestrators.items()):
+            try:
+                await orchestrator.refresh_prompts()
+            except Exception as exc:
+                LOGGER.warning("Credential-scoped chat prompt refresh failed; evicting context: %s", exc)
+                if self._credential_orchestrators.get(cache_key) is orchestrator:
+                    self._credential_orchestrators.pop(cache_key, None)
 
     # -- history feed ------------------------------------------------------
 
@@ -389,8 +446,22 @@ class ChatOrchestrator:
         client: str,
     ) -> Dict[str, Any]:
         """Execute a non-streaming chat and return result with metadata."""
-        session, route = await self._get_or_create_session(client)
+        self._request_started()
+        try:
+            session, route = await self._get_or_create_session(client)
+            async with self._stream_locks[(client, route)]:
+                return await self._execute_chat_locked(session, route, question, client)
+        finally:
+            self._request_finished()
 
+    async def _execute_chat_locked(
+        self,
+        session: SessionType,
+        route: Route,
+        question: str,
+        client: str,
+    ) -> Dict[str, Any]:
+        """Execute a non-streaming chat while holding the client execution lock."""
         cs = self._resolve_client(client)
         if isinstance(session, CombinedSession):
             answer = await session.execute(
@@ -594,6 +665,19 @@ class ChatOrchestrator:
         client: str,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Execute a streaming chat, yielding event dicts as they arrive."""
+        self._request_started()
+        try:
+            async for event in self._execute_chat_stream_locked(question, client):
+                yield event
+        finally:
+            self._request_finished()
+
+    async def _execute_chat_stream_locked(
+        self,
+        question: str,
+        client: str,
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        """Execute a streaming chat while holding the client execution lock."""
         session, route = await self._get_or_create_session(client)
         queue: asyncio.Queue = asyncio.Queue()
         collected: list[str] = []
@@ -639,4 +723,6 @@ class ChatOrchestrator:
                     task.cancel()
                 return
 
-        yield self._finalize_stream(session, question, client, collected, token_usage, route, cs.ll_model.chat_history)
+            yield self._finalize_stream(
+                session, question, client, collected, token_usage, route, cs.ll_model.chat_history
+            )

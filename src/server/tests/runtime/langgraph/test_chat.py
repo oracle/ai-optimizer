@@ -76,6 +76,116 @@ class _LangGraphChatMixin:
 class TestChatOrchestratorCache(_LangGraphChatMixin, CacheBase):
     """Tests for session caching and invalidation."""
 
+    def test_credential_orchestrators_evict_lru(self, monkeypatch):
+        """Credential-scoped orchestrators are bounded with LRU eviction."""
+        from server.app.core.settings import settings
+
+        monkeypatch.setattr(settings, "max_clients", 2)
+        orch = _make_orchestrator()
+        first = orch.for_request_headers({"Authorization": "Bearer cache-a"})
+        second = orch.for_request_headers({"Authorization": "Bearer cache-b"})
+
+        assert orch.for_request_headers({"Authorization": "Bearer cache-a"}) is first
+        third = orch.for_request_headers({"Authorization": "Bearer cache-c"})
+
+        assert third is not first
+        assert len(orch._credential_orchestrators) == 2
+        assert orch.for_request_headers({"Authorization": "Bearer cache-b"}) is not second
+
+    @pytest.mark.anyio
+    async def test_refresh_prompts_snapshots_credential_orchestrators(self):
+        """Refreshing prompts tolerates credential contexts added while awaiting."""
+        orch = _make_orchestrator()
+        existing = orch.for_request_headers({"Authorization": "Bearer existing"})
+
+        async def refresh_and_add_context():
+            orch.for_request_headers({"Authorization": "Bearer added-during-refresh"})
+
+        with patch.object(existing, "refresh_prompts", new=refresh_and_add_context):
+            await orch.refresh_prompts()
+
+    @pytest.mark.anyio
+    async def test_refresh_prompts_evicts_failed_credential_orchestrator(self):
+        """A failed credential refresh does not prevent other contexts from refreshing."""
+        orch = _make_orchestrator()
+        failed = orch.for_request_headers({"Authorization": "Bearer expired"})
+        healthy = orch.for_request_headers({"Authorization": "Bearer healthy"})
+
+        async def fail_refresh():
+            raise RuntimeError("expired credential")
+
+        with (
+            patch.object(failed, "refresh_prompts", new=fail_refresh),
+            patch.object(healthy, "refresh_prompts", new=AsyncMock()) as healthy_refresh,
+        ):
+            await orch.refresh_prompts()
+
+        assert failed not in orch._credential_orchestrators.values()
+        healthy_refresh.assert_awaited_once_with()
+
+    @pytest.mark.anyio
+    async def test_lru_keeps_active_credential_orchestrator(self, monkeypatch):
+        """LRU eviction allows temporary growth when every context is active."""
+        from server.app.core.settings import settings
+
+        monkeypatch.setattr(settings, "max_clients", 1)
+        orch = _make_orchestrator()
+        active_headers = {"Authorization": "Bearer active"}
+        active = orch.for_request_headers(active_headers)
+        started = asyncio.Event()
+        release = asyncio.Event()
+        session = MagicMock(spec=AgentGraphSession)
+        session.last_metadata = SessionMetadata()
+
+        async def blocked_chat(*_args, **_kwargs):
+            started.set()
+            await release.wait()
+            return "answer"
+
+        session.chat = AsyncMock(side_effect=blocked_chat)
+        with patch.object(active, "_build_session", AsyncMock(return_value=session)):
+            task = asyncio.create_task(active.execute_chat("question", "c1"))
+            await started.wait()
+
+            orch.for_request_headers({"Authorization": "Bearer other"})
+            assert orch.for_request_headers(active_headers) is active
+
+            release.set()
+            await task
+
+    @pytest.mark.anyio
+    async def test_invalidation_preserves_active_credential_lock(self):
+        """Invalidating a client during execution does not replace its held lock."""
+        orch = _make_orchestrator()
+        active = orch.for_request_headers({"Authorization": "Bearer active"})
+        started = asyncio.Event()
+        release = asyncio.Event()
+        concurrent_calls = 0
+        max_concurrent_calls = 0
+        session = MagicMock(spec=AgentGraphSession)
+        session.last_metadata = SessionMetadata()
+
+        async def blocked_chat(*_args, **_kwargs):
+            nonlocal concurrent_calls, max_concurrent_calls
+            concurrent_calls += 1
+            max_concurrent_calls = max(max_concurrent_calls, concurrent_calls)
+            started.set()
+            await release.wait()
+            concurrent_calls -= 1
+            return "answer"
+
+        session.chat = AsyncMock(side_effect=blocked_chat)
+        with patch.object(active, "_build_session", AsyncMock(return_value=session)):
+            first = asyncio.create_task(active.execute_chat("first", "c1"))
+            await started.wait()
+            active.invalidate_session("c1")
+            second = asyncio.create_task(active.execute_chat("second", "c1"))
+            await asyncio.sleep(0)
+
+            assert max_concurrent_calls == 1
+            release.set()
+            await asyncio.gather(first, second)
+
     @pytest.mark.anyio
     async def test_session_cached_on_second_call(self):
         """Verify second call reuses cached session."""
@@ -291,6 +401,37 @@ class TestExecuteChat(_LangGraphChatMixin, ExecuteChatBase):
         session.chat = AsyncMock(return_value="hello back")
         session.last_metadata = SessionMetadata()
         return session
+
+    @pytest.mark.anyio
+    async def test_concurrent_non_streaming_calls_share_client_lock(self):
+        """Concurrent calls using one cached combined session are serialized."""
+        orch = _make_orchestrator(tools_enabled=["NL2SQL", "Vector Search"])
+        session = MagicMock(spec=CombinedSession)
+        session.last_metadata = SessionMetadata()
+        started = asyncio.Event()
+        release = asyncio.Event()
+        concurrent_calls = 0
+        max_concurrent_calls = 0
+
+        async def blocked_execute(*_args, **_kwargs):
+            nonlocal concurrent_calls, max_concurrent_calls
+            concurrent_calls += 1
+            max_concurrent_calls = max(max_concurrent_calls, concurrent_calls)
+            started.set()
+            await release.wait()
+            concurrent_calls -= 1
+            return "answer"
+
+        session.execute = AsyncMock(side_effect=blocked_execute)
+        with patch.object(orch, "_build_session", AsyncMock(return_value=session)):
+            first = asyncio.create_task(orch.execute_chat("first", "c1"))
+            await started.wait()
+            second = asyncio.create_task(orch.execute_chat("second", "c1"))
+            await asyncio.sleep(0)
+
+            assert max_concurrent_calls == 1
+            release.set()
+            await asyncio.gather(first, second)
 
     @pytest.mark.anyio
     async def test_returns_token_usage(self):
