@@ -301,7 +301,11 @@ class TestLifespan:
         with (
             patch.object(settings, "auth_mode", "dev"),
             patch(f"{MODULE}.get_database_settings", return_value=mock_db),
-            patch(f"{MODULE}.init_core_database", new_callable=AsyncMock, side_effect=Exception("db down")),
+            patch(
+                f"{MODULE}.init_core_database",
+                new_callable=AsyncMock,
+                side_effect=Exception("AIO_AUTH_MODE=dev requires an Oracle CORE database"),
+            ),
             patch(f"{MODULE}.load_default_models", new_callable=AsyncMock),
             patch(f"{MODULE}.apply_env_overrides"),
             patch(f"{MODULE}.load_factory_prompts"),
@@ -324,7 +328,7 @@ class TestLifespan:
         ):
             from server.app.main import lifespan
 
-            with pytest.raises(Exception, match="db down"):
+            with pytest.raises(Exception, match="AIO_AUTH_MODE=dev requires an Oracle CORE database"):
                 async with lifespan(MagicMock()):
                     pass
 
