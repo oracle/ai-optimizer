@@ -40,6 +40,33 @@ RENAME_DDL = [
     EXCEPTION WHEN NO_DATA_FOUND THEN NULL;
     END;
     """,
+    # Testbed rows created before principal ownership was introduced retain
+    # NULL owner fields and are hidden by the ownership filters.
+    """
+    DECLARE
+        l_issuer_count  PLS_INTEGER;
+        l_subject_count PLS_INTEGER;
+    BEGIN
+        SELECT COUNT(*) INTO l_issuer_count
+          FROM user_tab_columns
+         WHERE table_name = 'AIO_TESTSETS'
+           AND column_name = 'OWNER_ISSUER';
+        SELECT COUNT(*) INTO l_subject_count
+          FROM user_tab_columns
+         WHERE table_name = 'AIO_TESTSETS'
+           AND column_name = 'OWNER_SUBJECT';
+        IF l_issuer_count = 0 THEN
+            EXECUTE IMMEDIATE 'ALTER TABLE aio_testsets ADD (owner_issuer VARCHAR2(1024))';
+        END IF;
+        IF l_subject_count = 0 THEN
+            EXECUTE IMMEDIATE 'ALTER TABLE aio_testsets ADD (owner_subject VARCHAR2(1024))';
+        END IF;
+    EXCEPTION WHEN OTHERS THEN
+        IF SQLCODE != -942 THEN
+            RAISE;
+        END IF;
+    END;
+    """,
 ]
 
 SCHEMA_DDL = [
@@ -143,12 +170,18 @@ SCHEMA_DDL = [
     """,
     """
     CREATE TABLE IF NOT EXISTS aio_testsets (
-        tid     RAW(16) DEFAULT SYS_GUID(),
-        name    VARCHAR2(255) NOT NULL,
-        created TIMESTAMP(9) WITH LOCAL TIME ZONE,
+        tid          RAW(16) DEFAULT SYS_GUID(),
+        name         VARCHAR2(255) NOT NULL,
+        created      TIMESTAMP(9) WITH LOCAL TIME ZONE,
+        owner_issuer VARCHAR2(1024),
+        owner_subject VARCHAR2(1024),
         CONSTRAINT aio_testsets_pk PRIMARY KEY (tid),
         CONSTRAINT aio_testsets_uq UNIQUE (name, created)
     )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS aio_testsets_owner_ix
+        ON aio_testsets (owner_issuer, owner_subject)
     """,
     """
     CREATE TABLE IF NOT EXISTS aio_testset_qa (

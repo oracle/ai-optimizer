@@ -24,6 +24,8 @@ from server.app.testbed.database import (
     upsert_qa,
 )
 
+OWNER = ("issuer-a", "subject-a")
+
 
 def _make_async_cursor(out_value=None):
     """Build a mock cursor that works as an async context manager with OUT bind support."""
@@ -73,9 +75,10 @@ def test_hex_to_raw_empty():
 async def test_get_testsets_empty():
     """Returns empty list when no testsets exist."""
     conn = AsyncMock()
-    with patch("server.app.testbed.database.execute_sql", new_callable=AsyncMock, return_value=None):
-        result = await get_testsets(conn)
+    with patch("server.app.testbed.database.execute_sql", new_callable=AsyncMock, return_value=None) as mock_exec:
+        result = await get_testsets(conn, OWNER)
     assert result == []
+    assert mock_exec.call_args.args[2] == {"owner_issuer": "issuer-a", "owner_subject": "subject-a"}
 
 
 @pytest.mark.unit
@@ -86,7 +89,7 @@ async def test_get_testsets_with_data():
     rows = [(tid_bytes, "Test Set", "2026-01-01T00:00:00")]
     conn = AsyncMock()
     with patch("server.app.testbed.database.execute_sql", new_callable=AsyncMock, return_value=rows):
-        result = await get_testsets(conn)
+        result = await get_testsets(conn, OWNER)
     assert len(result) == 1
     assert result[0]["tid"] == "aabbccdd"
     assert result[0]["name"] == "Test Set"
@@ -103,8 +106,8 @@ async def test_get_testset_qa_empty():
     """Returns empty qa_data when no records found."""
     conn = AsyncMock()
     with patch("server.app.testbed.database.execute_sql", new_callable=AsyncMock, return_value=None):
-        result = await get_testset_qa(conn, "AABB")
-    assert result == {"qa_data": []}
+        result = await get_testset_qa(conn, "AABB", OWNER)
+    assert result is None
 
 
 @pytest.mark.unit
@@ -112,15 +115,18 @@ async def test_get_testset_qa_empty():
 async def test_get_testset_qa_with_data():
     """Returns Q&A data extracted from tuples."""
     qa_obj = {"question": "What?", "answer": "Yes."}
-    rows = [(qa_obj,)]
+    rows = [(bytes.fromhex("aabbccdd"), qa_obj)]
     conn = AsyncMock()
     mock_exec = AsyncMock(return_value=rows)
     with patch("server.app.testbed.database.execute_sql", mock_exec):
-        result = await get_testset_qa(conn, "AABB")
+        result = await get_testset_qa(conn, "AABB", OWNER)
+    assert result is not None
     assert result["qa_data"] == [qa_obj]
     # Verify hex ID was converted to bytes for RAW column binding
     binds = mock_exec.call_args[0][2]
     assert binds["tid"] == bytes.fromhex("AABB")
+    assert binds["owner_issuer"] == "issuer-a"
+    assert binds["owner_subject"] == "subject-a"
 
 
 # ---------------------------------------------------------------------------
@@ -134,7 +140,7 @@ async def test_get_evaluations_empty():
     """Returns empty list when no evaluations exist."""
     conn = AsyncMock()
     with patch("server.app.testbed.database.execute_sql", new_callable=AsyncMock, return_value=None):
-        result = await get_evaluations(conn, "AABB")
+        result = await get_evaluations(conn, "AABB", OWNER)
     assert result == []
 
 
@@ -146,7 +152,7 @@ async def test_get_evaluations_with_data():
     rows = [(eid_bytes, "2026-01-01T00:00:00", 0.85)]
     conn = AsyncMock()
     with patch("server.app.testbed.database.execute_sql", new_callable=AsyncMock, return_value=rows):
-        result = await get_evaluations(conn, "AABB")
+        result = await get_evaluations(conn, "AABB", OWNER)
     assert len(result) == 1
     assert result[0]["eid"] == "11223344"
     assert result[0]["correctness"] == 0.85
@@ -162,9 +168,27 @@ async def test_get_evaluations_with_data():
 async def test_delete_testset():
     """Deletes testset and commits."""
     conn = AsyncMock()
-    with patch("server.app.testbed.database.execute_sql", new_callable=AsyncMock):
-        await delete_testset(conn, "AABB")
+    with patch(
+        "server.app.testbed.database.execute_sql",
+        new_callable=AsyncMock,
+        side_effect=[[(1,)], None],
+    ):
+        deleted = await delete_testset(conn, "AABB", OWNER)
+    assert deleted is True
     conn.commit.assert_awaited_once()
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_delete_testset_does_not_delete_another_owner():
+    """A testset owned by another principal is not deleted."""
+    conn = AsyncMock()
+    mock_exec = AsyncMock(return_value=None)
+    with patch("server.app.testbed.database.execute_sql", mock_exec):
+        deleted = await delete_testset(conn, "AABB", OWNER)
+    assert deleted is False
+    mock_exec.assert_awaited_once()
+    conn.commit.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
@@ -182,7 +206,7 @@ async def test_upsert_qa():
     conn = MagicMock()
     conn.cursor.return_value = ctx
 
-    result = await upsert_qa(conn, "Test", "2026-01-01T00:00:00", json.dumps({"q": "a"}))
+    result = await upsert_qa(conn, "Test", "2026-01-01T00:00:00", json.dumps({"q": "a"}), owner=OWNER)
     assert result == "deadbeef"
     cursor.execute.assert_awaited_once()
 
@@ -197,7 +221,7 @@ async def test_upsert_qa_wraps_single_object():
     conn = MagicMock()
     conn.cursor.return_value = ctx
 
-    await upsert_qa(conn, "Test", "2026-01-01T00:00:00", json.dumps({"q": "a"}))
+    await upsert_qa(conn, "Test", "2026-01-01T00:00:00", json.dumps({"q": "a"}), owner=OWNER)
     call_args = cursor.execute.call_args
     binds = call_args[0][1]
     parsed = json.loads(binds["json_array"])
@@ -219,14 +243,16 @@ async def test_insert_evaluation():
     conn = MagicMock()
     conn.cursor.return_value = ctx
 
-    result = await insert_evaluation(
-        conn,
-        tid="AABB",
-        evaluated="2026-01-01T00:00:00",
-        correctness=0.9,
-        settings_json='{"client": "test"}',
-        rag_report={"report": {}, "correct_by_topic": {}, "failures": {}},
-    )
+    with patch("server.app.testbed.database.execute_sql", new_callable=AsyncMock, return_value=[(b"owned",)]):
+        result = await insert_evaluation(
+            conn,
+            tid="AABB",
+            evaluated="2026-01-01T00:00:00",
+            correctness=0.9,
+            settings_json='{"client": "test"}',
+            rag_report={"report": {}, "correct_by_topic": {}, "failures": {}},
+            owner=OWNER,
+        )
     assert result == "cafebabe"
     # rag_report must bind as JSON, never as a binary BLOB.
     kwargs = cursor.setinputsizes.call_args.kwargs
@@ -244,14 +270,16 @@ async def test_insert_evaluation_serialises_dict_payload():
     conn.cursor.return_value = ctx
 
     payload = {"report": {"a": 1}, "correct_by_topic": {"b": 2}, "failures": {"c": 3}}
-    await insert_evaluation(
-        conn,
-        tid="AABB",
-        evaluated="2026-01-01T00:00:00",
-        correctness=0.9,
-        settings_json='{"client": "test"}',
-        rag_report=payload,
-    )
+    with patch("server.app.testbed.database.execute_sql", new_callable=AsyncMock, return_value=[(b"owned",)]):
+        await insert_evaluation(
+            conn,
+            tid="AABB",
+            evaluated="2026-01-01T00:00:00",
+            correctness=0.9,
+            settings_json='{"client": "test"}',
+            rag_report=payload,
+            owner=OWNER,
+        )
     binds = cursor.execute.call_args[0][1]
     assert binds["rag_report"] == payload
 
@@ -267,7 +295,7 @@ async def test_process_report_not_found():
     """Returns None when evaluation not found."""
     conn = AsyncMock()
     with patch("server.app.testbed.database.execute_sql", new_callable=AsyncMock, return_value=None):
-        result = await process_report(conn, "AABB")
+        result = await process_report(conn, "AABB", OWNER)
     assert result is None
 
 
@@ -286,7 +314,7 @@ async def test_process_report_with_data():
     rows = [(eid_bytes, "2026-01-01T00:00:00", 0.85, settings_dict, rag_report_json)]
     conn = AsyncMock()
     with patch("server.app.testbed.database.execute_sql", new_callable=AsyncMock, return_value=rows):
-        result = await process_report(conn, "AABBCCDD")
+        result = await process_report(conn, "AABBCCDD", OWNER)
 
     assert result is not None
     assert result["eid"] == "aabbccdd"
@@ -305,7 +333,7 @@ async def test_process_report_non_dict_returns_none():
     rows = [(eid_bytes, "2026-01-01T00:00:00", 0.85, {"client": "test"}, b"unsupported-legacy-blob")]
     conn = AsyncMock()
     with patch("server.app.testbed.database.execute_sql", new_callable=AsyncMock, return_value=rows):
-        result = await process_report(conn, "AABBCCDD")
+        result = await process_report(conn, "AABBCCDD", OWNER)
     assert result is None
 
 
@@ -317,7 +345,7 @@ async def test_process_report_missing_rag_report_returns_none():
     rows = [(eid_bytes, "2026-01-01T00:00:00", 0.85, {"client": "test"}, None)]
     conn = AsyncMock()
     with patch("server.app.testbed.database.execute_sql", new_callable=AsyncMock, return_value=rows):
-        result = await process_report(conn, "AABBCCDD")
+        result = await process_report(conn, "AABBCCDD", OWNER)
     assert result is None
 
 
@@ -330,7 +358,7 @@ async def test_process_report_wrong_subfield_type_returns_none():
     rows = [(eid_bytes, "2026-01-01T00:00:00", 0.85, {"client": "test"}, bad_payload)]
     conn = AsyncMock()
     with patch("server.app.testbed.database.execute_sql", new_callable=AsyncMock, return_value=rows):
-        result = await process_report(conn, "AABBCCDD")
+        result = await process_report(conn, "AABBCCDD", OWNER)
     assert result is None
 
 
@@ -343,7 +371,7 @@ async def test_process_report_partial_payload_defaults_missing_keys():
     rows = [(eid_bytes, "2026-01-01T00:00:00", 0.85, {"client": "test"}, partial_payload)]
     conn = AsyncMock()
     with patch("server.app.testbed.database.execute_sql", new_callable=AsyncMock, return_value=rows):
-        result = await process_report(conn, "AABBCCDD")
+        result = await process_report(conn, "AABBCCDD", OWNER)
 
     assert result is not None
     assert result["report"] == {"col": "data"}

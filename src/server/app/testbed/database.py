@@ -21,36 +21,67 @@ LOGGER = logging.getLogger(__name__)
 _ISO_TS_FMT = """'YYYY-MM-DD"T"HH24:MI:SS.FF'"""
 
 
+PrincipalOwnership = tuple[str, str]
+
+
+class OwnedTestsetNotFoundError(LookupError):
+    """Raised when a testset is absent or owned by another principal."""
+
+
 def _hex_to_raw(hex_str: str | None) -> bytes | None:
     """Convert a hex ID string to bytes for RAW column binding."""
     return bytes.fromhex(hex_str) if hex_str else None
 
 
-async def get_testsets(conn: oracledb.AsyncConnection) -> list[dict]:
-    """Get all testsets ordered by creation date."""
-    sql = f"SELECT tid, name, to_char(created, {_ISO_TS_FMT}) FROM aio_testsets ORDER BY created"
-    results = await execute_sql(conn, sql)
+def _owner_binds(owner: PrincipalOwnership) -> dict[str, str]:
+    """Return bind values for a durable principal owner."""
+    return {"owner_issuer": owner[0], "owner_subject": owner[1]}
+
+
+async def get_testsets(conn: oracledb.AsyncConnection, owner: PrincipalOwnership) -> list[dict]:
+    """Get testsets owned by a principal, ordered by creation date."""
+    sql = f"""
+        SELECT tid, name, to_char(created, {_ISO_TS_FMT})
+          FROM aio_testsets
+         WHERE owner_issuer=:owner_issuer AND owner_subject=:owner_subject
+         ORDER BY created
+    """
+    results = await execute_sql(conn, sql, _owner_binds(owner))
     if not results:
         return []
     return [{"tid": tid.hex(), "name": name, "created": created} for tid, name, created in results]
 
 
-async def get_testset_qa(conn: oracledb.AsyncConnection, tid: str) -> dict:
-    """Get Q&A data for a testset by ID."""
+async def get_testset_qa(conn: oracledb.AsyncConnection, tid: str, owner: PrincipalOwnership) -> dict | None:
+    """Get Q&A data for a principal-owned testset by ID."""
     LOGGER.info("Getting TestSet Q&A for TID: %s", tid)
-    sql = "SELECT qa_data FROM aio_testset_qa WHERE tid=:tid"
-    results = await execute_sql(conn, sql, {"tid": _hex_to_raw(tid)})
-    qa_data = [row[0] for row in results] if results else []
+    sql = """
+        SELECT ts.tid, qa.qa_data
+          FROM aio_testsets ts
+          LEFT JOIN aio_testset_qa qa ON qa.tid=ts.tid
+         WHERE ts.tid=:tid
+           AND ts.owner_issuer=:owner_issuer
+           AND ts.owner_subject=:owner_subject
+    """
+    results = await execute_sql(conn, sql, {"tid": _hex_to_raw(tid), **_owner_binds(owner)})
+    if not results:
+        return None
+    qa_data = [row[1] for row in results if row[1] is not None]
     return {"qa_data": qa_data}
 
 
-async def get_evaluations(conn: oracledb.AsyncConnection, tid: str) -> list[dict]:
-    """Get evaluations for a testset, newest first."""
+async def get_evaluations(conn: oracledb.AsyncConnection, tid: str, owner: PrincipalOwnership) -> list[dict]:
+    """Get evaluations for a principal-owned testset, newest first."""
     sql = f"""
         SELECT eid, to_char(evaluated, {_ISO_TS_FMT}), correctness
-          FROM aio_evaluations WHERE tid=:tid ORDER BY evaluated DESC
+          FROM aio_evaluations e
+          JOIN aio_testsets ts ON ts.tid=e.tid
+         WHERE e.tid=:tid
+           AND ts.owner_issuer=:owner_issuer
+           AND ts.owner_subject=:owner_subject
+         ORDER BY evaluated DESC
         """
-    results = await execute_sql(conn, sql, {"tid": _hex_to_raw(tid)})
+    results = await execute_sql(conn, sql, {"tid": _hex_to_raw(tid), **_owner_binds(owner)})
     if not results:
         return []
     return [
@@ -59,11 +90,24 @@ async def get_evaluations(conn: oracledb.AsyncConnection, tid: str) -> list[dict
     ]
 
 
-async def delete_testset(conn: oracledb.AsyncConnection, tid: str) -> None:
-    """Delete a testset (cascades to Q&A records via FK)."""
-    sql = "DELETE FROM aio_testsets WHERE tid = :tid"
-    await execute_sql(conn, sql, {"tid": _hex_to_raw(tid)})
+async def delete_testset(conn: oracledb.AsyncConnection, tid: str, owner: PrincipalOwnership) -> bool:
+    """Delete a principal-owned testset (cascades to Q&A records via FK)."""
+    binds = {"tid": _hex_to_raw(tid), **_owner_binds(owner)}
+    owned = await execute_sql(
+        conn,
+        """
+        SELECT tid
+          FROM aio_testsets
+         WHERE tid=:tid AND owner_issuer=:owner_issuer AND owner_subject=:owner_subject
+        """,
+        binds,
+    )
+    if not owned:
+        return False
+    sql = "DELETE FROM aio_testsets WHERE tid=:tid AND owner_issuer=:owner_issuer AND owner_subject=:owner_subject"
+    await execute_sql(conn, sql, binds)
     await conn.commit()
+    return True
 
 
 async def upsert_qa(
@@ -71,38 +115,66 @@ async def upsert_qa(
     name: str,
     created: str,
     json_data: str,
+    owner: PrincipalOwnership,
     tid: Optional[str] = None,
 ) -> str:
-    """Upsert testset and Q&A records, returning the testset ID (hex)."""
+    """Upsert a principal-owned testset and Q&A records, returning its ID."""
     LOGGER.info("Upsert TestSet: %s - %s", name, created)
     parsed_data = json.loads(json_data)
     if not isinstance(parsed_data, list):
         parsed_data = [parsed_data]
     json_data = json.dumps(parsed_data)
 
+    if tid is not None:
+        owned = await execute_sql(
+            conn,
+            """
+            SELECT tid
+              FROM aio_testsets
+             WHERE tid=:tid AND owner_issuer=:owner_issuer AND owner_subject=:owner_subject
+            """,
+            {"tid": _hex_to_raw(tid), **_owner_binds(owner)},
+        )
+        if not owned:
+            raise OwnedTestsetNotFoundError(tid)
+
     plsql = """
         DECLARE
-            l_tid      aio_testsets.tid%TYPE := :tid;
-            l_name     aio_testsets.name%TYPE := :name;
-            l_created  aio_testsets.created%TYPE := TO_TIMESTAMP(:created ,'YYYY-MM-DD"T"HH24:MI:SS.FF');
-            l_qa_array JSON_ARRAY_T := JSON_ARRAY_T(:json_array);
-            l_qa_obj   JSON_OBJECT_T;
-            l_qa_str   VARCHAR2(32000);
+            l_tid           aio_testsets.tid%TYPE := :tid;
+            l_name          aio_testsets.name%TYPE := :name;
+            l_created       aio_testsets.created%TYPE := TO_TIMESTAMP(:created ,'YYYY-MM-DD"T"HH24:MI:SS.FF');
+            l_owner_issuer  aio_testsets.owner_issuer%TYPE := :owner_issuer;
+            l_owner_subject aio_testsets.owner_subject%TYPE := :owner_subject;
+            l_qa_array      JSON_ARRAY_T := JSON_ARRAY_T(:json_array);
+            l_qa_obj        JSON_OBJECT_T;
+            l_qa_str        VARCHAR2(32000);
         BEGIN
-            BEGIN
-                IF l_tid IS NULL THEN
+            IF l_tid IS NULL THEN
+                BEGIN
                     SELECT tid INTO l_tid
                     FROM aio_testsets
                     WHERE created = l_created
-                    AND name = l_name;
-                ELSE
-                    UPDATE aio_testsets SET name = l_name WHERE tid = l_tid;
-                END IF;
-                DELETE FROM aio_testset_qa WHERE tid = l_tid;
-            EXCEPTION WHEN NO_DATA_FOUND THEN
-                INSERT INTO aio_testsets (name, created) VALUES (l_name, l_created)
-                RETURNING tid INTO l_tid;
-            END;
+                    AND name = l_name
+                    AND owner_issuer = l_owner_issuer
+                    AND owner_subject = l_owner_subject;
+                EXCEPTION WHEN NO_DATA_FOUND THEN
+                    INSERT INTO aio_testsets (name, created, owner_issuer, owner_subject)
+                    VALUES (l_name, l_created, l_owner_issuer, l_owner_subject)
+                    RETURNING tid INTO l_tid;
+                END;
+            ELSE
+                SELECT tid INTO l_tid
+                FROM aio_testsets
+                WHERE tid = l_tid
+                AND owner_issuer = l_owner_issuer
+                AND owner_subject = l_owner_subject;
+                UPDATE aio_testsets
+                   SET name = l_name
+                 WHERE tid = l_tid
+                   AND owner_issuer = l_owner_issuer
+                   AND owner_subject = l_owner_subject;
+            END IF;
+            DELETE FROM aio_testset_qa WHERE tid = l_tid;
             FOR i IN 0 .. l_qa_array.get_size - 1
             LOOP
                 l_qa_obj := TREAT(l_qa_array.get(i) AS json_object_t);
@@ -116,7 +188,15 @@ async def upsert_qa(
         out_tid = cursor.var(oracledb.DB_TYPE_RAW)
         await cursor.execute(
             plsql,
-            {"tid": _hex_to_raw(tid), "name": name, "created": created, "json_array": json_data, "out_tid": out_tid},
+            {
+                "tid": _hex_to_raw(tid),
+                "name": name,
+                "created": created,
+                "json_array": json_data,
+                "owner_issuer": owner[0],
+                "owner_subject": owner[1],
+                "out_tid": out_tid,
+            },
         )
     return out_tid.getvalue().hex()
 
@@ -128,18 +208,36 @@ async def insert_evaluation(
     correctness: float,
     settings_json: str,
     rag_report: dict,
+    owner: PrincipalOwnership,
 ) -> str:
-    """Insert an evaluation record, returning the evaluation ID (hex)."""
+    """Insert an evaluation for a principal-owned testset."""
     LOGGER.info("Insert evaluation; TID: %s", tid)
+    binds = {"tid": _hex_to_raw(tid), **_owner_binds(owner)}
+    owned = await execute_sql(
+        conn,
+        """
+        SELECT tid
+          FROM aio_testsets
+         WHERE tid=:tid AND owner_issuer=:owner_issuer AND owner_subject=:owner_subject
+        """,
+        binds,
+    )
+    if not owned:
+        raise OwnedTestsetNotFoundError(tid)
+
     plsql = """
         DECLARE
             l_eid       aio_evaluations.eid%TYPE;
+            l_tid       aio_testsets.tid%TYPE;
             l_evaluated aio_evaluations.evaluated%TYPE := TO_TIMESTAMP(:evaluated ,'YYYY-MM-DD"T"HH24:MI:SS.FF');
         BEGIN
+            SELECT tid INTO l_tid
+              FROM aio_testsets
+             WHERE tid=:tid AND owner_issuer=:owner_issuer AND owner_subject=:owner_subject;
             INSERT INTO aio_evaluations (
                 tid, evaluated, correctness, settings, rag_report)
             VALUES (
-                :tid, l_evaluated, :correctness, :settings, :rag_report)
+                l_tid, l_evaluated, :correctness, :settings, :rag_report)
             RETURNING eid INTO l_eid;
             :out_eid := l_eid;
         END;
@@ -154,6 +252,8 @@ async def insert_evaluation(
             plsql,
             {
                 "tid": _hex_to_raw(tid),
+                "owner_issuer": owner[0],
+                "owner_subject": owner[1],
                 "evaluated": evaluated,
                 "correctness": correctness,
                 "settings": settings_json,
@@ -164,14 +264,18 @@ async def insert_evaluation(
     return out_eid.getvalue().hex()
 
 
-async def process_report(conn: oracledb.AsyncConnection, eid: str) -> Optional[dict]:
-    """Load an evaluation's stored JSON report and surface its metrics."""
+async def process_report(conn: oracledb.AsyncConnection, eid: str, owner: PrincipalOwnership) -> Optional[dict]:
+    """Load a principal-owned evaluation report and surface its metrics."""
     sql = f"""
         SELECT eid, to_char(evaluated, {_ISO_TS_FMT}) as evaluated, correctness, settings, rag_report
-          FROM aio_evaluations WHERE eid=:eid
+          FROM aio_evaluations e
+          JOIN aio_testsets ts ON ts.tid=e.tid
+         WHERE e.eid=:eid
+           AND ts.owner_issuer=:owner_issuer
+           AND ts.owner_subject=:owner_subject
          ORDER BY evaluated
     """
-    results = await execute_sql(conn, sql, {"eid": _hex_to_raw(eid)})
+    results = await execute_sql(conn, sql, {"eid": _hex_to_raw(eid), **_owner_binds(owner)})
     if not results:
         return None
 

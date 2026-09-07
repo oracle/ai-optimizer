@@ -47,19 +47,21 @@ def mock_core_pool():
 
 @pytest.mark.unit
 @pytest.mark.anyio
-async def test_list_testsets(app_client, auth_headers):
+async def test_list_testsets(app_client, auth_headers, test_auth_mode, mock_core_pool):
     """Returns testset list from database."""
     mock_data = [{"tid": VALID_TID, "name": "Test", "created": "2026-01-01"}]
     with patch(
         "server.app.api.v1.endpoints.testbed.get_testsets",
         new_callable=AsyncMock,
         return_value=mock_data,
-    ):
+    ) as mock_get:
         resp = await app_client.get("/v1/testbed/testsets", headers=auth_headers)
     assert resp.status_code == 200
     body = resp.json()
     assert len(body) == 1
     assert body[0]["tid"] == VALID_TID
+    principal_owner = (settings.auth_dev_issuer, "api-test-user") if test_auth_mode == "dev" else ("api-key", "shared")
+    mock_get.assert_awaited_once_with(mock_core_pool[0], principal_owner)
 
 
 @pytest.mark.unit
@@ -194,6 +196,20 @@ async def test_get_testset_qa_rejects_invalid_tid(app_client, auth_headers):
     mock_get.assert_not_awaited()
 
 
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_get_testset_qa_hides_another_owner(app_client, auth_headers):
+    """A testset hidden by ownership filters is reported as not found."""
+    with patch(
+        "server.app.api.v1.endpoints.testbed.get_testset_qa",
+        new_callable=AsyncMock,
+        return_value=None,
+    ):
+        resp = await app_client.get("/v1/testbed/testset_qa", params={"tid": VALID_TID}, headers=auth_headers)
+
+    assert resp.status_code == 404
+
+
 # ---------------------------------------------------------------------------
 # DELETE /testbed/testset_delete/{tid}
 # ---------------------------------------------------------------------------
@@ -222,6 +238,20 @@ async def test_delete_testset_rejects_invalid_tid(app_client, auth_headers):
     assert resp.status_code == 422
     assert "tid" in resp.text
     mock_delete.assert_not_awaited()
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_delete_testset_hides_another_owner(app_client, auth_headers):
+    """A testset hidden by ownership filters cannot be deleted."""
+    with patch(
+        "server.app.api.v1.endpoints.testbed.delete_testset",
+        new_callable=AsyncMock,
+        return_value=False,
+    ):
+        resp = await app_client.delete(f"/v1/testbed/testset_delete/{VALID_TID}", headers=auth_headers)
+
+    assert resp.status_code == 404
 
 
 # ---------------------------------------------------------------------------
