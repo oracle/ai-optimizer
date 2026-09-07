@@ -23,6 +23,7 @@ from server.app.core.settings import (
     resolve_client,
     settings,
 )
+from server.app.database.schemas import DatabaseConfig
 from server.app.models.schemas import ModelConfig
 from server.tests.constants import TEST_OPENAI_MODEL_ID
 from server.tests.constants import test_auth as auth_creds
@@ -164,6 +165,21 @@ def test_no_database_keeps_api_key_authentication(monkeypatch):
     configured = _SettingsWithoutEnvFile()
 
     assert configured.auth_mode is None
+
+
+def test_authentication_posture_can_be_validated_after_core_overlay(monkeypatch):
+    """CORE-dependent authentication validation is deferred until overlays are loaded."""
+    monkeypatch.delenv("AIO_AUTH_MODE", raising=False)
+
+    configured = _SettingsWithoutEnvFile(auth_mode="dev")
+
+    with pytest.raises(ValueError, match="requires an Oracle CORE database"):
+        configured.validate_authentication_posture()
+
+    configured.database_configs = [DatabaseConfig(alias="CORE")]
+    configured.validate_authentication_posture()
+
+    assert configured.auth_mode == "dev"
 
 
 def test_explicit_authentication_mode_overrides_database_default():

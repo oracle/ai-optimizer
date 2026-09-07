@@ -6,6 +6,7 @@ Unit tests for server.app.main (lifespan and _apply_configured_overlay).
 """
 # spell-checker: disable
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -31,10 +32,12 @@ def _restore_settings_state():
     saved_models = list(settings.model_configs)
     saved_dbs = list(settings.database_configs)
     saved_cs = settings.client_settings.model_copy(deep=True)
+    saved_auth_mode = settings.auth_mode
     yield
     settings.model_configs = saved_models
     settings.database_configs = saved_dbs
     settings.client_settings = saved_cs
+    settings.auth_mode = saved_auth_mode
 
 
 # ---------------------------------------------------------------------------
@@ -67,6 +70,58 @@ class TestApplyConfiguredOverlay:
 
         mock_overlay.assert_called_once()
         mock_persist.assert_not_awaited()
+
+    async def test_core_from_config_file_enables_default_development_authentication(self):
+        """A file-provided CORE database enables development auth after the overlay."""
+        settings.auth_mode = None
+        settings.database_configs = []
+        source = SettingsBase.model_validate({"database_configs": [{"alias": "CORE"}]})
+
+        with (
+            patch(f"{MODULE}.load_config_file", return_value=source),
+            patch(f"{MODULE}.row_exists", new_callable=AsyncMock),
+            patch(f"{MODULE}.reconcile_prompt_customizations"),
+            patch(f"{MODULE}.persist_settings", new_callable=AsyncMock),
+        ):
+            from server.app.main import _apply_configured_overlay
+
+            loaded_from_file, _ = await _apply_configured_overlay(set(), include_database=False, database_only=True)
+
+        settings.validate_authentication_posture()
+
+        assert loaded_from_file is True
+        assert settings.auth_mode == "dev"
+
+    async def test_two_pass_overlay_preserves_promoted_core_client_alias(self):
+        """A full overlay must not undo CORE promotion from the bootstrap pass."""
+        settings.database_configs = []
+        settings.client_settings.database.alias = "DEFAULT"
+        bootstrap_source = SettingsBase.model_validate(
+            {
+                "database_configs": [{"alias": "DEFAULT", "dsn": "//host/svc"}],
+                "client_settings": {"database": {"alias": "DEFAULT"}},
+            }
+        )
+        full_source = SettingsBase.model_validate(
+            {
+                "database_configs": [{"alias": "DEFAULT", "dsn": "//host/svc"}],
+                "client_settings": {"database": {"alias": "DEFAULT"}},
+            }
+        )
+
+        with (
+            patch(f"{MODULE}.load_config_file", side_effect=[bootstrap_source, full_source]),
+            patch(f"{MODULE}.row_exists", new_callable=AsyncMock),
+            patch(f"{MODULE}.reconcile_prompt_customizations"),
+            patch(f"{MODULE}.persist_settings", new_callable=AsyncMock),
+        ):
+            from server.app.main import _apply_configured_overlay
+
+            _, promoted_core_alias = await _apply_configured_overlay(set(), include_database=False, database_only=True)
+            await _apply_configured_overlay(set(), preserve_promoted_core_alias=promoted_core_alias)
+
+        assert [db.alias for db in settings.database_configs] == ["CORE"]
+        assert settings.client_settings.database.alias == "CORE"
 
     async def test_overlay_from_database(self):
         """Database source should be used when no config file exists."""
@@ -169,6 +224,77 @@ class TestLifespan:
     """Tests for the FastAPI lifespan context manager."""
 
     @pytest.mark.unit
+    async def test_configuration_overlay_is_validated_before_core_and_provider_start(self):
+        """The file overlay must determine auth posture before startup dependencies run."""
+        call_order: list[str] = []
+        shutdown = MagicMock()
+        completed_task = asyncio.get_running_loop().create_future()
+        completed_task.set_result(None)
+
+        async def _apply_overlay(
+            _protected,
+            *,
+            include_database=True,
+            database_only=False,
+            preserve_promoted_core_alias=None,
+        ):
+            del preserve_promoted_core_alias
+            call_order.append(f"overlay:{include_database}:{database_only}")
+            if database_only:
+                settings.database_configs = [DatabaseConfig(alias="CORE")]
+            return True, None
+
+        def _validate_authentication_posture():
+            call_order.append("validate")
+            settings.auth_mode = "dev"
+
+        async def _start_provider():
+            call_order.append("provider")
+            return shutdown, completed_task
+
+        with (
+            patch(f"{MODULE}._apply_configured_overlay", side_effect=_apply_overlay),
+            patch.object(
+                type(settings),
+                "validate_authentication_posture",
+                side_effect=_validate_authentication_posture,
+            ),
+            patch(
+                f"{MODULE}._initialize_core_database",
+                new_callable=AsyncMock,
+                side_effect=lambda: call_order.append("core"),
+            ),
+            patch(f"{MODULE}._start_development_oidc", side_effect=_start_provider),
+            patch(f"{MODULE}.load_default_models", new_callable=AsyncMock),
+            patch(f"{MODULE}.apply_env_overrides"),
+            patch(f"{MODULE}.load_factory_prompts"),
+            patch(f"{MODULE}.persist_settings", new_callable=AsyncMock),
+            patch(f"{MODULE}.load_client_settings", new_callable=AsyncMock, return_value=None),
+            patch(f"{MODULE}.persist_client_settings", new_callable=AsyncMock),
+            patch(f"{MODULE}.load_oci_profiles", new_callable=AsyncMock),
+            patch(f"{MODULE}.load_ollama_models", new_callable=AsyncMock),
+            patch(f"{MODULE}.register_mcp_prompts"),
+            patch(f"{MODULE}.register_mcp_tools"),
+            patch(f"{MODULE}.register_sqlcl_proxy", new_callable=AsyncMock, return_value=None),
+            patch(f"{MODULE}.check_model_reachability", new_callable=AsyncMock),
+            patch(f"{MODULE}.close_sqlcl_proxy", new_callable=AsyncMock),
+            patch(f"{MODULE}.close_pool", new_callable=AsyncMock),
+        ):
+            from server.app.main import lifespan
+
+            async with lifespan(MagicMock()):
+                pass
+
+        assert call_order == [
+            "overlay:False:True",
+            "validate",
+            "core",
+            "overlay:True:False",
+            "validate",
+            "provider",
+        ]
+
+    @pytest.mark.unit
     async def test_core_db_failure_blocks_development_startup(self):
         """CORE database init failure should block development OIDC startup."""
         mock_db = MagicMock()
@@ -180,7 +306,11 @@ class TestLifespan:
             patch(f"{MODULE}.apply_env_overrides"),
             patch(f"{MODULE}.load_factory_prompts"),
             patch(f"{MODULE}.persist_settings", new_callable=AsyncMock),
-            patch(f"{MODULE}._apply_configured_overlay", new_callable=AsyncMock),
+            patch(
+                f"{MODULE}._apply_configured_overlay",
+                new_callable=AsyncMock,
+                return_value=(True, None),
+            ),
             patch(f"{MODULE}.load_client_settings", new_callable=AsyncMock, return_value=None),
             patch(f"{MODULE}.persist_client_settings", new_callable=AsyncMock),
             patch(f"{MODULE}.load_oci_profiles", new_callable=AsyncMock),
@@ -220,7 +350,11 @@ class TestLifespan:
             patch(f"{MODULE}.apply_env_overrides"),
             patch(f"{MODULE}.load_factory_prompts"),
             patch(f"{MODULE}.persist_settings", side_effect=_track_persist),
-            patch(f"{MODULE}._apply_configured_overlay", new_callable=AsyncMock),
+            patch(
+                f"{MODULE}._apply_configured_overlay",
+                new_callable=AsyncMock,
+                return_value=(True, None),
+            ),
             patch(f"{MODULE}.load_client_settings", new_callable=AsyncMock, return_value=None),
             patch(f"{MODULE}.persist_client_settings", new_callable=AsyncMock),
             patch(f"{MODULE}.load_oci_profiles", side_effect=_track_oci),
@@ -255,7 +389,11 @@ class TestLifespan:
             patch(f"{MODULE}.apply_env_overrides"),
             patch(f"{MODULE}.load_factory_prompts"),
             patch(f"{MODULE}.persist_settings", new_callable=AsyncMock),
-            patch(f"{MODULE}._apply_configured_overlay", new_callable=AsyncMock),
+            patch(
+                f"{MODULE}._apply_configured_overlay",
+                new_callable=AsyncMock,
+                return_value=(True, None),
+            ),
             patch(f"{MODULE}.load_client_settings", new_callable=AsyncMock, return_value=None),
             patch(f"{MODULE}.persist_client_settings", new_callable=AsyncMock),
             patch(f"{MODULE}.load_oci_profiles", new_callable=AsyncMock),

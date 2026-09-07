@@ -205,14 +205,14 @@ class Settings(SettingsBase, BaseSettings):
             object.__setattr__(self, "_api_key_generated", False)
         return self
 
-    @model_validator(mode="after")
-    def _validate_authentication_posture(self) -> "Settings":
-        """Reject development/production combinations that cannot be safe."""
+    def _apply_authentication_posture(self, *, require_core: bool) -> "Settings":
+        """Apply authentication defaults and validate the selected posture."""
         if self.client_password is not None:
             raise ValueError("AIO_CLIENT_PASSWORD is retired; use AIO_AUTH_DEV_ADMIN_PASSWORD in development mode")
-        if self.auth_mode is None and any(cfg.alias == "CORE" for cfg in self.database_configs):
+        has_core = any(cfg.alias == "CORE" for cfg in self.database_configs)
+        if self.auth_mode is None and has_core:
             self.auth_mode = "dev"
-        if self.auth_mode == "dev" and not any(cfg.alias == "CORE" for cfg in self.database_configs):
+        if self.auth_mode == "dev" and not has_core and require_core:
             raise ValueError("AIO_AUTH_MODE=dev requires an Oracle CORE database")
         if self.auth_mode == "dev":
             _validate_issuer_url(self.auth_dev_issuer)
@@ -223,6 +223,15 @@ class Settings(SettingsBase, BaseSettings):
         if self.auth_mode == "oidc":
             _validate_issuer_url(self.auth_oidc_issuer, require_root_path=False)
         return self
+
+    def validate_authentication_posture(self) -> "Settings":
+        """Validate authentication after startup configuration overlays are applied."""
+        return self._apply_authentication_posture(require_core=True)
+
+    @model_validator(mode="after")
+    def _validate_authentication_posture(self) -> "Settings":
+        """Validate authentication while deferring CORE-dependent checks until startup."""
+        return self._apply_authentication_posture(require_core=False)
 
     @property
     def api_key_generated(self) -> bool:

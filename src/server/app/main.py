@@ -109,27 +109,53 @@ async def _initialize_core_database() -> None:
 #############################################################################
 
 
-async def _apply_configured_overlay(protected: set[str]) -> None:
-    """Load CONFIGURED settings from config file or database and apply."""
+async def _apply_configured_overlay(
+    protected: set[str],
+    *,
+    include_database: bool = True,
+    database_only: bool = False,
+    preserve_promoted_core_alias: str | None = None,
+) -> tuple[bool, str | None]:
+    """Load CONFIGURED settings from file or, when enabled, the database and apply.
+
+    Returns ``(from_file, promoted_alias)`` for the applied source.
+    """
     source = load_config_file()
     from_file = source is not None
 
-    if not source and await row_exists("CONFIGURED"):
+    if not source and include_database and await row_exists("CONFIGURED"):
         source = await load_settings("CONFIGURED")
 
+    promoted_core_alias: str | None = None
     if source is not None:
-        apply_overlay(source, protected, exclude_fields={"oci_configs", "prompt_configs"})
-        ensure_core_alias(settings.database_configs, settings.client_settings, _client_store)
+        if preserve_promoted_core_alias is not None:
+            for db_config in source.database_configs:
+                if db_config.alias.casefold() == preserve_promoted_core_alias.casefold():
+                    # The bootstrap pass already promoted this source entry to CORE;
+                    # normalize it before merging so it is not appended a second time.
+                    db_config.alias = "CORE"
+                    break
+            if (
+                "client_settings" in source.model_fields_set
+                and source.client_settings.database.alias == preserve_promoted_core_alias
+            ):
+                source.client_settings.database.alias = "CORE"
+        excluded = {"oci_configs", "prompt_configs"}
+        if database_only:
+            excluded |= source.model_fields_set - {"database_configs"}
+        apply_overlay(source, protected, exclude_fields=excluded)
+        promoted_core_alias = ensure_core_alias(settings.database_configs, settings.client_settings, _client_store)
         has_models = "model_configs" in source.model_fields_set if from_file else bool(source.model_configs)
-        if has_models:
+        if not database_only and has_models:
             # Restored settings can carry duplicate (provider, id) entries written
             # by older code; the assignment below would otherwise persist them and
             # surface as duplicate rows in the UI. Dedupe so the invariant holds.
             settings.model_configs = dedupe_model_configs(source.model_configs)
             if not from_file:
                 apply_env_overrides()
-        if source.prompt_configs:
+        if not database_only and source.prompt_configs:
             reconcile_prompt_customizations(source.prompt_configs)
+    return from_file, promoted_core_alias
 
 
 @asynccontextmanager
@@ -140,24 +166,29 @@ async def lifespan(_app: FastAPI):
     if settings.api_key_generated:
         protected.discard("api_key")
 
-    # --- Phase 2: Init CORE database ---
+    # --- Phase 2: Load file CORE configuration and validate authentication ---
+    _, promoted_core_alias = await _apply_configured_overlay(protected, include_database=False, database_only=True)
+    settings.validate_authentication_posture()
+
+    # --- Phase 3: Init CORE database ---
     await _initialize_core_database()
+
+    # --- Phase 4: Build FACTORY baseline ---
+    await load_default_models()
+    apply_env_overrides()
+    load_factory_prompts()
+    await persist_settings("FACTORY", is_current=False)
+
+    # --- Phase 5: Build/load CONFIGURED and validate authentication ---
+    await _apply_configured_overlay(protected, preserve_promoted_core_alias=promoted_core_alias)
+    settings.validate_authentication_posture()
 
     dev_oidc_server: _EmbeddedUvicornServer | None = None
     dev_oidc_task: asyncio.Task | None = None
     if settings.auth_mode == "dev":
         dev_oidc_server, dev_oidc_task = await _start_development_oidc()
 
-    # --- Phase 3: Build FACTORY baseline ---
-    await load_default_models()
-    apply_env_overrides()
-    load_factory_prompts()
-    await persist_settings("FACTORY", is_current=False)
-
-    # --- Phase 4: Build/load CONFIGURED ---
-    await _apply_configured_overlay(protected)
-
-    # --- Phase 4b: Init server client settings ---
+    # --- Phase 6: Init server client settings ---
     server_cs = await load_client_settings("server")
     if server_cs is None:
         server_cs = settings.client_settings.model_copy(deep=True)
@@ -165,7 +196,7 @@ async def lifespan(_app: FastAPI):
     server_cs.client = "server"
     _client_store["server"] = server_cs
 
-    # --- Phase 5: Post-config startup ---
+    # --- Phase 7: Post-config startup ---
     await load_oci_profiles()
     await load_ollama_models()
     register_mcp_prompts()
@@ -177,10 +208,10 @@ async def lifespan(_app: FastAPI):
     # would write an empty oci_configs list and erase it).
     await persist_settings("CONFIGURED", is_current=True)
 
-    # --- Phase 6: Model reachability ---
+    # --- Phase 8: Model reachability ---
     await check_model_reachability()
 
-    # --- Phase 7: Embed-job heartbeat + reaper ---
+    # --- Phase 9: Embed-job heartbeat + reaper ---
     # Each replica heartbeats its own owned rows in aio_embed_jobs and
     # also participates in the cross-pod reaper sweep. This is what
     # turns a pod crash mid-pipeline into a terminal "failed" record
