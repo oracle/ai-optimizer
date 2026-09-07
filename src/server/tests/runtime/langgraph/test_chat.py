@@ -187,6 +187,39 @@ class TestChatOrchestratorCache(_LangGraphChatMixin, CacheBase):
             await asyncio.gather(first, second)
 
     @pytest.mark.anyio
+    async def test_refresh_defers_failed_active_context_eviction(self):
+        """A failed refresh keeps an active context until its request completes."""
+        orch = _make_orchestrator()
+        active_headers = {"Authorization": "Bearer active"}
+        active = orch.for_request_headers(active_headers)
+        started = asyncio.Event()
+        release = asyncio.Event()
+        session = MagicMock(spec=AgentGraphSession)
+        session.last_metadata = SessionMetadata()
+
+        async def blocked_chat(*_args, **_kwargs):
+            started.set()
+            await release.wait()
+            return "answer"
+
+        session.chat = AsyncMock(side_effect=blocked_chat)
+        with patch.object(active, "_build_session", AsyncMock(return_value=session)):
+            task = asyncio.create_task(active.execute_chat("question", "c1"))
+            await started.wait()
+
+            async def fail_refresh():
+                raise RuntimeError("expired credential")
+
+            with patch.object(active, "refresh_prompts", new=fail_refresh):
+                await orch.refresh_prompts()
+
+            assert orch.for_request_headers(active_headers) is active
+            release.set()
+            await task
+
+        assert active not in orch._credential_orchestrators.values()
+
+    @pytest.mark.anyio
     async def test_session_cached_on_second_call(self):
         """Verify second call reuses cached session."""
         orch = _make_orchestrator()
@@ -508,6 +541,67 @@ class TestExecuteChatStream(_LangGraphChatMixin, StreamBase):
         session = MagicMock(spec=AgentGraphSession)
         session.last_metadata = SessionMetadata()
         return session
+
+    @pytest.mark.anyio
+    async def test_cancelling_stream_cancels_worker_before_context_finishes(self):
+        """Cancelling the consumer stops the background worker before releasing activity."""
+        orch = _make_orchestrator(tools_enabled=["NL2SQL"])
+        mock_session = self._mock_agent_session()
+        worker_started = asyncio.Event()
+        worker_cancelled = asyncio.Event()
+
+        async def blocked_run(_self, _session, _history_messages, _question, _queue):
+            worker_started.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                worker_cancelled.set()
+
+        with (
+            patch.object(orch, "_build_session", new_callable=AsyncMock, return_value=mock_session),
+            patch.object(self.ChatOrchestratorClass, "_run_agent_streaming", blocked_run),
+        ):
+            stream = orch.execute_chat_stream("test", "c1")
+            consumer = asyncio.create_task(stream.__anext__())
+            await worker_started.wait()
+            consumer.cancel()
+
+            with pytest.raises(asyncio.CancelledError):
+                await consumer
+            await asyncio.wait_for(worker_cancelled.wait(), timeout=1)
+            assert not orch.has_in_flight_requests
+            await stream.aclose()
+
+    @pytest.mark.anyio
+    async def test_closing_stream_after_event_cancels_worker_before_context_finishes(self):
+        """Closing a yielded stream stops its worker before releasing activity."""
+        orch = _make_orchestrator(tools_enabled=["NL2SQL"])
+        mock_session = self._mock_agent_session()
+        worker_started = asyncio.Event()
+        worker_cancelled = asyncio.Event()
+        active_during_worker_cleanup: list[bool] = []
+
+        async def blocked_run(_self, _session, _history_messages, _question, queue):
+            await queue.put({"type": "stream", "content": "first"})
+            worker_started.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                active_during_worker_cleanup.append(orch.has_in_flight_requests)
+                worker_cancelled.set()
+
+        with (
+            patch.object(orch, "_build_session", new_callable=AsyncMock, return_value=mock_session),
+            patch.object(self.ChatOrchestratorClass, "_run_agent_streaming", blocked_run),
+        ):
+            stream = orch.execute_chat_stream("test", "c1")
+            assert await stream.__anext__() == {"type": "stream", "content": "first"}
+            await worker_started.wait()
+            await stream.aclose()
+
+            await asyncio.wait_for(worker_cancelled.wait(), timeout=1)
+            assert active_during_worker_cleanup == [True]
+            assert not orch.has_in_flight_requests
 
     def _mock_combined_session(self):
         """Create a mock combined session."""

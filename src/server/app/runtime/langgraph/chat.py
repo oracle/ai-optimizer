@@ -87,12 +87,15 @@ class ChatOrchestrator:
         server_url: str,
         api_key: McpCredential | Callable[[], McpCredential],
         resolve_client: Callable[[str], Any],
+        on_idle: Optional[Callable[["ChatOrchestrator"], None]] = None,
     ) -> None:
         self._server_url = server_url
         self._api_key = api_key
         self._resolve_client = resolve_client
+        self._on_idle = on_idle
         self._session_cache: Dict[tuple, tuple[Any, Dict[str, Any], Dict[str, Any]]] = {}
         self._credential_orchestrators: OrderedDict[tuple, "ChatOrchestrator"] = OrderedDict()
+        self._pending_credential_evictions: set[tuple] = set()
         self._build_lock = asyncio.Lock()
         self._stream_locks: Dict[tuple, asyncio.Lock] = defaultdict(asyncio.Lock)
         self._active_requests = 0
@@ -120,6 +123,17 @@ class ChatOrchestrator:
             for key in self._invalidated_lock_keys:
                 self._stream_locks.pop(key, None)
             self._invalidated_lock_keys.clear()
+            if self._on_idle is not None:
+                self._on_idle(self)
+
+    def _evict_idle_credential_orchestrator(self, orchestrator: "ChatOrchestrator") -> None:
+        """Evict a credential context whose failed refresh was deferred while active."""
+        for cache_key, candidate in list(self._credential_orchestrators.items()):
+            if candidate is orchestrator and cache_key in self._pending_credential_evictions:
+                if not orchestrator.has_in_flight_requests:
+                    self._credential_orchestrators.pop(cache_key, None)
+                    self._pending_credential_evictions.discard(cache_key)
+                return
 
     def for_bearer_credential(self, authorization: str) -> "ChatOrchestrator":
         """Create a request-scoped tool orchestrator that retains bearer authentication."""
@@ -152,7 +166,13 @@ class ChatOrchestrator:
             if evict_key is None:
                 break
             self._credential_orchestrators.pop(evict_key)
-        orchestrator = ChatOrchestrator(self._server_url, credential, self._resolve_client)
+            self._pending_credential_evictions.discard(evict_key)
+        orchestrator = ChatOrchestrator(
+            self._server_url,
+            credential,
+            self._resolve_client,
+            on_idle=self._evict_idle_credential_orchestrator,
+        )
         orchestrator.history = self.history
         self._credential_orchestrators[cache_key] = orchestrator
         return orchestrator
@@ -400,9 +420,14 @@ class ChatOrchestrator:
             try:
                 await orchestrator.refresh_prompts()
             except Exception as exc:
-                LOGGER.warning("Credential-scoped chat prompt refresh failed; evicting context: %s", exc)
+                LOGGER.warning(
+                    "Credential-scoped chat prompt refresh failed; context will be evicted when inactive: %s", exc
+                )
                 if self._credential_orchestrators.get(cache_key) is orchestrator:
-                    self._credential_orchestrators.pop(cache_key, None)
+                    if orchestrator.has_in_flight_requests:
+                        self._pending_credential_evictions.add(cache_key)
+                    else:
+                        self._credential_orchestrators.pop(cache_key, None)
 
     # -- history feed ------------------------------------------------------
 
@@ -666,11 +691,27 @@ class ChatOrchestrator:
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Execute a streaming chat, yielding event dicts as they arrive."""
         self._request_started()
+        stream = self._execute_chat_stream_locked(question, client)
         try:
-            async for event in self._execute_chat_stream_locked(question, client):
+            async for event in stream:
                 yield event
         finally:
-            self._request_finished()
+            try:
+                await stream.aclose()
+            finally:
+                self._request_finished()
+
+    @staticmethod
+    async def _cancel_stream_task(task: asyncio.Task) -> None:
+        """Stop and await a streaming worker before releasing request activity."""
+        if not task.done():
+            task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        except Exception:
+            pass
 
     async def _execute_chat_stream_locked(
         self,
@@ -719,10 +760,16 @@ class ChatOrchestrator:
             except Exception as exc:
                 LOGGER.error("Stream consumer error: %s", exc)
                 yield {"type": "error", "content": clean_llm_error(exc)}
-                if not task.done():
-                    task.cancel()
                 return
+            finally:
+                await self._cancel_stream_task(task)
 
             yield self._finalize_stream(
-                session, question, client, collected, token_usage, route, cs.ll_model.chat_history
+                session,
+                question,
+                client,
+                collected,
+                token_usage,
+                route,
+                cs.ll_model.chat_history,
             )
