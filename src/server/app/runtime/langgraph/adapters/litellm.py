@@ -18,6 +18,9 @@ Oracle-specific behavior upstream does not provide:
 - Ollama tool-result contextualization in :meth:`_create_message_dicts`,
   plus normalization of list-content tool messages to a string
   (LiteLLM/OpenAI tool messages must carry string content).
+- OCI streaming compatibility: streamed requests use ``gzip, deflate``
+  response encoding and retain other request headers. The adapter supports both
+  streaming and non-streaming completion modes.
 """
 # spell-checker: ignore unsanitize ollama acompletion afallback agenerate astream litellm ainvoke qwen
 
@@ -51,6 +54,14 @@ LOGGER = logging.getLogger(__name__)
 
 _OLLAMA_NAME_MAP_KEY = "_ollama_name_map"
 _OCI_OPENAI_MAX_COMPLETION_PREFIXES = ("openai.gpt-5", "openai.o")
+_OCI_ACCEPT_ENCODING = "gzip, deflate"
+
+
+def _safe_oci_extra_headers(headers: Optional[Mapping[str, str]]) -> Dict[str, str]:
+    """Normalize OCI request headers for streamed responses."""
+    safe_headers = {key: value for key, value in (headers or {}).items() if key.lower() != "accept-encoding"}
+    safe_headers["Accept-Encoding"] = _OCI_ACCEPT_ENCODING
+    return safe_headers
 
 
 def _flatten_to_text(content: Any) -> str:
@@ -94,15 +105,23 @@ def _drop_oci_openai_unsupported_token_limits(params: Dict[str, Any], model: Opt
     """Remove token-limit params LiteLLM currently mistranslates for OCI OpenAI models.
 
     OCI OpenAI GPT-5/O-series models reject ``max_tokens`` and require
-    ``max_completion_tokens``. LiteLLM 1.87.0's OCI adapter only switches to
-    OCI ``maxCompletionTokens`` when its local model catalog marks a model as
-    reasoning-capable, and that catalog misses newer OCI OpenAI model names.
+    ``max_completion_tokens``. The OCI adapter only switches to OCI
+    ``maxCompletionTokens`` when its local model catalog marks a model as
+    reasoning-capable, and that catalog can miss OCI OpenAI model names.
     Passing ``max_completion_tokens`` is not a safe workaround either: the
-    upstream adapter can still translate it to legacy ``maxTokens``.
+    adapter can still translate it to legacy ``maxTokens``.
     """
     if _is_oci_openai_max_completion_model(str(params.get("model") or model or "")):
         params.pop("max_tokens", None)
         params.pop("max_completion_tokens", None)
+    return params
+
+
+def _prepare_oci_stream_kwargs(model: str, kwargs: Mapping[str, Any]) -> Dict[str, Any]:
+    """Normalize provider parameters and headers before an OCI stream call."""
+    params = _drop_oci_openai_unsupported_token_limits(dict(kwargs), model)
+    if model.lower().startswith("oci/") and "extra_headers" in params:
+        params["extra_headers"] = _safe_oci_extra_headers(params["extra_headers"])
     return params
 
 
@@ -313,7 +332,7 @@ class OracleChatLiteLLM(ChatLiteLLM):
         **kwargs: Any,
     ) -> Iterator[ChatGenerationChunk]:
         name_map = kwargs.pop(_OLLAMA_NAME_MAP_KEY, None)
-        kwargs = _drop_oci_openai_unsupported_token_limits(dict(kwargs), self.model)
+        kwargs = _prepare_oci_stream_kwargs(self.model, kwargs)
         yielded_any = False
         try:
             for chunk in super()._stream(messages, stop=stop, run_manager=run_manager, **kwargs):
@@ -340,7 +359,7 @@ class OracleChatLiteLLM(ChatLiteLLM):
         **kwargs: Any,
     ) -> AsyncIterator[ChatGenerationChunk]:
         name_map = kwargs.pop(_OLLAMA_NAME_MAP_KEY, None)
-        kwargs = _drop_oci_openai_unsupported_token_limits(dict(kwargs), self.model)
+        kwargs = _prepare_oci_stream_kwargs(self.model, kwargs)
         yielded_any = False
         try:
             async for chunk in super()._astream(messages, stop=stop, run_manager=run_manager, **kwargs):
@@ -437,7 +456,7 @@ class OracleChatLiteLLM(ChatLiteLLM):
     def _client_params(self) -> Dict[str, Any]:
         """Build per-call kwargs for ``litellm.(a)completion`` without mutating module state.
 
-        Five corrections vs. ``ChatLiteLLM._client_params``:
+        Six corrections vs. ``ChatLiteLLM._client_params``:
 
         1. **No global mutation.** Upstream sets ``self.client.api_key`` /
            ``self.client.api_base`` on the litellm module. With concurrent
@@ -460,6 +479,9 @@ class OracleChatLiteLLM(ChatLiteLLM):
            OpenAI models reject legacy token limit fields, and current LiteLLM
            versions can mistranslate the replacement field for uncataloged
            model names.
+        6. **OCI streaming compatibility.** OCI streamed responses use
+           independent response frames. Keep zstd out of OCI's negotiated
+           encodings while retaining other request headers.
         """
         params = dict(self._default_params)
         params["drop_params"] = True
@@ -469,6 +491,9 @@ class OracleChatLiteLLM(ChatLiteLLM):
             params["api_key"] = self.api_key
         if self.api_base:
             params["base_url"] = self.api_base
+        if self.model.lower().startswith("oci/"):
+            headers = self.extra_headers if self.extra_headers is not None else params.get("extra_headers")
+            params["extra_headers"] = _safe_oci_extra_headers(headers)
         return _drop_oci_openai_unsupported_token_limits(params)
 
     @property
