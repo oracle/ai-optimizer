@@ -20,6 +20,7 @@ from _version import __version__
 from server.app.api.mcp.router import router as mcp_router
 from server.app.api.v1.router import router as v1_router
 from server.app.core.etc import apply_overlay, ensure_core_alias, load_config_file
+from server.app.core.httpx_compat import disable_zstd_response_compression
 from server.app.core.mcp import MCPApiKeyMiddleware, mcp
 from server.app.core.settings import _client_store, settings
 from server.app.database.config import close_pool, get_database_settings
@@ -45,6 +46,7 @@ from server.app.models.registry import apply_env_overrides, dedupe_model_configs
 from server.app.oci.registry import load_oci_profiles
 from server.app.otel import init_telemetry, instrument_fastapi
 
+disable_zstd_response_compression()
 init_telemetry()
 
 LOGGER = logging.getLogger(__name__)
