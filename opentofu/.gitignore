@@ -1,23 +1,33 @@
 ##############################################################################
-# IaC
+# OpenTofu
 ##############################################################################
-# Ignore all tfvars files (contain credentials)
-**/**.tfvars
-# But allow example tfvars files for CI/CD testing (safe, no real credentials)
+# Ignore variable files (contain credentials)
+*.tfvars
+*.tfvars.json
+# But allow example variable files for CI/CD testing (safe, no real credentials)
 !examples/*.tfvars
+!examples/*.tfvars.json
 
-# Terraform/OpenTofu state and cache
-**/.terraform*
-**/terraform.tfstate*
-**/*.tfplan
-**/*.tfplan.out
+# OpenTofu state, cache, plans, and local overrides
+.terraform/
+.terraform.lock.hcl
+.terraform.tfstate.lock.info
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfplan.out
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+crash.log
+crash.*.log
 
 # Private keys and sensitive files
-**/*.pem
+*.pem
 
-# Stage directory
-**/stage/*.*
-**/stage/kubeconfig
+# Generated configuration-management output
+cfgmgt/stage/
 
 # Local Helm Charts
-**/helm
+cfgmgt/helm/

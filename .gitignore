@@ -19,6 +19,7 @@ test-results-*.xml
 **/.vscode
 **/.DS_Store
 **/*.swp
+**/.env
 **/*.pem
 src/client/app/.streamlit/secrets.toml
 src/client/app/.streamlit/dev-oidc-bootstrap.json
@@ -33,14 +34,19 @@ src/client/app/.streamlit/dev-oidc-web-client-secret
 *$py.class
 **/*.egg-info
 **/build/
+**/dist/
+**/target/
 **/.mypy_cache
 
 # Test coverage artifacts
 .coverage
+.coverage.*
 coverage.xml
 htmlcov/
 test-results.xml
 **/.ruff_cache
+trivy-results.json
+trivy-results.sarif
 
 ##############################################################################
 # AI Code Assists
@@ -58,21 +64,31 @@ helm/values*.yaml
 !helm/values.yaml
 
 ##############################################################################
-# IaC
+# IaC (also duplicated in opentofu/.gitignore for portability)
 ##############################################################################
-# Ignore all tfvars files (contain credentials)
-**/**.tfvars
-# But allow example tfvars files for CI/CD testing (safe, no real credentials)
+# Ignore variable files (contain credentials)
+**/*.tfvars
+**/*.tfvars.json
+# But allow example variable files for CI/CD testing (safe, no real credentials)
 !opentofu/examples/*.tfvars
-# Terraform/OpenTofu state and cache
-**/.terraform*
-**/terraform.tfstate*
+!opentofu/examples/*.tfvars.json
+
+# OpenTofu state, cache, plans, and local overrides
+**/.terraform/
+**/.terraform.lock.hcl
+**/.terraform.tfstate.lock.info
+**/*.tfstate
+**/*.tfstate.*
 **/*.tfplan
 **/*.tfplan.out
+**/override.tf
+**/override.tf.json
+**/*_override.tf
+**/*_override.tf.json
+**/crash.log
+**/crash.*.log
 
 ##############################################################################
-# Random
+# Project-specific local paths
 ##############################################################################
-docs/demo/mortgage/**
-BCU/**
 .env.pytest
