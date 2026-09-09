@@ -10,6 +10,8 @@ import json
 import os
 from pathlib import Path
 
+import pytest
+
 import entrypoint
 
 
@@ -196,6 +198,16 @@ class TestStartServer:
 class TestStartClient:
     """Tests for start_client."""
 
+    @pytest.fixture(autouse=True)
+    def _clear_auth_gateway_environment(self, monkeypatch):
+        for name in (
+            "AIO_AUTH_ISSUER",
+            "AIO_AUTH_WEB_REDIRECT_URI",
+            "AIO_AUTH_WEB_CLIENT_SECRET",
+            "AIO_AUTH_LOCAL_ADMIN_PASSWORD",
+        ):
+            monkeypatch.delenv(name, raising=False)
+
     def test_no_ssl(self, tmp_path, monkeypatch):
         """start_client should call os.execvp with streamlit and default settings."""
         monkeypatch.delenv("AIO_CLIENT_SSL", raising=False)
@@ -299,9 +311,9 @@ class TestStartClient:
     def test_development_oidc_writes_streamlit_auth_configuration(self, tmp_path, monkeypatch):
         """Local development mode must make Streamlit's native login available."""
         (tmp_path / "server").mkdir()
-        monkeypatch.setenv("AIO_AUTH_MODE", "dev")
-        monkeypatch.setenv("AIO_AUTH_DEV_ISSUER", "http://127.0.0.1:8765")
-        monkeypatch.setenv("AIO_AUTH_DEV_WEB_REDIRECT_URI", "http://localhost:8501/oauth2callback")
+        monkeypatch.setenv("AIO_AUTH_MODE", "local")
+        monkeypatch.setenv("AIO_AUTH_ISSUER", "http://127.0.0.1:8765")
+        monkeypatch.setenv("AIO_AUTH_WEB_REDIRECT_URI", "http://localhost:8501/oauth2callback")
         monkeypatch.delenv("AIO_CLIENT_COOKIE_SECRET", raising=False)
         from unittest.mock import patch
 
@@ -312,19 +324,19 @@ class TestStartClient:
         contents = secrets_file.read_text(encoding="utf-8")
         assert 'redirect_uri = "http://localhost:8501/oauth2callback"' in contents
         assert 'server_metadata_url = "http://127.0.0.1:8765/.well-known/openid-configuration"' in contents
-        assert 'client_kwargs = { scope = "openid profile email aio.api" }' in contents
+        assert 'client_kwargs = { scope = "openid profile email" }' in contents
         assert 'expose_tokens = "access"' in contents
 
     def test_development_oidc_default_redirect_uses_client_listener(self, tmp_path, monkeypatch):
         """The default OIDC callback must follow the configured client listener."""
         (tmp_path / "server").mkdir()
-        monkeypatch.setenv("AIO_AUTH_MODE", "dev")
-        monkeypatch.setenv("AIO_AUTH_DEV_ADMIN_PASSWORD", "operator-password")
-        monkeypatch.setenv("AIO_AUTH_DEV_WEB_CLIENT_SECRET", "web-client-secret")
+        monkeypatch.setenv("AIO_AUTH_MODE", "local")
+        monkeypatch.setenv("AIO_AUTH_LOCAL_ADMIN_PASSWORD", "operator-password")
+        monkeypatch.setenv("AIO_AUTH_WEB_CLIENT_SECRET", "web-client-secret")
         monkeypatch.setenv("AIO_CLIENT_ADDRESS", "0.0.0.0")
         monkeypatch.setenv("AIO_CLIENT_PORT", "8502")
         monkeypatch.delenv("AIO_CLIENT_SSL", raising=False)
-        monkeypatch.delenv("AIO_AUTH_DEV_WEB_REDIRECT_URI", raising=False)
+        monkeypatch.delenv("AIO_AUTH_WEB_REDIRECT_URI", raising=False)
         from unittest.mock import patch
 
         with patch("os.execvp"):
@@ -332,18 +344,18 @@ class TestStartClient:
 
         contents = (tmp_path / "client" / "app" / ".streamlit" / "secrets.toml").read_text(encoding="utf-8")
         assert 'redirect_uri = "http://localhost:8502/oauth2callback"' in contents
-        assert os.environ["AIO_AUTH_DEV_WEB_REDIRECT_URI"] == "http://localhost:8502/oauth2callback"
+        assert os.environ["AIO_AUTH_WEB_REDIRECT_URI"] == "http://localhost:8502/oauth2callback"
 
     def test_development_oidc_default_redirect_uses_https_for_ssl_client(self, tmp_path, monkeypatch):
         """The default OIDC callback must use HTTPS when the client uses SSL."""
         (tmp_path / "server").mkdir()
-        monkeypatch.setenv("AIO_AUTH_MODE", "dev")
-        monkeypatch.setenv("AIO_AUTH_DEV_ADMIN_PASSWORD", "operator-password")
-        monkeypatch.setenv("AIO_AUTH_DEV_WEB_CLIENT_SECRET", "web-client-secret")
+        monkeypatch.setenv("AIO_AUTH_MODE", "local")
+        monkeypatch.setenv("AIO_AUTH_LOCAL_ADMIN_PASSWORD", "operator-password")
+        monkeypatch.setenv("AIO_AUTH_WEB_CLIENT_SECRET", "web-client-secret")
         monkeypatch.setenv("AIO_CLIENT_ADDRESS", "localhost")
         monkeypatch.setenv("AIO_CLIENT_PORT", "9443")
         monkeypatch.setenv("AIO_CLIENT_SSL", "true")
-        monkeypatch.delenv("AIO_AUTH_DEV_WEB_REDIRECT_URI", raising=False)
+        monkeypatch.delenv("AIO_AUTH_WEB_REDIRECT_URI", raising=False)
         from unittest.mock import patch
 
         with (
@@ -358,12 +370,12 @@ class TestStartClient:
     def test_empty_development_oidc_redirect_uses_client_listener(self, tmp_path, monkeypatch):
         """An empty callback override must behave like an unset override."""
         (tmp_path / "server").mkdir()
-        monkeypatch.setenv("AIO_AUTH_MODE", "dev")
-        monkeypatch.setenv("AIO_AUTH_DEV_ADMIN_PASSWORD", "operator-password")
-        monkeypatch.setenv("AIO_AUTH_DEV_WEB_CLIENT_SECRET", "web-client-secret")
+        monkeypatch.setenv("AIO_AUTH_MODE", "local")
+        monkeypatch.setenv("AIO_AUTH_LOCAL_ADMIN_PASSWORD", "operator-password")
+        monkeypatch.setenv("AIO_AUTH_WEB_CLIENT_SECRET", "web-client-secret")
         monkeypatch.setenv("AIO_CLIENT_ADDRESS", "0.0.0.0")
         monkeypatch.setenv("AIO_CLIENT_PORT", "8502")
-        monkeypatch.setenv("AIO_AUTH_DEV_WEB_REDIRECT_URI", "")
+        monkeypatch.setenv("AIO_AUTH_WEB_REDIRECT_URI", "")
         from unittest.mock import patch
 
         with patch("os.execvp"):
@@ -371,7 +383,7 @@ class TestStartClient:
 
         contents = (tmp_path / "client" / "app" / ".streamlit" / "secrets.toml").read_text(encoding="utf-8")
         assert 'redirect_uri = "http://localhost:8502/oauth2callback"' in contents
-        assert os.environ["AIO_AUTH_DEV_WEB_REDIRECT_URI"] == "http://localhost:8502/oauth2callback"
+        assert os.environ["AIO_AUTH_WEB_REDIRECT_URI"] == "http://localhost:8502/oauth2callback"
 
     def test_generated_development_oidc_configuration_refreshes_callback(self, tmp_path, monkeypatch):
         """A generated config must refresh when the client listener changes."""
@@ -379,25 +391,25 @@ class TestStartClient:
         config_dir = tmp_path / "client" / "app" / ".streamlit"
         config_dir.mkdir(parents=True)
         (config_dir / "secrets.toml").write_text(
-            """# Generated by the All-In-One development OIDC launcher
+            """# Generated by the All-In-One authentication launcher
 [auth]
 redirect_uri = "http://127.0.0.1:8501/oauth2callback"
 cookie_secret = "stable-cookie-secret"
 client_id = "platform-web-client"
 client_secret = "web-client-secret"
 server_metadata_url = "http://127.0.0.1:8765/.well-known/openid-configuration"
-client_kwargs = { scope = "openid profile email aio.api" }
+client_kwargs = { scope = "openid profile email" }
 expose_tokens = "access"
 """
         )
-        monkeypatch.setenv("AIO_AUTH_MODE", "dev")
-        monkeypatch.setenv("AIO_AUTH_DEV_ADMIN_PASSWORD", "operator-password")
-        monkeypatch.setenv("AIO_AUTH_DEV_WEB_CLIENT_SECRET", "web-client-secret")
-        monkeypatch.setenv("AIO_AUTH_DEV_ISSUER", "https://issuer.example.test")
+        monkeypatch.setenv("AIO_AUTH_MODE", "local")
+        monkeypatch.setenv("AIO_AUTH_LOCAL_ADMIN_PASSWORD", "operator-password")
+        monkeypatch.setenv("AIO_AUTH_WEB_CLIENT_SECRET", "web-client-secret")
+        monkeypatch.setenv("AIO_AUTH_ISSUER", "https://issuer.example.test")
         monkeypatch.setenv("AIO_CLIENT_ADDRESS", "0.0.0.0")
         monkeypatch.setenv("AIO_CLIENT_PORT", "9443")
         monkeypatch.setenv("AIO_CLIENT_SSL", "true")
-        monkeypatch.delenv("AIO_AUTH_DEV_WEB_REDIRECT_URI", raising=False)
+        monkeypatch.delenv("AIO_AUTH_WEB_REDIRECT_URI", raising=False)
         from unittest.mock import patch
 
         with (
@@ -409,7 +421,7 @@ expose_tokens = "access"
         contents = (config_dir / "secrets.toml").read_text(encoding="utf-8")
         assert 'redirect_uri = "https://localhost:9443/oauth2callback"' in contents
         assert 'server_metadata_url = "https://issuer.example.test/.well-known/openid-configuration"' in contents
-        assert contents.startswith("# Generated by the All-In-One development OIDC launcher\n")
+        assert contents.startswith("# Generated by the All-In-One authentication launcher\n")
 
     def test_operator_development_oidc_configuration_is_not_overwritten(self, tmp_path, monkeypatch):
         """An operator-provided config must remain unchanged when listener settings change."""
@@ -426,13 +438,13 @@ client_kwargs = { scope = "openid profile email aio.api" }
 expose_tokens = "access"
 """
         (config_dir / "secrets.toml").write_text(original)
-        monkeypatch.setenv("AIO_AUTH_MODE", "dev")
-        monkeypatch.setenv("AIO_AUTH_DEV_ADMIN_PASSWORD", "operator-password")
-        monkeypatch.setenv("AIO_AUTH_DEV_WEB_CLIENT_SECRET", "launcher-web-client-secret")
+        monkeypatch.setenv("AIO_AUTH_MODE", "local")
+        monkeypatch.setenv("AIO_AUTH_LOCAL_ADMIN_PASSWORD", "operator-password")
+        monkeypatch.setenv("AIO_AUTH_WEB_CLIENT_SECRET", "launcher-web-client-secret")
         monkeypatch.setenv("AIO_CLIENT_ADDRESS", "0.0.0.0")
         monkeypatch.setenv("AIO_CLIENT_PORT", "9443")
         monkeypatch.setenv("AIO_CLIENT_SSL", "true")
-        monkeypatch.delenv("AIO_AUTH_DEV_WEB_REDIRECT_URI", raising=False)
+        monkeypatch.delenv("AIO_AUTH_WEB_REDIRECT_URI", raising=False)
         from unittest.mock import patch
 
         with (
@@ -458,12 +470,12 @@ client_kwargs = { scope = "openid profile email aio.api" }
 expose_tokens = "access"
 """
         (config_dir / "secrets.toml").write_text(original)
-        monkeypatch.setenv("AIO_AUTH_MODE", "dev")
-        monkeypatch.setenv("AIO_AUTH_DEV_ADMIN_PASSWORD", "operator-password")
-        monkeypatch.setenv("AIO_AUTH_DEV_WEB_CLIENT_SECRET", "launcher-web-client-secret")
+        monkeypatch.setenv("AIO_AUTH_MODE", "local")
+        monkeypatch.setenv("AIO_AUTH_LOCAL_ADMIN_PASSWORD", "operator-password")
+        monkeypatch.setenv("AIO_AUTH_WEB_CLIENT_SECRET", "launcher-web-client-secret")
         monkeypatch.setenv("AIO_CLIENT_ADDRESS", "0.0.0.0")
         monkeypatch.setenv("AIO_CLIENT_PORT", "9443")
-        monkeypatch.delenv("AIO_AUTH_DEV_WEB_REDIRECT_URI", raising=False)
+        monkeypatch.delenv("AIO_AUTH_WEB_REDIRECT_URI", raising=False)
         from unittest.mock import patch
 
         with patch("os.execvp"):
@@ -474,13 +486,13 @@ expose_tokens = "access"
     def test_development_oidc_explicit_redirect_overrides_client_listener(self, tmp_path, monkeypatch):
         """An explicit OIDC callback must take precedence over listener settings."""
         (tmp_path / "server").mkdir()
-        monkeypatch.setenv("AIO_AUTH_MODE", "dev")
-        monkeypatch.setenv("AIO_AUTH_DEV_ADMIN_PASSWORD", "operator-password")
-        monkeypatch.setenv("AIO_AUTH_DEV_WEB_CLIENT_SECRET", "web-client-secret")
+        monkeypatch.setenv("AIO_AUTH_MODE", "local")
+        monkeypatch.setenv("AIO_AUTH_LOCAL_ADMIN_PASSWORD", "operator-password")
+        monkeypatch.setenv("AIO_AUTH_WEB_CLIENT_SECRET", "web-client-secret")
         monkeypatch.setenv("AIO_CLIENT_ADDRESS", "127.0.0.1")
         monkeypatch.setenv("AIO_CLIENT_PORT", "8502")
         monkeypatch.setenv("AIO_CLIENT_SSL", "true")
-        monkeypatch.setenv("AIO_AUTH_DEV_WEB_REDIRECT_URI", "https://optimizer.example.test/oauth2callback")
+        monkeypatch.setenv("AIO_AUTH_WEB_REDIRECT_URI", "https://optimizer.example.test/oauth2callback")
         from unittest.mock import patch
 
         with (
@@ -498,20 +510,21 @@ expose_tokens = "access"
         config_dir = tmp_path / "client" / "app" / ".streamlit"
         config_dir.mkdir(parents=True)
         (config_dir / "secrets.toml").write_text(
-            """[auth]
+            """# Generated by the All-In-One authentication launcher
+[auth]
 redirect_uri = \"http://localhost:8501/oauth2callback\"
 cookie_secret = \"stable-cookie-secret\"
 client_id = \"platform-web-client\"
 client_secret = \"old-web-client-secret\"
 server_metadata_url = \"http://127.0.0.1:8765/.well-known/openid-configuration\"
-client_kwargs = { scope = \"openid profile email aio.api\" }
+client_kwargs = { scope = \"openid profile email\" }
 expose_tokens = \"access\"
 """
         )
-        monkeypatch.setenv("AIO_AUTH_MODE", "dev")
-        monkeypatch.setenv("AIO_AUTH_DEV_ADMIN_PASSWORD", "operator-password")
-        monkeypatch.setenv("AIO_AUTH_DEV_WEB_CLIENT_SECRET", "current-web-client-secret")
-        monkeypatch.delenv("AIO_AUTH_DEV_WEB_REDIRECT_URI", raising=False)
+        monkeypatch.setenv("AIO_AUTH_MODE", "local")
+        monkeypatch.setenv("AIO_AUTH_LOCAL_ADMIN_PASSWORD", "operator-password")
+        monkeypatch.setenv("AIO_AUTH_WEB_CLIENT_SECRET", "current-web-client-secret")
+        monkeypatch.delenv("AIO_AUTH_WEB_REDIRECT_URI", raising=False)
         monkeypatch.delenv("AIO_CLIENT_COOKIE_SECRET", raising=False)
         from unittest.mock import patch
 
@@ -526,9 +539,9 @@ expose_tokens = \"access\"
         """A CORE-backed All-In-One launch reuses one locally retrievable password."""
         (tmp_path / "server").mkdir()
         monkeypatch.delenv("AIO_AUTH_MODE", raising=False)
-        monkeypatch.delenv("AIO_AUTH_DEV_ADMIN_PASSWORD", raising=False)
+        monkeypatch.delenv("AIO_AUTH_LOCAL_ADMIN_PASSWORD", raising=False)
         monkeypatch.delenv("AIO_SERVER_URL", raising=False)
-        monkeypatch.delenv("AIO_AUTH_DEV_WEB_CLIENT_SECRET", raising=False)
+        monkeypatch.delenv("AIO_AUTH_WEB_CLIENT_SECRET", raising=False)
         monkeypatch.setenv("AIO_DB_USERNAME", "optimizer")
         monkeypatch.delenv("AIO_CLIENT_COOKIE_SECRET", raising=False)
         from unittest.mock import patch
@@ -536,47 +549,47 @@ expose_tokens = \"access\"
         with patch("os.execvp"):
             entrypoint.start_client(tmp_path)
 
-        generated_password = os.environ["AIO_AUTH_DEV_ADMIN_PASSWORD"]
-        credential_file = tmp_path / "client" / "app" / ".streamlit" / "dev-oidc-bootstrap.json"
+        generated_password = os.environ["AIO_AUTH_LOCAL_ADMIN_PASSWORD"]
+        credential_file = tmp_path / "client" / "app" / ".streamlit" / "local-auth-bootstrap.json"
         assert credential_file.exists()
         assert credential_file.stat().st_mode & 0o777 == 0o600
         web_client_secret = json.loads(credential_file.read_text())["web_client_secret"]
         secrets_toml = (tmp_path / "client" / "app" / ".streamlit" / "secrets.toml").read_text()
         assert f'client_secret = "{web_client_secret}"' in secrets_toml
 
-        monkeypatch.delenv("AIO_AUTH_DEV_ADMIN_PASSWORD")
+        monkeypatch.delenv("AIO_AUTH_LOCAL_ADMIN_PASSWORD")
         with patch("os.execvp"):
             entrypoint.start_client(tmp_path)
 
-        assert os.environ["AIO_AUTH_DEV_ADMIN_PASSWORD"] == generated_password
-        assert os.environ["AIO_AUTH_DEV_WEB_CLIENT_SECRET"] == web_client_secret
+        assert os.environ["AIO_AUTH_LOCAL_ADMIN_PASSWORD"] == generated_password
+        assert os.environ["AIO_AUTH_WEB_CLIENT_SECRET"] == web_client_secret
         assert (tmp_path / "client" / "app" / ".streamlit" / "secrets.toml").exists()
 
     def test_operator_development_password_is_not_persisted_locally(self, tmp_path, monkeypatch):
         """An explicit development password remains solely operator-managed."""
         (tmp_path / "server").mkdir()
-        monkeypatch.setenv("AIO_AUTH_MODE", "dev")
-        monkeypatch.setenv("AIO_AUTH_DEV_ADMIN_PASSWORD", "operator-password")
+        monkeypatch.setenv("AIO_AUTH_MODE", "local")
+        monkeypatch.setenv("AIO_AUTH_LOCAL_ADMIN_PASSWORD", "operator-password")
         from unittest.mock import patch
 
         with patch("os.execvp"):
             entrypoint.start_client(tmp_path)
 
-        assert not (tmp_path / "client" / "app" / ".streamlit" / "dev-oidc-bootstrap.json").exists()
+        assert not (tmp_path / "client" / "app" / ".streamlit" / "local-auth-bootstrap.json").exists()
 
-    def test_remote_development_server_does_not_create_a_local_password(self, tmp_path, monkeypatch):
+    def test_remote_proxy_client_does_not_create_a_local_password(self, tmp_path, monkeypatch):
         """A full source checkout may still be a client for an externally hosted IdP."""
         (tmp_path / "server").mkdir()
-        monkeypatch.setenv("AIO_AUTH_MODE", "dev")
+        monkeypatch.setenv("AIO_AUTH_MODE", "proxy")
         monkeypatch.setenv("AIO_SERVER_URL", "https://optimizer.example.test")
-        monkeypatch.delenv("AIO_AUTH_DEV_ADMIN_PASSWORD", raising=False)
+        monkeypatch.delenv("AIO_AUTH_LOCAL_ADMIN_PASSWORD", raising=False)
         from unittest.mock import patch
 
         with patch("os.execvp"):
             entrypoint.start_client(tmp_path)
 
-        assert "AIO_AUTH_DEV_ADMIN_PASSWORD" not in os.environ
-        assert not (tmp_path / "client" / "app" / ".streamlit" / "dev-oidc-bootstrap.json").exists()
+        assert "AIO_AUTH_LOCAL_ADMIN_PASSWORD" not in os.environ
+        assert not (tmp_path / "client" / "app" / ".streamlit" / "local-auth-bootstrap.json").exists()
         assert not (tmp_path / "client" / "app" / ".streamlit" / "secrets.toml").exists()
 
     def test_cookie_secret_empty_string_treated_as_unset(self, tmp_path, monkeypatch):

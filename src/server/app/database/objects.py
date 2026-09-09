@@ -40,109 +40,167 @@ RENAME_DDL = [
     EXCEPTION WHEN NO_DATA_FOUND THEN NULL;
     END;
     """,
-    # Testbed rows created before principal ownership was introduced retain
-    # NULL owner fields and are hidden by the ownership filters.
     """
     DECLARE
-        l_issuer_count  PLS_INTEGER;
-        l_subject_count PLS_INTEGER;
+        l_count PLS_INTEGER;
     BEGIN
-        SELECT COUNT(*) INTO l_issuer_count
-          FROM user_tab_columns
-         WHERE table_name = 'AIO_TESTSETS'
-           AND column_name = 'OWNER_ISSUER';
-        SELECT COUNT(*) INTO l_subject_count
-          FROM user_tab_columns
-         WHERE table_name = 'AIO_TESTSETS'
-           AND column_name = 'OWNER_SUBJECT';
-        IF l_issuer_count = 0 THEN
-            EXECUTE IMMEDIATE 'ALTER TABLE aio_testsets ADD (owner_issuer VARCHAR2(1024))';
+        SELECT COUNT(*) INTO l_count FROM user_tab_columns
+         WHERE table_name = 'AIO_PRINCIPAL_SESSIONS' AND column_name = 'PRINCIPAL_ID';
+        IF l_count = 0 THEN
+            EXECUTE IMMEDIATE 'ALTER TABLE aio_principal_sessions ADD (principal_id VARCHAR2(36))';
         END IF;
-        IF l_subject_count = 0 THEN
-            EXECUTE IMMEDIATE 'ALTER TABLE aio_testsets ADD (owner_subject VARCHAR2(1024))';
+        SELECT COUNT(*) INTO l_count FROM user_tab_columns
+         WHERE table_name = 'AIO_TESTSETS' AND column_name = 'OWNER_PRINCIPAL_ID';
+        IF l_count = 0 THEN
+            EXECUTE IMMEDIATE 'ALTER TABLE aio_testsets ADD (owner_principal_id VARCHAR2(36))';
+        END IF;
+        SELECT COUNT(*) INTO l_count FROM user_tab_columns
+         WHERE table_name = 'AIO_AUTH_TRANSACTIONS' AND column_name = 'DOWNSTREAM_STATE';
+        IF l_count = 0 THEN
+            EXECUTE IMMEDIATE 'ALTER TABLE aio_auth_transactions ADD (downstream_state VARCHAR2(2048))';
         END IF;
     EXCEPTION WHEN OTHERS THEN
-        IF SQLCODE != -942 THEN
-            RAISE;
-        END IF;
+        IF SQLCODE != -942 THEN RAISE; END IF;
     END;
     """,
 ]
 
 SCHEMA_DDL = [
-    # Built-in development OIDC provider. These tables are used only when
-    # development authentication is selected and keep all IdP state in CORE.
     """
-    CREATE TABLE IF NOT EXISTS aio_dev_oidc_users (
-        user_id       VARCHAR2(36) NOT NULL,
-        username      VARCHAR2(320) NOT NULL,
-        email         VARCHAR2(320) NOT NULL,
-        display_name  VARCHAR2(320) NOT NULL,
+    CREATE TABLE IF NOT EXISTS aio_principals (
+        principal_id VARCHAR2(36) NOT NULL,
+        display_name VARCHAR2(320) NOT NULL,
+        email VARCHAR2(320),
+        active BOOLEAN NOT NULL,
+        created TIMESTAMP(9) WITH LOCAL TIME ZONE,
+        updated TIMESTAMP(9) WITH LOCAL TIME ZONE,
+        CONSTRAINT aio_principals_pk PRIMARY KEY (principal_id)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS aio_principal_identities (
+        principal_id VARCHAR2(36) NOT NULL,
+        issuer VARCHAR2(2048) NOT NULL,
+        subject VARCHAR2(2048) NOT NULL,
+        last_login TIMESTAMP(9) WITH LOCAL TIME ZONE,
+        created TIMESTAMP(9) WITH LOCAL TIME ZONE,
+        CONSTRAINT aio_principal_identities_pk PRIMARY KEY (issuer, subject),
+        CONSTRAINT aio_principal_identities_principal_fk FOREIGN KEY (principal_id)
+            REFERENCES aio_principals(principal_id) ON DELETE CASCADE
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS aio_principal_identities_principal_ix
+        ON aio_principal_identities (principal_id)
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS aio_principal_roles (
+        principal_id VARCHAR2(36) NOT NULL,
+        role VARCHAR2(255) NOT NULL,
+        source VARCHAR2(255) NOT NULL,
+        created TIMESTAMP(9) WITH LOCAL TIME ZONE,
+        CONSTRAINT aio_principal_roles_pk PRIMARY KEY (principal_id, role, source),
+        CONSTRAINT aio_principal_roles_principal_fk FOREIGN KEY (principal_id)
+            REFERENCES aio_principals(principal_id) ON DELETE CASCADE
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS aio_local_accounts (
+        principal_id VARCHAR2(36) NOT NULL,
+        username VARCHAR2(320) NOT NULL,
         password_hash CLOB NOT NULL,
-        scopes        JSON NOT NULL,
-        active        BOOLEAN NOT NULL,
-        created       TIMESTAMP(9) WITH LOCAL TIME ZONE,
-        updated       TIMESTAMP(9) WITH LOCAL TIME ZONE,
-        CONSTRAINT aio_dev_oidc_users_pk PRIMARY KEY (user_id),
-        CONSTRAINT aio_dev_oidc_users_username_uq UNIQUE (username),
-        CONSTRAINT aio_dev_oidc_users_email_uq UNIQUE (email)
+        created TIMESTAMP(9) WITH LOCAL TIME ZONE,
+        updated TIMESTAMP(9) WITH LOCAL TIME ZONE,
+        CONSTRAINT aio_local_accounts_pk PRIMARY KEY (principal_id),
+        CONSTRAINT aio_local_accounts_username_uq UNIQUE (username),
+        CONSTRAINT aio_local_accounts_principal_fk FOREIGN KEY (principal_id)
+            REFERENCES aio_principals(principal_id) ON DELETE CASCADE
     )
     """,
     """
-    CREATE TABLE IF NOT EXISTS aio_dev_oidc_clients (
-        client_id      VARCHAR2(320) NOT NULL,
-        redirect_uris  JSON NOT NULL,
+    CREATE TABLE IF NOT EXISTS aio_auth_clients (
+        client_id VARCHAR2(2048) NOT NULL,
+        redirect_uris JSON NOT NULL,
         allowed_scopes JSON NOT NULL,
-        is_public      BOOLEAN NOT NULL,
-        created        TIMESTAMP(9) WITH LOCAL TIME ZONE,
-        updated        TIMESTAMP(9) WITH LOCAL TIME ZONE,
-        CONSTRAINT aio_dev_oidc_clients_pk PRIMARY KEY (client_id)
+        is_public BOOLEAN NOT NULL,
+        created TIMESTAMP(9) WITH LOCAL TIME ZONE,
+        updated TIMESTAMP(9) WITH LOCAL TIME ZONE,
+        CONSTRAINT aio_auth_clients_pk PRIMARY KEY (client_id)
     )
     """,
     """
-    CREATE TABLE IF NOT EXISTS aio_dev_oidc_codes (
-        code_digest    VARCHAR2(64) NOT NULL,
-        client_id      VARCHAR2(320) NOT NULL,
-        user_id        VARCHAR2(36) NOT NULL,
-        redirect_uri   VARCHAR2(2048) NOT NULL,
-        scope          VARCHAR2(4000) NOT NULL,
-        nonce          VARCHAR2(2048) NOT NULL,
+    CREATE TABLE IF NOT EXISTS aio_auth_transactions (
+        state VARCHAR2(128) NOT NULL,
+        downstream_state VARCHAR2(2048) NOT NULL,
+        client_id VARCHAR2(2048) NOT NULL,
+        redirect_uri VARCHAR2(2048) NOT NULL,
+        scope VARCHAR2(4000) NOT NULL,
+        nonce VARCHAR2(2048) NOT NULL,
         code_challenge VARCHAR2(256) NOT NULL,
-        expires_at     TIMESTAMP(9) WITH LOCAL TIME ZONE NOT NULL,
-        used           BOOLEAN NOT NULL,
-        created        TIMESTAMP(9) WITH LOCAL TIME ZONE,
-        CONSTRAINT aio_dev_oidc_codes_pk PRIMARY KEY (code_digest),
-        CONSTRAINT aio_dev_oidc_codes_user_fk FOREIGN KEY (user_id)
-            REFERENCES aio_dev_oidc_users(user_id) ON DELETE CASCADE
+        upstream_nonce VARCHAR2(256) NOT NULL,
+        upstream_verifier VARCHAR2(256) NOT NULL,
+        expires_at TIMESTAMP(9) WITH LOCAL TIME ZONE NOT NULL,
+        used BOOLEAN NOT NULL,
+        created TIMESTAMP(9) WITH LOCAL TIME ZONE,
+        CONSTRAINT aio_auth_transactions_pk PRIMARY KEY (state)
     )
     """,
     """
-    CREATE INDEX IF NOT EXISTS aio_dev_oidc_codes_expiry_ix
-        ON aio_dev_oidc_codes (expires_at)
+    CREATE TABLE IF NOT EXISTS aio_auth_codes (
+        code_digest VARCHAR2(64) NOT NULL,
+        client_id VARCHAR2(2048) NOT NULL,
+        principal_id VARCHAR2(36) NOT NULL,
+        redirect_uri VARCHAR2(2048) NOT NULL,
+        scope VARCHAR2(4000) NOT NULL,
+        nonce VARCHAR2(2048) NOT NULL,
+        code_challenge VARCHAR2(256) NOT NULL,
+        expires_at TIMESTAMP(9) WITH LOCAL TIME ZONE NOT NULL,
+        used BOOLEAN NOT NULL,
+        created TIMESTAMP(9) WITH LOCAL TIME ZONE,
+        CONSTRAINT aio_auth_codes_pk PRIMARY KEY (code_digest),
+        CONSTRAINT aio_auth_codes_principal_fk FOREIGN KEY (principal_id)
+            REFERENCES aio_principals(principal_id) ON DELETE CASCADE
+    )
     """,
     """
-    CREATE TABLE IF NOT EXISTS aio_dev_oidc_sessions (
+    CREATE INDEX IF NOT EXISTS aio_auth_codes_expiry_ix ON aio_auth_codes (expires_at)
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS aio_auth_login_sessions (
         session_digest VARCHAR2(64) NOT NULL,
-        user_id        VARCHAR2(36) NOT NULL,
-        expires_at     TIMESTAMP(9) WITH LOCAL TIME ZONE NOT NULL,
-        revoked        BOOLEAN NOT NULL,
-        created        TIMESTAMP(9) WITH LOCAL TIME ZONE,
-        CONSTRAINT aio_dev_oidc_sessions_pk PRIMARY KEY (session_digest),
-        CONSTRAINT aio_dev_oidc_sessions_user_fk FOREIGN KEY (user_id)
-            REFERENCES aio_dev_oidc_users(user_id) ON DELETE CASCADE
+        principal_id VARCHAR2(36) NOT NULL,
+        expires_at TIMESTAMP(9) WITH LOCAL TIME ZONE NOT NULL,
+        revoked BOOLEAN NOT NULL,
+        created TIMESTAMP(9) WITH LOCAL TIME ZONE,
+        CONSTRAINT aio_auth_login_sessions_pk PRIMARY KEY (session_digest),
+        CONSTRAINT aio_auth_login_sessions_principal_fk FOREIGN KEY (principal_id)
+            REFERENCES aio_principals(principal_id) ON DELETE CASCADE
     )
     """,
     """
-    CREATE INDEX IF NOT EXISTS aio_dev_oidc_sessions_expiry_ix
-        ON aio_dev_oidc_sessions (expires_at)
+    CREATE TABLE IF NOT EXISTS aio_auth_access_tokens (
+        token_digest VARCHAR2(64) NOT NULL,
+        principal_id VARCHAR2(36) NOT NULL,
+        client_id VARCHAR2(2048) NOT NULL,
+        scope VARCHAR2(4000) NOT NULL,
+        expires_at TIMESTAMP(9) WITH LOCAL TIME ZONE NOT NULL,
+        revoked BOOLEAN NOT NULL,
+        created TIMESTAMP(9) WITH LOCAL TIME ZONE,
+        CONSTRAINT aio_auth_access_tokens_pk PRIMARY KEY (token_digest),
+        CONSTRAINT aio_auth_access_tokens_principal_fk FOREIGN KEY (principal_id)
+            REFERENCES aio_principals(principal_id) ON DELETE CASCADE
+    )
     """,
     """
-    CREATE TABLE IF NOT EXISTS aio_dev_oidc_signing_keys (
-        key_id          VARCHAR2(128) NOT NULL,
+    CREATE INDEX IF NOT EXISTS aio_auth_access_tokens_principal_ix ON aio_auth_access_tokens (principal_id)
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS aio_auth_signing_keys (
+        key_id VARCHAR2(128) NOT NULL,
         private_key_pem CLOB NOT NULL,
-        active          BOOLEAN NOT NULL,
-        created         TIMESTAMP(9) WITH LOCAL TIME ZONE,
-        CONSTRAINT aio_dev_oidc_signing_keys_pk PRIMARY KEY (key_id)
+        active BOOLEAN NOT NULL,
+        created TIMESTAMP(9) WITH LOCAL TIME ZONE,
+        CONSTRAINT aio_auth_signing_keys_pk PRIMARY KEY (key_id)
     )
     """,
     # Principal-authenticated session ownership is independent from legacy
@@ -151,11 +209,12 @@ SCHEMA_DDL = [
     """
     CREATE TABLE IF NOT EXISTS aio_principal_sessions (
         session_id  VARCHAR2(255) NOT NULL,
-        issuer      VARCHAR2(1024) NOT NULL,
-        subject     VARCHAR2(1024) NOT NULL,
+        principal_id VARCHAR2(36) NOT NULL,
         created     TIMESTAMP(9) WITH LOCAL TIME ZONE,
         updated     TIMESTAMP(9) WITH LOCAL TIME ZONE,
-        CONSTRAINT aio_principal_sessions_pk PRIMARY KEY (session_id)
+        CONSTRAINT aio_principal_sessions_pk PRIMARY KEY (session_id),
+        CONSTRAINT aio_principal_sessions_principal_fk FOREIGN KEY (principal_id)
+            REFERENCES aio_principals(principal_id) ON DELETE CASCADE
     )
     """,
     """
@@ -173,15 +232,14 @@ SCHEMA_DDL = [
         tid          RAW(16) DEFAULT SYS_GUID(),
         name         VARCHAR2(255) NOT NULL,
         created      TIMESTAMP(9) WITH LOCAL TIME ZONE,
-        owner_issuer VARCHAR2(1024),
-        owner_subject VARCHAR2(1024),
+        owner_principal_id VARCHAR2(36),
         CONSTRAINT aio_testsets_pk PRIMARY KEY (tid),
         CONSTRAINT aio_testsets_uq UNIQUE (name, created)
     )
     """,
     """
     CREATE INDEX IF NOT EXISTS aio_testsets_owner_ix
-        ON aio_testsets (owner_issuer, owner_subject)
+        ON aio_testsets (owner_principal_id)
     """,
     """
     CREATE TABLE IF NOT EXISTS aio_testset_qa (

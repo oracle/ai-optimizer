@@ -16,11 +16,11 @@ spec:
       protocol: TCP
       port: {{ .Values.server.service.port | default 8000 }}
       targetPort: 8000
-    {{- if .Values.server.devOidc.enabled }}
-    - name: dev-oidc
+    {{- if .Values.server.auth.enabled }}
+    - name: auth
       protocol: TCP
-      port: {{ .Values.server.devOidc.service.port }}
-      targetPort: dev-oidc
+      port: {{ .Values.server.auth.service.port }}
+      targetPort: auth
     {{- end }}
   selector:
     app.kubernetes.io/component: server

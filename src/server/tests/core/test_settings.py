@@ -120,10 +120,10 @@ def test_deployment_mode_is_not_a_supported_setting():
     assert "deployment_mode" not in Settings.model_fields
 
 
-def test_development_oidc_callback_defaults_to_browser_facing_client_listener(monkeypatch):
-    """The provider callback follows the client listener when no URI is configured."""
+def test_auth_callback_defaults_to_browser_facing_client_listener(monkeypatch):
+    """The gateway callback follows the client listener when no URI is configured."""
     for name in (
-        "AIO_AUTH_DEV_WEB_REDIRECT_URI",
+        "AIO_AUTH_WEB_REDIRECT_URI",
         "AIO_AUTH_MODE",
         "AIO_DB_USERNAME",
         "AIO_DB_PASSWORD",
@@ -136,7 +136,7 @@ def test_development_oidc_callback_defaults_to_browser_facing_client_listener(mo
 
     configured = _SettingsWithoutEnvFile()
 
-    assert configured.auth_dev_web_redirect_uri == "https://localhost:8502/oauth2callback"
+    assert configured.auth_web_redirect_uri == "https://localhost:8502/oauth2callback"
 
 
 def test_development_is_not_a_supported_authentication_mode():
@@ -144,8 +144,8 @@ def test_development_is_not_a_supported_authentication_mode():
         Settings.model_validate({"auth_mode": "development"})
 
 
-def test_database_defaults_to_development_authentication(monkeypatch):
-    """A CORE database enables the built-in development identity provider by default."""
+def test_database_defaults_to_local_authentication(monkeypatch):
+    """A CORE database enables local multi-user authentication by default."""
     monkeypatch.delenv("AIO_AUTH_MODE", raising=False)
 
     configured = _SettingsWithoutEnvFile(
@@ -154,8 +154,8 @@ def test_database_defaults_to_development_authentication(monkeypatch):
         db_dsn="db.example.test/service",
     )
 
-    assert configured.auth_mode == "dev"
-    assert configured.auth_dev_admin_password is not None
+    assert configured.auth_mode == "local"
+    assert configured.auth_local_admin_password is not None
 
 
 def test_no_database_keeps_api_key_authentication(monkeypatch):
@@ -171,7 +171,7 @@ def test_authentication_posture_can_be_validated_after_core_overlay(monkeypatch)
     """CORE-dependent authentication validation is deferred until overlays are loaded."""
     monkeypatch.delenv("AIO_AUTH_MODE", raising=False)
 
-    configured = _SettingsWithoutEnvFile(auth_mode="dev")
+    configured = _SettingsWithoutEnvFile(auth_mode="local")
 
     with pytest.raises(ValueError, match="requires an Oracle CORE database"):
         configured.validate_authentication_posture()
@@ -179,7 +179,7 @@ def test_authentication_posture_can_be_validated_after_core_overlay(monkeypatch)
     configured.database_configs = [DatabaseConfig(alias="CORE")]
     configured.validate_authentication_posture()
 
-    assert configured.auth_mode == "dev"
+    assert configured.auth_mode == "local"
 
 
 def test_explicit_authentication_mode_overrides_database_default():
@@ -194,11 +194,22 @@ def test_explicit_authentication_mode_overrides_database_default():
     assert configured.auth_mode == "proxy"
 
 
+def test_github_authentication_requires_an_access_policy():
+    """GitHub mode requires an explicit user or organization allow-list."""
+    with pytest.raises(ValueError, match="allowed user or organization"):
+        _SettingsWithoutEnvFile(
+            auth_mode="github",
+            auth_issuer="https://auth.example.test",
+            auth_github_client_id="client-id",
+            auth_github_client_secret=SecretStr("client-secret"),
+        )
+
+
 def test_client_password_is_rejected(monkeypatch):
     """The retired client password must not silently appear to protect shared state."""
     monkeypatch.setenv("AIO_CLIENT_PASSWORD", auth_creds["retired_client"]["password"])
 
-    with pytest.raises(ValueError, match="AIO_AUTH_DEV_ADMIN_PASSWORD"):
+    with pytest.raises(ValueError, match="AIO_AUTH_LOCAL_ADMIN_PASSWORD"):
         _SettingsWithoutEnvFile()
 
 

@@ -17,11 +17,13 @@ from fastmcp.utilities.lifespan import combine_lifespans
 
 import server.app.core.environ  # noqa: F401, E402  # side-effect: loads .env
 from _version import __version__
-from server.app.api.dev_oidc import create_application as create_development_oidc_application
 from server.app.api.mcp.router import router as mcp_router
 from server.app.api.v1.router import router as v1_router
+from server.app.auth.gateway import create_application as create_auth_gateway_application
+from server.app.auth.providers import GitHubProvider, OidcProvider
+from server.app.auth.service import GatewayConfig, GatewayService
+from server.app.auth.store import OracleAuthStore
 from server.app.core.auth import PrincipalAuthMiddleware
-from server.app.core.dev_oidc import DevelopmentOidcService, OracleDevelopmentOidcStore
 from server.app.core.etc import apply_overlay, ensure_core_alias, load_config_file
 from server.app.core.mcp import mcp
 from server.app.core.secrets import reveal
@@ -61,38 +63,64 @@ class _EmbeddedUvicornServer(uvicorn.Server):
         return
 
 
-async def _start_development_oidc() -> tuple[_EmbeddedUvicornServer, asyncio.Task]:
-    """Start the built-in provider on its dedicated issuer listener."""
-    service = DevelopmentOidcService(
-        issuer=settings.auth_dev_issuer,
-        store=OracleDevelopmentOidcStore(),
-        seed_passwords={
-            "admin@example.test": reveal(settings.auth_dev_admin_password) or "",
-        },
-        web_client_secret=reveal(settings.auth_dev_web_client_secret) or "",
-        web_client_redirect_uri=settings.auth_dev_web_redirect_uri,
+async def _start_auth_gateway() -> tuple[_EmbeddedUvicornServer, asyncio.Task]:
+    """Start the embedded OIDC gateway for the selected identity source."""
+    gateway = GatewayService(
+        GatewayConfig(
+            issuer=settings.auth_issuer,
+            mode=settings.auth_mode or "local",
+            web_client_secret=reveal(settings.auth_web_client_secret) or "",
+            web_redirect_uri=settings.auth_web_redirect_uri,
+            local_admin_username=settings.auth_local_admin_username,
+            local_admin_password=reveal(settings.auth_local_admin_password) or "",
+            access_token_minutes=settings.auth_access_token_minutes,
+            login_session_hours=settings.auth_login_session_hours,
+        ),
+        OracleAuthStore(),
     )
-    oidc_app = await create_development_oidc_application(service)
+    provider = None
+    if settings.auth_mode == "github":
+        provider = GitHubProvider(
+            client_id=settings.auth_github_client_id,
+            client_secret=reveal(settings.auth_github_client_secret) or "",
+            base_url=settings.auth_github_base_url,
+            allowed_users=frozenset(settings.auth_github_allowed_users),
+            allowed_organizations=frozenset(settings.auth_github_allowed_organizations),
+            administrator_users=frozenset(settings.auth_github_admin_users),
+            administrator_teams=frozenset(settings.auth_github_admin_teams),
+        )
+    elif settings.auth_mode == "oidc":
+        provider = OidcProvider(
+            issuer=settings.auth_oidc_issuer,
+            client_id=settings.auth_oidc_client_id,
+            client_secret=reveal(settings.auth_oidc_client_secret) or "",
+            scopes=tuple(settings.auth_oidc_scopes),
+            signing_algorithms=tuple(settings.auth_oidc_signing_algorithms),
+            roles_claim=settings.auth_oidc_roles_claim,
+            allowed_claim_values=frozenset(settings.auth_oidc_allowed_claim_values),
+            administrator_claim_values=frozenset(settings.auth_admin_claim_values),
+        )
+    oidc_app = await create_auth_gateway_application(gateway, provider)
     server = _EmbeddedUvicornServer(
         uvicorn.Config(
             oidc_app,
-            host=settings.auth_dev_listen_host,
-            port=settings.auth_dev_listen_port,
+            host=settings.auth_listen_host,
+            port=settings.auth_listen_port,
             log_level=settings.log_level.lower(),
         )
     )
-    task = asyncio.create_task(server.serve(), name="development-oidc")
+    task = asyncio.create_task(server.serve(), name="authentication-gateway")
     for _ in range(100):
         if server.started:
             return server, task
         await asyncio.sleep(0.01)
     server.should_exit = True
     await task
-    raise RuntimeError("Built-in development OIDC provider did not start")
+    raise RuntimeError("Authentication gateway did not start")
 
 
 async def _initialize_core_database() -> None:
-    """Initialize CORE, which is mandatory only for development OIDC."""
+    """Initialize CORE before principal-authenticated operation starts."""
     core_db = get_database_settings(settings.database_configs, "CORE")
     if core_db is None:
         return
@@ -100,7 +128,7 @@ async def _initialize_core_database() -> None:
         await init_core_database(core_db)
     except Exception:
         LOGGER.exception("CORE database initialization failed — continuing without persistence")
-        if settings.auth_mode == "dev":
+        if settings.auth_mode in {"local", "github", "oidc", "proxy"}:
             raise
 
 
@@ -183,10 +211,10 @@ async def lifespan(_app: FastAPI):
     await _apply_configured_overlay(protected, preserve_promoted_core_alias=promoted_core_alias)
     settings.validate_authentication_posture()
 
-    dev_oidc_server: _EmbeddedUvicornServer | None = None
-    dev_oidc_task: asyncio.Task | None = None
-    if settings.auth_mode == "dev":
-        dev_oidc_server, dev_oidc_task = await _start_development_oidc()
+    auth_gateway_server: _EmbeddedUvicornServer | None = None
+    auth_gateway_task: asyncio.Task | None = None
+    if settings.auth_mode in {"local", "github", "oidc"}:
+        auth_gateway_server, auth_gateway_task = await _start_auth_gateway()
 
     # --- Phase 6: Init server client settings ---
     server_cs = await load_client_settings("server")
@@ -229,11 +257,11 @@ async def lifespan(_app: FastAPI):
     try:
         yield
     finally:
-        if dev_oidc_server is not None:
-            dev_oidc_server.should_exit = True
-        if dev_oidc_task is not None:
+        if auth_gateway_server is not None:
+            auth_gateway_server.should_exit = True
+        if auth_gateway_task is not None:
             with contextlib.suppress(BaseException):
-                await dev_oidc_task
+                await auth_gateway_task
         for task in (heartbeat_task, reaper_task):
             task.cancel()
             with contextlib.suppress(BaseException):

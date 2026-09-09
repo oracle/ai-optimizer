@@ -3,7 +3,7 @@
 # spell-checker: ignore nindent tolerations ollama pplx
 {{- include "ai-optimizer.server.otel.validate" . }}
 {{- include "ai-optimizer.client.passwordDeprecated.fail" . }}
-{{- include "ai-optimizer.server.devOidc.password.validate" . }}
+{{- include "ai-optimizer.server.auth.password.validate" . }}
 
 apiVersion: apps/v1
 kind: Deployment
@@ -24,8 +24,8 @@ spec:
     metadata:
       annotations:
         checksum/server-env-secret: {{ include "ai-optimizer.server.envSecretChecksum" . | quote }}
-        checksum/server-dev-oidc-password-secret: {{ include "ai-optimizer.server.devOidc.passwordSecretChecksum" . | quote }}
-        {{- if and .Values.server.devOidc.enabled .Values.client.enabled }}
+        checksum/server-auth-password-secret: {{ include "ai-optimizer.server.auth.passwordSecretChecksum" . | quote }}
+        {{- if and .Values.server.auth.enabled .Values.client.enabled }}
         checksum/client-oidc-secret: {{ include "ai-optimizer.client.oidcSecretChecksum" . | quote }}
         {{- end }}
         {{- with .Values.server.podAnnotations }}
@@ -60,15 +60,15 @@ spec:
                 secretKeyRef:
                   name: {{ include "ai-optimizer.apiSecretName" . }}
                   key: {{ include "ai-optimizer.apiSecretKey" . }}
-            {{- if and .Values.server.devOidc.enabled (or (.Values.server.devOidc.passwordSecretName | trim) .Values.server.devOidc.passwordAutoGenerate) }}
-            - name: AIO_AUTH_DEV_ADMIN_PASSWORD
+            {{- if and .Values.server.auth.enabled (eq .Values.server.auth.mode "local") (or (.Values.server.auth.passwordSecretName | trim) .Values.server.auth.passwordAutoGenerate) }}
+            - name: AIO_AUTH_LOCAL_ADMIN_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "ai-optimizer.server.devOidc.passwordSecretName" . }}
-                  key: {{ include "ai-optimizer.server.devOidc.passwordSecretKey" . }}
+                  name: {{ include "ai-optimizer.server.auth.passwordSecretName" . }}
+                  key: {{ include "ai-optimizer.server.auth.passwordSecretKey" . }}
             {{- end }}
-            {{- if and .Values.server.devOidc.enabled .Values.client.enabled }}
-            - name: AIO_AUTH_DEV_WEB_CLIENT_SECRET
+            {{- if and .Values.server.auth.enabled .Values.client.enabled }}
+            - name: AIO_AUTH_WEB_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:
                   name: {{ printf "%s-client-oidc" (include "ai-optimizer.fullname" .) }}
@@ -245,9 +245,9 @@ spec:
             - name: server-port
               containerPort: 8000
               protocol: TCP
-          {{- if .Values.server.devOidc.enabled }}
-            - name: dev-oidc
-              containerPort: {{ .Values.server.devOidc.listenPort }}
+          {{- if .Values.server.auth.enabled }}
+            - name: auth
+              containerPort: {{ .Values.server.auth.listenPort }}
               protocol: TCP
           {{- end }}
           {{- if .Values.server.livenessProbe.enabled }}

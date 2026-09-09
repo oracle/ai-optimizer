@@ -55,10 +55,11 @@
         "ssl": { "$ref": "#/definitions/ssl" },
         "gateway": { "$ref": "#/definitions/gateway" },
         "ingress": { "$ref": "#/definitions/ingress" },
-        "devOidc": {
+        "auth": {
           "type": "object",
           "properties": {
             "enabled": { "type": "boolean" },
+            "mode": { "type": "string", "enum": ["local", "github", "oidc"] },
             "issuer": { "type": "string" },
             "webClientRedirectUri": { "type": "string" },
             "listenPort": { "type": "integer", "minimum": 1, "maximum": 65535 },

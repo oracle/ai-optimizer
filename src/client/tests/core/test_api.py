@@ -6,10 +6,8 @@ Unit tests for client.app.core.api
 """
 # spell-checker: disable
 
-import base64
 import json
 import logging
-import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -61,13 +59,6 @@ def _http_error(status_code=400, json_body=None):
     """Build an HTTPStatusError."""
     resp = _resp(status_code, json_data=json_body or {"detail": "error"})
     return httpx.HTTPStatusError("error", request=resp.request, response=resp)
-
-
-def _jwt_with_expiry(expiry: int) -> str:
-    """Build the unsigned JWT-shaped token used by expiry tests."""
-    header = base64.urlsafe_b64encode(json.dumps({"alg": "none", "typ": "at+jwt"}).encode()).rstrip(b"=").decode()
-    payload = base64.urlsafe_b64encode(json.dumps({"exp": expiry}).encode()).rstrip(b"=").decode()
-    return f"{header}.{payload}.signature"
 
 
 def _mock_client_ctx(response=None, side_effect=None):
@@ -218,21 +209,19 @@ class TestHeaders:
             result = _headers()
         assert result == {"Authorization": "Bearer api-token"}
 
-    def test_expired_streamlit_access_token_starts_a_new_login(self):
-        """An expired bearer must not be sent while the identity cookie remains valid."""
+    def test_jwt_shaped_streamlit_access_token_is_still_sent(self):
+        """Token format and expiry are resolved by the Server."""
         streamlit = MagicMock()
         streamlit.user.is_logged_in = True
-        streamlit.user.tokens = {"access": _jwt_with_expiry(int(time.time()) - 1)}
+        streamlit.user.tokens = {"access": "header.payload.signature"}
         streamlit.session_state = {}
-        streamlit.stop.side_effect = RuntimeError("stop")
         with patch(f"{MODULE}.st", streamlit):
             from client.app.core.api import _headers
 
-            with pytest.raises(RuntimeError, match="stop"):
-                _headers()
+            result = _headers()
 
-        streamlit.login.assert_called_once_with()
-        streamlit.stop.assert_called_once_with()
+        assert result == {"Authorization": "Bearer header.payload.signature"}
+        streamlit.login.assert_not_called()
 
     def test_opaque_streamlit_access_token_is_still_sent(self):
         """Opaque access tokens from external providers cannot be expiry-checked locally."""
@@ -946,7 +935,7 @@ class TestStartServer:
             start_server()
 
         mock_spawn.assert_not_called()
-        assert "AIO_CLIENT_PASSWORD is retired; use AIO_AUTH_DEV_ADMIN_PASSWORD in development mode" in caplog.text
+        assert "AIO_CLIENT_PASSWORD is retired; use AIO_AUTH_LOCAL_ADMIN_PASSWORD in local mode" in caplog.text
 
     def test_skips_when_already_running(self):
         """Verify start_server does not spawn a new process when one is already running."""

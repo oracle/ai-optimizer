@@ -97,13 +97,13 @@ def _client_service(docs: list[dict]) -> dict:
     raise AssertionError("client Service not found in rendered output")
 
 
-def test_development_oidc_renders_streamlit_access_token_configuration():
+def test_embedded_auth_renders_streamlit_access_token_configuration():
     result = _render(
         "client.cookieSecret=cccccccccccccccccccccccccccccccc",
-        "server.devOidc.enabled=true",
-        "server.devOidc.issuer=https://auth.example.test",
-        "server.devOidc.webClientRedirectUri=https://optimizer.example.test/oauth2callback",
-        "server.devOidc.passwordAutoGenerate=true",
+        "server.auth.enabled=true",
+        "server.auth.issuer=https://auth.example.test",
+        "server.auth.webClientRedirectUri=https://optimizer.example.test/oauth2callback",
+        "server.auth.passwordAutoGenerate=true",
     )
 
     assert result.returncode == 0, result.stderr
@@ -118,7 +118,7 @@ def test_development_oidc_renders_streamlit_access_token_configuration():
     assert 'client_secret = ""' not in secrets_toml
     assert "webClientSecret" in oidc_secret["stringData"]
     assert 'server_metadata_url = "https://auth.example.test/.well-known/openid-configuration"' in secrets_toml
-    assert 'client_kwargs = { scope = "openid profile email aio.api" }' in secrets_toml
+    assert 'client_kwargs = { scope = "openid profile email" }' in secrets_toml
     assert 'expose_tokens = "access"' in secrets_toml
 
     server_environment = next(
@@ -126,7 +126,7 @@ def test_development_oidc_renders_streamlit_access_token_configuration():
         for document in documents
         if document.get("kind") == "Secret" and document.get("metadata", {}).get("name", "").endswith("-server-env")
     )["stringData"]["server.env"]
-    assert "AIO_AUTH_DEV_WEB_REDIRECT_URI=https://optimizer.example.test/oauth2callback" in server_environment
+    assert "AIO_AUTH_WEB_REDIRECT_URI=https://optimizer.example.test/oauth2callback" in server_environment
 
     server_deployment = next(
         document
@@ -135,8 +135,8 @@ def test_development_oidc_renders_streamlit_access_token_configuration():
         and document.get("metadata", {}).get("labels", {}).get("app.kubernetes.io/component") == "server"
     )
     server_env = server_deployment["spec"]["template"]["spec"]["containers"][0]["env"]
-    assert any(entry["name"] == "AIO_AUTH_DEV_ADMIN_PASSWORD" for entry in server_env)
-    assert any(entry["name"] == "AIO_AUTH_DEV_WEB_CLIENT_SECRET" for entry in server_env)
+    assert any(entry["name"] == "AIO_AUTH_LOCAL_ADMIN_PASSWORD" for entry in server_env)
+    assert any(entry["name"] == "AIO_AUTH_WEB_CLIENT_SECRET" for entry in server_env)
 
     deployment = _client_deployment(documents)
     client_env = deployment["spec"]["template"]["spec"]["containers"][0]["env"]
@@ -145,61 +145,59 @@ def test_development_oidc_renders_streamlit_access_token_configuration():
     assert any(mount["mountPath"] == "/app/.streamlit/secrets.toml" for mount in mounts)
 
 
-def test_development_oidc_requires_retrievable_admin_password():
+def test_local_auth_requires_retrievable_admin_password():
     result = _render(
         "client.cookieSecret=cccccccccccccccccccccccccccccccc",
-        "server.devOidc.enabled=true",
-        "server.devOidc.issuer=https://auth.example.test",
-        "server.devOidc.webClientRedirectUri=https://optimizer.example.test/oauth2callback",
+        "server.auth.enabled=true",
+        "server.auth.issuer=https://auth.example.test",
+        "server.auth.webClientRedirectUri=https://optimizer.example.test/oauth2callback",
     )
 
     assert result.returncode != 0
-    assert "server.devOidc.passwordSecretName" in result.stderr
-    assert "server.devOidc.passwordAutoGenerate" in result.stderr
-    assert "server.envSecret" in result.stderr
+    assert "local server.auth" in result.stderr
 
 
 @pytest.mark.parametrize(
     "env_secret_source",
     [
-        "server.envSecret.content.AIO_AUTH_DEV_ADMIN_PASSWORD=operator-password",
+        "server.envSecret.content.AIO_AUTH_LOCAL_ADMIN_PASSWORD=operator-password",
         "server.envSecret.secretName=operator-server-env",
     ],
 )
-def test_development_oidc_accepts_admin_password_from_server_env_secret(env_secret_source):
+def test_local_auth_accepts_admin_password_from_server_env_secret(env_secret_source):
     result = _render(
         "client.cookieSecret=cccccccccccccccccccccccccccccccc",
-        "server.devOidc.enabled=true",
-        "server.devOidc.issuer=https://auth.example.test",
-        "server.devOidc.webClientRedirectUri=https://optimizer.example.test/oauth2callback",
+        "server.auth.enabled=true",
+        "server.auth.issuer=https://auth.example.test",
+        "server.auth.webClientRedirectUri=https://optimizer.example.test/oauth2callback",
         env_secret_source,
     )
 
     assert result.returncode == 0, result.stderr
 
 
-def test_development_oidc_accepts_numeric_zero_from_server_env_secret():
+def test_local_auth_accepts_numeric_zero_from_server_env_secret():
     result = _render(
         "client.cookieSecret=cccccccccccccccccccccccccccccccc",
-        "server.devOidc.enabled=true",
-        "server.devOidc.issuer=https://auth.example.test",
-        "server.devOidc.webClientRedirectUri=https://optimizer.example.test/oauth2callback",
-        "server.envSecret.content.AIO_AUTH_DEV_ADMIN_PASSWORD=0",
+        "server.auth.enabled=true",
+        "server.auth.issuer=https://auth.example.test",
+        "server.auth.webClientRedirectUri=https://optimizer.example.test/oauth2callback",
+        "server.envSecret.content.AIO_AUTH_LOCAL_ADMIN_PASSWORD=0",
     )
 
     assert result.returncode == 0, result.stderr
-    assert "AIO_AUTH_DEV_ADMIN_PASSWORD=0" in _server_env_content(_docs(result.stdout))
+    assert "AIO_AUTH_LOCAL_ADMIN_PASSWORD=0" in _server_env_content(_docs(result.stdout))
 
 
-def test_development_oidc_checksum_rolls_client_and_server_deployments():
+def test_embedded_auth_checksum_rolls_client_and_server_deployments():
     common = (
         "client.cookieSecret=cccccccccccccccccccccccccccccccc",
-        "server.devOidc.enabled=true",
-        "server.devOidc.webClientRedirectUri=https://optimizer.example.test/oauth2callback",
-        "server.devOidc.passwordAutoGenerate=true",
+        "server.auth.enabled=true",
+        "server.auth.webClientRedirectUri=https://optimizer.example.test/oauth2callback",
+        "server.auth.passwordAutoGenerate=true",
     )
-    first = _render(*common, "server.devOidc.issuer=https://auth-one.example.test")
-    second = _render(*common, "server.devOidc.issuer=https://auth-two.example.test")
+    first = _render(*common, "server.auth.issuer=https://auth-one.example.test")
+    second = _render(*common, "server.auth.issuer=https://auth-two.example.test")
 
     assert first.returncode == 0, first.stderr
     assert second.returncode == 0, second.stderr
@@ -219,10 +217,10 @@ def test_development_oidc_checksum_rolls_client_and_server_deployments():
     assert first_server_annotations[client_key] != second_server_annotations[client_key]
 
 
-def test_development_oidc_checksum_hashes_desired_secret_data():
+def test_embedded_auth_checksum_hashes_desired_secret_data():
     helpers_tpl = (CHART_DIR / "templates" / "_helpers.tpl").read_text()
     oidc_helper = helpers_tpl.split('define "ai-optimizer.client.oidcSecretChecksum"', 1)[1].split(
-        'define "ai-optimizer.server.devOidc.passwordSecretChecksum"', 1
+        'define "ai-optimizer.server.auth.passwordSecretChecksum"', 1
     )[0]
     oidc_secret_tpl = (CHART_DIR / "templates" / "client" / "oidc-secret.yaml").read_text()
 
@@ -246,7 +244,7 @@ def test_legacy_client_password_values_are_rejected(legacy_value):
     result = _render(legacy_value)
 
     assert result.returncode != 0
-    assert "server.devOidc.passwordSecretName" in result.stderr
+    assert "server.auth.passwordSecretName" in result.stderr
 
 
 def _ollama_service(docs: list[dict]) -> dict:

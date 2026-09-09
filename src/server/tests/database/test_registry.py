@@ -34,12 +34,12 @@ from server.tests.constants import test_auth as auth_creds
 
 
 @pytest.mark.unit
-def test_dev_oidc_client_schema_uses_a_non_reserved_public_flag_name():
-    """The OIDC client flag must not use Oracle's reserved PUBLIC identifier."""
-    clients_ddl = next(ddl for ddl in SCHEMA_DDL if "aio_dev_oidc_clients" in ddl)
+def test_auth_client_schema_uses_a_non_reserved_public_flag_name():
+    """The auth client flag must not use Oracle's reserved PUBLIC identifier."""
+    clients_ddl = next(ddl for ddl in SCHEMA_DDL if "aio_auth_clients" in ddl)
 
-    assert "is_public      BOOLEAN NOT NULL" in clients_ddl
-    assert "public         BOOLEAN NOT NULL" not in clients_ddl
+    assert "is_public BOOLEAN NOT NULL" in clients_ddl
+    assert "\n        public BOOLEAN NOT NULL" not in clients_ddl
 
 
 @pytest.mark.unit
