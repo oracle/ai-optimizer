@@ -26,25 +26,26 @@ References:
 - [Oracle Agent Memory getting-started guide](https://docs.oracle.com/en/database/oracle/agent-memory/26.6/guide/get-started.html)
 - [Oracle Agent Memory overview](https://docs.oracle.com/en/database/oracle/agent-memory/26.6/guide/about.html)
 
-## Critical Decision Gate: Identity
+## Identity Prerequisite
 
-Do not equate the existing `client` header with a durable user identity without explicitly limiting the feature to trusted deployments.
+Complete the [end-user authentication and authorization
+plan](authentication_plan.md) before enabling Agent Memory. Local, GitHub, and
+external OIDC authentication resolve a durable `principal_id`; Agent Memory uses
+that value as `user_id`.
 
-The repository documents that client IDs do not authenticate users or isolate access, and Streamlit generates a new UUID for each browser session:
+The Server derives `user_id` from authenticated request context. `client`,
+`X-AIO-Session`, request bodies, and model tool arguments remain outside the
+memory ownership boundary.
 
-- `docs/content/server/multi-user-sessions.mdx`
-- `src/client/app/main.py`
+Use these scopes:
 
-Oracle Agent Memory requires exact user scoping and assigns authorization responsibility to the integrating application. See the [Oracle Agent Memory security considerations](https://docs.oracle.com/en/database/oracle/agent-memory/26.6/guide/security.html).
-
-Define this contract first:
-
-- `user_id`: authenticated principal or deployment-scoped pseudonym.
+- `user_id`: authenticated AI Optimizer `principal_id`.
 - `agent_id`: stable AI Optimizer agent or application identity.
-- `thread_id`: individual conversation identity.
-- `client`: remains an ephemeral settings and session selector.
+- `thread_id`: individual conversation identity owned by the principal.
+- `client`: working settings and session selector.
 
-For the initial trusted-demo mode, `client` could be mapped to `user_id`, but memory must be disabled by default and the limitation documented. A later authenticated mode should derive `user_id` from a verified gateway or identity claim, never a caller-controlled header.
+Oracle Agent Memory requires exact user scoping and assigns authorization to the
+integrating application. See the [Oracle Agent Memory security considerations](https://docs.oracle.com/en/database/oracle/agent-memory/26.6/guide/security.html).
 
 # Plan 1: Backend API, MCP, and Chat Integration
 
@@ -368,7 +369,8 @@ Streamlit exit gate: users can see when memory influenced an answer, explicitly 
 
 # Suggested Delivery Order
 
-1. Identity and SDK/database compatibility spike.
+1. Complete the identity contract in the [authentication
+   plan](authentication_plan.md), then run the SDK/database compatibility spike.
 2. Service layer plus REST API.
 3. Read, add, and search MCP tools.
 4. Persistent chat transcript behind a disabled-by-default feature flag.

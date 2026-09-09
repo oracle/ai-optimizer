@@ -97,18 +97,44 @@ class Settings(SettingsBase, BaseSettings):
     client_port: int = Field(default=8501, ge=1, le=65535, exclude=True)
     client_ssl: bool = Field(default=False, exclude=True)
 
-    # Principal authentication. A deployment selects OIDC bearer validation or
-    # a trusted identity-proxy adapter.
-    auth_mode: Literal["dev", "oidc", "proxy"] | None = Field(default=None, exclude=True)
+    # Principal authentication. The embedded gateway is an OIDC provider to
+    # Streamlit and an adapter for the selected local, GitHub, or OIDC source.
+    auth_mode: Literal["local", "github", "oidc", "proxy", "dev"] | None = Field(default=None, exclude=True)
+    auth_issuer: str = Field(default="", exclude=True)
+    auth_listen_host: str = Field(default="127.0.0.1", exclude=True)
+    auth_listen_port: int = Field(default=8765, ge=1, le=65535, exclude=True)
+    auth_web_redirect_uri: str = Field(default="", exclude=True)
+    auth_web_client_secret: Optional[SecretStr] = Field(default=None, exclude=True)
+    auth_access_token_minutes: int = Field(default=15, ge=1, le=60, exclude=True)
+    auth_login_session_hours: int = Field(default=8, ge=1, le=24, exclude=True)
+    auth_local_admin_username: str = Field(default="admin@example.test", exclude=True)
+    auth_local_admin_password: Optional[SecretStr] = Field(default=None, exclude=True)
+    auth_github_client_id: str = Field(default="", exclude=True)
+    auth_github_client_secret: Optional[SecretStr] = Field(default=None, exclude=True)
+    auth_github_base_url: str = Field(default="https://github.com", exclude=True)
+    auth_github_allowed_users: Annotated[list[str], NoDecode] = Field(default_factory=list, exclude=True)
+    auth_github_allowed_organizations: Annotated[list[str], NoDecode] = Field(default_factory=list, exclude=True)
+    auth_github_admin_users: Annotated[list[str], NoDecode] = Field(default_factory=list, exclude=True)
+    auth_github_admin_teams: Annotated[list[str], NoDecode] = Field(default_factory=list, exclude=True)
+
+    # Upstream OIDC settings. These describe the identity provider, not the
+    # AI Optimizer API audience or access-token scopes.
     auth_oidc_issuer: str = Field(default="", exclude=True)
-    auth_oidc_audience: str = Field(default="", exclude=True)
     auth_oidc_client_id: str = Field(default="", exclude=True)
     auth_oidc_client_secret: Optional[SecretStr] = Field(default=None, exclude=True)
     auth_oidc_scopes: Annotated[list[str], NoDecode] = Field(
-        default_factory=lambda: ["openid", "profile", "email", "aio.api"], exclude=True
+        default_factory=lambda: ["openid", "profile", "email"], exclude=True
     )
-    auth_oidc_required_scopes: Annotated[list[str], NoDecode] = Field(default_factory=lambda: ["aio.api"], exclude=True)
+    auth_oidc_signing_algorithms: Annotated[list[str], NoDecode] = Field(
+        default_factory=lambda: ["RS256"], exclude=True
+    )
     auth_oidc_roles_claim: str = Field(default="roles", exclude=True)
+    auth_oidc_allowed_claim_values: Annotated[list[str], NoDecode] = Field(default_factory=list, exclude=True)
+
+    # Retained as input aliases while local development deployments move to the
+    # provider-neutral AIO_AUTH_* names.
+    auth_oidc_audience: str = Field(default="", exclude=True)
+    auth_oidc_required_scopes: Annotated[list[str], NoDecode] = Field(default_factory=list, exclude=True)
     auth_dev_issuer: str = Field(default="http://127.0.0.1:8765", exclude=True)
     auth_dev_web_redirect_uri: str = Field(default="", exclude=True)
     auth_dev_listen_host: str = Field(default="127.0.0.1", exclude=True)
@@ -130,6 +156,12 @@ class Settings(SettingsBase, BaseSettings):
         "auth_admin_claim_values",
         "auth_oidc_scopes",
         "auth_oidc_required_scopes",
+        "auth_oidc_signing_algorithms",
+        "auth_oidc_allowed_claim_values",
+        "auth_github_allowed_users",
+        "auth_github_allowed_organizations",
+        "auth_github_admin_users",
+        "auth_github_admin_teams",
         mode="before",
     )
     @classmethod
@@ -142,14 +174,17 @@ class Settings(SettingsBase, BaseSettings):
         return value
 
     @model_validator(mode="after")
-    def _derive_auth_dev_web_redirect_uri(self) -> "Settings":
-        """Keep the built-in provider callback aligned with the Client listener."""
+    def _derive_auth_web_redirect_uri(self) -> "Settings":
+        """Keep the embedded gateway callback aligned with the Client listener."""
+        derived_redirect_uri = client_web_redirect_uri(
+            address=self.client_address,
+            port=self.client_port,
+            ssl=self.client_ssl,
+        )
+        if not self.auth_web_redirect_uri.strip():
+            self.auth_web_redirect_uri = self.auth_dev_web_redirect_uri.strip() or derived_redirect_uri
         if not self.auth_dev_web_redirect_uri.strip():
-            self.auth_dev_web_redirect_uri = client_web_redirect_uri(
-                address=self.client_address,
-                port=self.client_port,
-                ssl=self.client_ssl,
-            )
+            self.auth_dev_web_redirect_uri = self.auth_web_redirect_uri
         return self
 
     # OCI CLI — applied to DEFAULT profile at startup (excluded from serialization)
@@ -211,17 +246,33 @@ class Settings(SettingsBase, BaseSettings):
             raise ValueError("AIO_CLIENT_PASSWORD is retired; use AIO_AUTH_DEV_ADMIN_PASSWORD in development mode")
         has_core = any(cfg.alias == "CORE" for cfg in self.database_configs)
         if self.auth_mode is None and has_core:
-            self.auth_mode = "dev"
-        if self.auth_mode == "dev" and not has_core and require_core:
-            raise ValueError("AIO_AUTH_MODE=dev requires an Oracle CORE database")
+            self.auth_mode = "local"
         if self.auth_mode == "dev":
-            _validate_issuer_url(self.auth_dev_issuer)
-            if self.auth_dev_admin_password is None:
-                self.auth_dev_admin_password = SecretStr(secrets.token_urlsafe(32))
-            if self.auth_dev_web_client_secret is None:
-                self.auth_dev_web_client_secret = SecretStr(secrets.token_urlsafe(32))
+            self.auth_mode = "local"
+        if self.auth_mode in {"local", "github", "oidc"} and not has_core and require_core:
+            raise ValueError("End-user authentication requires an Oracle CORE database")
+        if not self.auth_issuer.strip():
+            self.auth_issuer = self.auth_dev_issuer
+        if self.auth_web_client_secret is None:
+            self.auth_web_client_secret = self.auth_dev_web_client_secret or SecretStr(secrets.token_urlsafe(32))
+        if self.auth_local_admin_password is None:
+            self.auth_local_admin_password = self.auth_dev_admin_password
+        if self.auth_mode == "local":
+            _validate_issuer_url(self.auth_issuer)
+            if self.auth_local_admin_password is None:
+                self.auth_local_admin_password = SecretStr(secrets.token_urlsafe(32))
+        if self.auth_mode in {"github", "oidc"}:
+            _validate_issuer_url(self.auth_issuer)
+        if self.auth_mode == "github":
+            _validate_issuer_url(self.auth_github_base_url)
+            if not self.auth_github_client_id or self.auth_github_client_secret is None:
+                raise ValueError("GitHub authentication requires a client ID and client secret")
+            if not self.auth_github_allowed_users and not self.auth_github_allowed_organizations:
+                raise ValueError("GitHub authentication requires an allowed user or organization")
         if self.auth_mode == "oidc":
             _validate_issuer_url(self.auth_oidc_issuer, require_root_path=False)
+            if not self.auth_oidc_client_id or self.auth_oidc_client_secret is None:
+                raise ValueError("OIDC authentication requires a client ID and client secret")
         return self
 
     def validate_authentication_posture(self) -> "Settings":

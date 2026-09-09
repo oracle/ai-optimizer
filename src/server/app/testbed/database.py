@@ -21,7 +21,7 @@ LOGGER = logging.getLogger(__name__)
 _ISO_TS_FMT = """'YYYY-MM-DD"T"HH24:MI:SS.FF'"""
 
 
-PrincipalOwnership = tuple[str, str]
+PrincipalOwnership = str
 
 
 class OwnedTestsetNotFoundError(LookupError):
@@ -35,7 +35,7 @@ def _hex_to_raw(hex_str: str | None) -> bytes | None:
 
 def _owner_binds(owner: PrincipalOwnership) -> dict[str, str]:
     """Return bind values for a durable principal owner."""
-    return {"owner_issuer": owner[0], "owner_subject": owner[1]}
+    return {"owner_principal_id": owner}
 
 
 async def get_testsets(conn: oracledb.AsyncConnection, owner: PrincipalOwnership) -> list[dict]:
@@ -43,7 +43,7 @@ async def get_testsets(conn: oracledb.AsyncConnection, owner: PrincipalOwnership
     sql = f"""
         SELECT tid, name, to_char(created, {_ISO_TS_FMT})
           FROM aio_testsets
-         WHERE owner_issuer=:owner_issuer AND owner_subject=:owner_subject
+         WHERE owner_principal_id=:owner_principal_id
          ORDER BY created
     """
     results = await execute_sql(conn, sql, _owner_binds(owner))
@@ -60,8 +60,7 @@ async def get_testset_qa(conn: oracledb.AsyncConnection, tid: str, owner: Princi
           FROM aio_testsets ts
           LEFT JOIN aio_testset_qa qa ON qa.tid=ts.tid
          WHERE ts.tid=:tid
-           AND ts.owner_issuer=:owner_issuer
-           AND ts.owner_subject=:owner_subject
+           AND ts.owner_principal_id=:owner_principal_id
     """
     results = await execute_sql(conn, sql, {"tid": _hex_to_raw(tid), **_owner_binds(owner)})
     if not results:
@@ -77,8 +76,7 @@ async def get_evaluations(conn: oracledb.AsyncConnection, tid: str, owner: Princ
           FROM aio_evaluations e
           JOIN aio_testsets ts ON ts.tid=e.tid
          WHERE e.tid=:tid
-           AND ts.owner_issuer=:owner_issuer
-           AND ts.owner_subject=:owner_subject
+           AND ts.owner_principal_id=:owner_principal_id
          ORDER BY evaluated DESC
         """
     results = await execute_sql(conn, sql, {"tid": _hex_to_raw(tid), **_owner_binds(owner)})
@@ -98,13 +96,13 @@ async def delete_testset(conn: oracledb.AsyncConnection, tid: str, owner: Princi
         """
         SELECT tid
           FROM aio_testsets
-         WHERE tid=:tid AND owner_issuer=:owner_issuer AND owner_subject=:owner_subject
+         WHERE tid=:tid AND owner_principal_id=:owner_principal_id
         """,
         binds,
     )
     if not owned:
         return False
-    sql = "DELETE FROM aio_testsets WHERE tid=:tid AND owner_issuer=:owner_issuer AND owner_subject=:owner_subject"
+    sql = "DELETE FROM aio_testsets WHERE tid=:tid AND owner_principal_id=:owner_principal_id"
     await execute_sql(conn, sql, binds)
     await conn.commit()
     return True
@@ -131,7 +129,7 @@ async def upsert_qa(
             """
             SELECT tid
               FROM aio_testsets
-             WHERE tid=:tid AND owner_issuer=:owner_issuer AND owner_subject=:owner_subject
+             WHERE tid=:tid AND owner_principal_id=:owner_principal_id
             """,
             {"tid": _hex_to_raw(tid), **_owner_binds(owner)},
         )
@@ -143,8 +141,7 @@ async def upsert_qa(
             l_tid           aio_testsets.tid%TYPE := :tid;
             l_name          aio_testsets.name%TYPE := :name;
             l_created       aio_testsets.created%TYPE := TO_TIMESTAMP(:created ,'YYYY-MM-DD"T"HH24:MI:SS.FF');
-            l_owner_issuer  aio_testsets.owner_issuer%TYPE := :owner_issuer;
-            l_owner_subject aio_testsets.owner_subject%TYPE := :owner_subject;
+            l_owner_principal_id aio_testsets.owner_principal_id%TYPE := :owner_principal_id;
             l_qa_array      JSON_ARRAY_T := JSON_ARRAY_T(:json_array);
             l_qa_obj        JSON_OBJECT_T;
             l_qa_str        VARCHAR2(32000);
@@ -155,24 +152,21 @@ async def upsert_qa(
                     FROM aio_testsets
                     WHERE created = l_created
                     AND name = l_name
-                    AND owner_issuer = l_owner_issuer
-                    AND owner_subject = l_owner_subject;
+                    AND owner_principal_id = l_owner_principal_id;
                 EXCEPTION WHEN NO_DATA_FOUND THEN
-                    INSERT INTO aio_testsets (name, created, owner_issuer, owner_subject)
-                    VALUES (l_name, l_created, l_owner_issuer, l_owner_subject)
+                    INSERT INTO aio_testsets (name, created, owner_principal_id)
+                    VALUES (l_name, l_created, l_owner_principal_id)
                     RETURNING tid INTO l_tid;
                 END;
             ELSE
                 SELECT tid INTO l_tid
                 FROM aio_testsets
                 WHERE tid = l_tid
-                AND owner_issuer = l_owner_issuer
-                AND owner_subject = l_owner_subject;
+                AND owner_principal_id = l_owner_principal_id;
                 UPDATE aio_testsets
                    SET name = l_name
                  WHERE tid = l_tid
-                   AND owner_issuer = l_owner_issuer
-                   AND owner_subject = l_owner_subject;
+                   AND owner_principal_id = l_owner_principal_id;
             END IF;
             DELETE FROM aio_testset_qa WHERE tid = l_tid;
             FOR i IN 0 .. l_qa_array.get_size - 1
@@ -193,8 +187,7 @@ async def upsert_qa(
                 "name": name,
                 "created": created,
                 "json_array": json_data,
-                "owner_issuer": owner[0],
-                "owner_subject": owner[1],
+                "owner_principal_id": owner,
                 "out_tid": out_tid,
             },
         )
@@ -218,7 +211,7 @@ async def insert_evaluation(
         """
         SELECT tid
           FROM aio_testsets
-         WHERE tid=:tid AND owner_issuer=:owner_issuer AND owner_subject=:owner_subject
+         WHERE tid=:tid AND owner_principal_id=:owner_principal_id
         """,
         binds,
     )
@@ -233,7 +226,7 @@ async def insert_evaluation(
         BEGIN
             SELECT tid INTO l_tid
               FROM aio_testsets
-             WHERE tid=:tid AND owner_issuer=:owner_issuer AND owner_subject=:owner_subject;
+             WHERE tid=:tid AND owner_principal_id=:owner_principal_id;
             INSERT INTO aio_evaluations (
                 tid, evaluated, correctness, settings, rag_report)
             VALUES (
@@ -252,8 +245,7 @@ async def insert_evaluation(
             plsql,
             {
                 "tid": _hex_to_raw(tid),
-                "owner_issuer": owner[0],
-                "owner_subject": owner[1],
+                "owner_principal_id": owner,
                 "evaluated": evaluated,
                 "correctness": correctness,
                 "settings": settings_json,
@@ -271,8 +263,7 @@ async def process_report(conn: oracledb.AsyncConnection, eid: str, owner: Princi
           FROM aio_evaluations e
           JOIN aio_testsets ts ON ts.tid=e.tid
          WHERE e.eid=:eid
-           AND ts.owner_issuer=:owner_issuer
-           AND ts.owner_subject=:owner_subject
+           AND ts.owner_principal_id=:owner_principal_id
          ORDER BY evaluated
     """
     results = await execute_sql(conn, sql, {"eid": _hex_to_raw(eid), **_owner_binds(owner)})

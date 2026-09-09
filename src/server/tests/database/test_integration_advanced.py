@@ -39,8 +39,8 @@ from server.tests.constants import test_auth as auth_creds
 
 pytestmark = [pytest.mark.db, pytest.mark.integration]
 
-OWNER_A = ("integration-issuer", "integration-subject")
-OWNER_B = ("integration-issuer", "other-subject")
+OWNER_A = "integration-principal-a"
+OWNER_B = "integration-principal-b"
 
 
 # ---------------------------------------------------------------------------
@@ -256,9 +256,9 @@ class TestCascadeDeletes:
 
 
 class TestPrincipalOwnershipMigration:
-    """Verify existing testbed schemas receive the ownership columns."""
+    """Verify existing testbed schemas receive the principal owner column."""
 
-    async def test_legacy_testsets_receive_owner_columns(self, schema_connection):
+    async def test_existing_testsets_receive_principal_owner_column(self, schema_connection):
         conn = schema_connection
         from server.app.database.objects import RENAME_DDL, SCHEMA_DDL
 
@@ -289,11 +289,11 @@ class TestPrincipalOwnershipMigration:
                 SELECT column_name
                   FROM user_tab_columns
                  WHERE table_name='AIO_TESTSETS'
-                   AND column_name IN ('OWNER_ISSUER', 'OWNER_SUBJECT')
+                   AND column_name = 'OWNER_PRINCIPAL_ID'
                  ORDER BY column_name
                 """,
             )
-            assert columns == [("OWNER_ISSUER",), ("OWNER_SUBJECT",)]
+            assert columns == [("OWNER_PRINCIPAL_ID",)]
 
             # The migration is idempotent.
             for ddl in RENAME_DDL:

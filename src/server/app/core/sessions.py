@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from server.app.core.auth import Principal
 
 _DEFAULT_SESSION_ID = "default"
-_owners: dict[str, tuple[str, str]] = {}
+_owners: dict[str, str] = {}
 _owners_lock = threading.Lock()
 LOGGER = logging.getLogger(__name__)
 
@@ -33,7 +33,7 @@ class OwnedSession:
     @property
     def client_key(self) -> str:
         """Internal client key; never expose this transport/cache namespace."""
-        owner = "\0".join(self.principal.ownership_key).encode()
+        owner = self.principal.principal_id.encode()
         owner_digest = hashlib.sha256(owner).hexdigest()[:32]
         session_digest = hashlib.sha256(self.session_id.encode()).hexdigest()[:32]
         return f"principal-{owner_digest}-{session_digest}"
@@ -47,35 +47,35 @@ async def select_owned_session(principal: Principal, supplied_session_id: str | 
     if session_id != _DEFAULT_SESSION_ID:
         await _claim_durable_session(principal, session_id)
         with _owners_lock:
-            owner = _owners.setdefault(session_id, principal.ownership_key)
-        if owner != principal.ownership_key:
+            owner = _owners.setdefault(session_id, principal.principal_id)
+        if owner != principal.principal_id:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
     return OwnedSession(principal=principal, session_id=session_id)
 
 
 async def _claim_durable_session(principal: Principal, session_id: str) -> None:
-    """Persist the owner claim when CORE is available; memory is only a fallback."""
+    """Persist the owner claim through CORE before accepting the working session."""
     pool = get_core_pool()
     if pool is None:
-        return
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Session store is unavailable")
     try:
         async with pool.acquire() as conn:
             rows = await execute_sql(
                 conn,
-                "SELECT issuer, subject FROM aio_principal_sessions WHERE session_id = :session_id",
+                "SELECT principal_id FROM aio_principal_sessions WHERE session_id = :session_id",
                 {"session_id": session_id},
             )
             if rows:
-                if tuple(rows[0]) != principal.ownership_key:
+                if rows[0][0] != principal.principal_id:
                     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
                 return
             await execute_sql(
                 conn,
                 """
-                INSERT INTO aio_principal_sessions (session_id, issuer, subject, created, updated)
-                VALUES (:session_id, :issuer, :subject, SYSTIMESTAMP, SYSTIMESTAMP)
+                INSERT INTO aio_principal_sessions (session_id, principal_id, created, updated)
+                VALUES (:session_id, :principal_id, SYSTIMESTAMP, SYSTIMESTAMP)
                 """,
-                {"session_id": session_id, "issuer": principal.issuer, "subject": principal.subject},
+                {"session_id": session_id, "principal_id": principal.principal_id},
             )
             await conn.commit()
     except oracledb.IntegrityError:
@@ -86,14 +86,15 @@ async def _claim_durable_session(principal: Principal, session_id: str) -> None:
             await conn.rollback()
             rows = await execute_sql(
                 conn,
-                "SELECT issuer, subject FROM aio_principal_sessions WHERE session_id = :session_id",
+                "SELECT principal_id FROM aio_principal_sessions WHERE session_id = :session_id",
                 {"session_id": session_id},
             )
-        if not rows or tuple(rows[0]) != principal.ownership_key:
+        if not rows or rows[0][0] != principal.principal_id:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
     except HTTPException:
         raise
     except Exception as exc:
-        # CORE remains optional for local operation; do not turn an unavailable
-        # persistence store into an authentication bypass or a global outage.
         LOGGER.warning("Unable to persist principal session ownership: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Session store is unavailable"
+        ) from exc

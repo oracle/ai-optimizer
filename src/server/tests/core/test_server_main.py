@@ -71,8 +71,8 @@ class TestApplyConfiguredOverlay:
         mock_overlay.assert_called_once()
         mock_persist.assert_not_awaited()
 
-    async def test_core_from_config_file_enables_default_development_authentication(self):
-        """A file-provided CORE database enables development auth after the overlay."""
+    async def test_core_from_config_file_enables_default_local_authentication(self):
+        """A file-provided CORE database enables local auth after the overlay."""
         settings.auth_mode = None
         settings.database_configs = []
         source = SettingsBase.model_validate({"database_configs": [{"alias": "CORE"}]})
@@ -90,7 +90,7 @@ class TestApplyConfiguredOverlay:
         settings.validate_authentication_posture()
 
         assert loaded_from_file is True
-        assert settings.auth_mode == "dev"
+        assert settings.auth_mode == "local"
 
     async def test_two_pass_overlay_preserves_promoted_core_client_alias(self):
         """A full overlay must not undo CORE promotion from the bootstrap pass."""
@@ -246,7 +246,7 @@ class TestLifespan:
 
         def _validate_authentication_posture():
             call_order.append("validate")
-            settings.auth_mode = "dev"
+            settings.auth_mode = "local"
 
         async def _start_provider():
             call_order.append("provider")
@@ -264,7 +264,7 @@ class TestLifespan:
                 new_callable=AsyncMock,
                 side_effect=lambda: call_order.append("core"),
             ),
-            patch(f"{MODULE}._start_development_oidc", side_effect=_start_provider),
+            patch(f"{MODULE}._start_auth_gateway", side_effect=_start_provider),
             patch(f"{MODULE}.load_default_models", new_callable=AsyncMock),
             patch(f"{MODULE}.apply_env_overrides"),
             patch(f"{MODULE}.load_factory_prompts"),

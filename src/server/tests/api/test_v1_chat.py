@@ -11,6 +11,7 @@ import pytest
 from starlette.requests import Request
 
 from server.app.api.v1.endpoints import chat as chat_endpoint
+from server.app.core.auth import PRINCIPAL_SCOPE_KEY, Principal
 from server.app.core.settings import _client_store, settings
 from server.tests.conftest import make_test_model_config
 from server.tests.constants import TEST_OLLAMA_MODEL_ID
@@ -77,8 +78,9 @@ def test_internal_mcp_url_preserves_url_prefix():
     )
 
 
-def test_principal_authenticated_chat_forwards_bearer_credential_and_session(monkeypatch):
-    monkeypatch.setattr(settings, "auth_mode", "dev")
+@pytest.mark.parametrize("auth_mode", ("local", "github", "oidc"))
+def test_gateway_authenticated_chat_forwards_bearer_credential_and_session(monkeypatch, auth_mode):
+    monkeypatch.setattr(settings, "auth_mode", auth_mode)
     request = Request(
         {
             "type": "http",
@@ -97,6 +99,27 @@ def test_principal_authenticated_chat_forwards_bearer_credential_and_session(mon
     assert orchestrator.api_key == {
         "Authorization": "Bearer access-token",
         "X-AIO-Session": "streamlit-session",
+    }
+
+
+def test_proxy_authenticated_chat_forwards_durable_principal(monkeypatch):
+    monkeypatch.setattr(settings, "auth_mode", "proxy")
+    request = Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "path": "/v1/chat/completions",
+            "headers": [(b"x-aio-session", b"working-session")],
+            "state": {PRINCIPAL_SCOPE_KEY: Principal("principal-123", frozenset({"aio.user"}), "proxy")},
+        }
+    )
+
+    orchestrator = chat_endpoint._request_orchestrator(request)
+
+    assert orchestrator.api_key == {
+        "X-AIO-Internal-Principal": "principal-123",
+        "X-AIO-Internal-Token": chat_endpoint.INTERNAL_PROXY_TOKEN,
+        "X-AIO-Session": "working-session",
     }
 
 
