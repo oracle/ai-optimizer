@@ -2,7 +2,7 @@
 Copyright (c) 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 
-Private local storage for All-In-One development IdP bootstrap credentials.
+Private local storage for All-In-One authentication bootstrap credentials.
 """
 
 from __future__ import annotations
@@ -13,8 +13,8 @@ import secrets
 from dataclasses import dataclass
 from pathlib import Path
 
-_CREDENTIAL_FILE_NAME = "dev-oidc-bootstrap.json"
-_WEB_CLIENT_SECRET_FILE_NAME = "dev-oidc-web-client-secret"
+_CREDENTIAL_FILE_NAME = "local-auth-bootstrap.json"
+_WEB_CLIENT_SECRET_FILE_NAME = "local-auth-web-client-secret"
 _STREAMLIT_CONFIG_DIR = Path("client") / "app" / ".streamlit"
 
 
@@ -47,11 +47,11 @@ def read_bootstrap_credential(script_dir: Path) -> BootstrapCredential | None:
         password = raw["password"]
         web_client_secret = raw.get("web_client_secret")
     except (json.JSONDecodeError, KeyError, TypeError) as exc:
-        raise ValueError(f"Invalid development bootstrap credential file: {path}") from exc
+        raise ValueError(f"Invalid local authentication bootstrap credential file: {path}") from exc
     if not isinstance(username, str) or not username or not isinstance(password, str) or not password:
-        raise ValueError(f"Invalid development bootstrap credential file: {path}")
+        raise ValueError(f"Invalid local authentication bootstrap credential file: {path}")
     if web_client_secret is not None and (not isinstance(web_client_secret, str) or not web_client_secret):
-        raise ValueError(f"Invalid development bootstrap credential file: {path}")
+        raise ValueError(f"Invalid local authentication bootstrap credential file: {path}")
     path.chmod(0o600)
     return BootstrapCredential(username=username, password=password, web_client_secret=web_client_secret or "")
 
@@ -101,7 +101,7 @@ def load_or_create_web_client_secret(script_dir: Path, fallback: str = "") -> st
         if secret:
             path.chmod(0o600)
             return secret
-        raise ValueError(f"Invalid development web-client secret file: {path}")
+        raise ValueError(f"Invalid local authentication web-client secret file: {path}")
     path.parent.mkdir(parents=True, exist_ok=True)
     path.parent.chmod(0o700)
     secret = fallback or secrets.token_urlsafe(32)

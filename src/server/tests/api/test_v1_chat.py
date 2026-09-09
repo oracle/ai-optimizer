@@ -124,7 +124,7 @@ def test_proxy_authenticated_chat_forwards_durable_principal(monkeypatch):
 
 
 def test_principal_request_orchestrators_are_cached_per_credential(monkeypatch):
-    monkeypatch.setattr(settings, "auth_mode", "dev")
+    monkeypatch.setattr(settings, "auth_mode", "local")
 
     def make_request(authorization: str, session_id: str = "streamlit-session") -> Request:
         return Request(

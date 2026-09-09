@@ -35,7 +35,7 @@ def _parser() -> argparse.ArgumentParser:
 
 
 async def _service() -> GatewayService:
-    if settings.auth_mode not in {"local", "dev"}:
+    if settings.auth_mode != "local":
         raise RuntimeError("Set AIO_AUTH_MODE=local before managing local accounts")
     core_database = get_database_settings(settings.database_configs, "CORE")
     if core_database is None:
@@ -43,7 +43,7 @@ async def _service() -> GatewayService:
     await init_core_database(core_database)
     service = GatewayService(
         GatewayConfig(
-            issuer=settings.auth_issuer or settings.auth_dev_issuer,
+            issuer=settings.auth_issuer,
             mode="local",
             web_client_secret=reveal(settings.auth_web_client_secret) or "",
             web_redirect_uri=settings.auth_web_redirect_uri,

@@ -124,7 +124,6 @@ def test_auth_callback_defaults_to_browser_facing_client_listener(monkeypatch):
     """The gateway callback follows the client listener when no URI is configured."""
     for name in (
         "AIO_AUTH_WEB_REDIRECT_URI",
-        "AIO_AUTH_DEV_WEB_REDIRECT_URI",
         "AIO_AUTH_MODE",
         "AIO_DB_USERNAME",
         "AIO_DB_PASSWORD",
@@ -172,7 +171,7 @@ def test_authentication_posture_can_be_validated_after_core_overlay(monkeypatch)
     """CORE-dependent authentication validation is deferred until overlays are loaded."""
     monkeypatch.delenv("AIO_AUTH_MODE", raising=False)
 
-    configured = _SettingsWithoutEnvFile(auth_mode="dev")
+    configured = _SettingsWithoutEnvFile(auth_mode="local")
 
     with pytest.raises(ValueError, match="requires an Oracle CORE database"):
         configured.validate_authentication_posture()
@@ -210,7 +209,7 @@ def test_client_password_is_rejected(monkeypatch):
     """The retired client password must not silently appear to protect shared state."""
     monkeypatch.setenv("AIO_CLIENT_PASSWORD", auth_creds["retired_client"]["password"])
 
-    with pytest.raises(ValueError, match="AIO_AUTH_DEV_ADMIN_PASSWORD"):
+    with pytest.raises(ValueError, match="AIO_AUTH_LOCAL_ADMIN_PASSWORD"):
         _SettingsWithoutEnvFile()
 
 

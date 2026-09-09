@@ -99,7 +99,7 @@ class Settings(SettingsBase, BaseSettings):
 
     # Principal authentication. The embedded gateway is an OIDC provider to
     # Streamlit and an adapter for the selected local, GitHub, or OIDC source.
-    auth_mode: Literal["local", "github", "oidc", "proxy", "dev"] | None = Field(default=None, exclude=True)
+    auth_mode: Literal["local", "github", "oidc", "proxy"] | None = Field(default=None, exclude=True)
     auth_issuer: str = Field(default="", exclude=True)
     auth_listen_host: str = Field(default="127.0.0.1", exclude=True)
     auth_listen_port: int = Field(default=8765, ge=1, le=65535, exclude=True)
@@ -131,19 +131,6 @@ class Settings(SettingsBase, BaseSettings):
     auth_oidc_roles_claim: str = Field(default="roles", exclude=True)
     auth_oidc_allowed_claim_values: Annotated[list[str], NoDecode] = Field(default_factory=list, exclude=True)
 
-    # Retained as input aliases while local development deployments move to the
-    # provider-neutral AIO_AUTH_* names.
-    auth_oidc_audience: str = Field(default="", exclude=True)
-    auth_oidc_required_scopes: Annotated[list[str], NoDecode] = Field(default_factory=list, exclude=True)
-    auth_dev_issuer: str = Field(default="http://127.0.0.1:8765", exclude=True)
-    auth_dev_web_redirect_uri: str = Field(default="", exclude=True)
-    auth_dev_listen_host: str = Field(default="127.0.0.1", exclude=True)
-    auth_dev_listen_port: int = Field(default=8765, ge=1, le=65535, exclude=True)
-    auth_dev_admin_password: Optional[SecretStr] = Field(default=None, exclude=True)
-    auth_dev_web_client_secret: Optional[SecretStr] = Field(default=None, exclude=True)
-    # Retained solely to reject the retired AIO_CLIENT_PASSWORD setting with a
-    # useful migration error instead of silently accepting a no-longer-effective
-    # shared-state control.
     client_password: Optional[SecretStr] = Field(default=None, exclude=True)
     auth_proxy_trusted_cidrs: Annotated[list[str], NoDecode] = Field(default_factory=list, exclude=True)
     auth_proxy_subject_header: str = Field(default="X-Authenticated-Subject", exclude=True)
@@ -155,7 +142,6 @@ class Settings(SettingsBase, BaseSettings):
         "auth_proxy_trusted_cidrs",
         "auth_admin_claim_values",
         "auth_oidc_scopes",
-        "auth_oidc_required_scopes",
         "auth_oidc_signing_algorithms",
         "auth_oidc_allowed_claim_values",
         "auth_github_allowed_users",
@@ -182,9 +168,7 @@ class Settings(SettingsBase, BaseSettings):
             ssl=self.client_ssl,
         )
         if not self.auth_web_redirect_uri.strip():
-            self.auth_web_redirect_uri = self.auth_dev_web_redirect_uri.strip() or derived_redirect_uri
-        if not self.auth_dev_web_redirect_uri.strip():
-            self.auth_dev_web_redirect_uri = self.auth_web_redirect_uri
+            self.auth_web_redirect_uri = derived_redirect_uri
         return self
 
     # OCI CLI — applied to DEFAULT profile at startup (excluded from serialization)
@@ -243,20 +227,16 @@ class Settings(SettingsBase, BaseSettings):
     def _apply_authentication_posture(self, *, require_core: bool) -> "Settings":
         """Apply authentication defaults and validate the selected posture."""
         if self.client_password is not None:
-            raise ValueError("AIO_CLIENT_PASSWORD is retired; use AIO_AUTH_DEV_ADMIN_PASSWORD in development mode")
+            raise ValueError("AIO_CLIENT_PASSWORD is retired; use AIO_AUTH_LOCAL_ADMIN_PASSWORD in local mode")
         has_core = any(cfg.alias == "CORE" for cfg in self.database_configs)
         if self.auth_mode is None and has_core:
-            self.auth_mode = "local"
-        if self.auth_mode == "dev":
             self.auth_mode = "local"
         if self.auth_mode in {"local", "github", "oidc"} and not has_core and require_core:
             raise ValueError("End-user authentication requires an Oracle CORE database")
         if not self.auth_issuer.strip():
-            self.auth_issuer = self.auth_dev_issuer
+            self.auth_issuer = "http://127.0.0.1:8765"
         if self.auth_web_client_secret is None:
-            self.auth_web_client_secret = self.auth_dev_web_client_secret or SecretStr(secrets.token_urlsafe(32))
-        if self.auth_local_admin_password is None:
-            self.auth_local_admin_password = self.auth_dev_admin_password
+            self.auth_web_client_secret = SecretStr(secrets.token_urlsafe(32))
         if self.auth_mode == "local":
             _validate_issuer_url(self.auth_issuer)
             if self.auth_local_admin_password is None:

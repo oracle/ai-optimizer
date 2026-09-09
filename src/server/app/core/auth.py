@@ -25,7 +25,7 @@ PRINCIPAL_SCOPE_KEY = "aio_principal"
 INTERNAL_PROXY_TOKEN = secrets.token_urlsafe(32)
 _owned_session_context: ContextVar[OwnedSession | None] = ContextVar("aio_owned_session", default=None)
 _NO_AUTH_PATHS = frozenset({"/v1/liveness", "/v1/readiness", "/v1/healthz", "/mcp/healthz", "/v1/docs"})
-GATEWAY_AUTH_MODES = frozenset({"local", "github", "oidc", "dev"})
+GATEWAY_AUTH_MODES = frozenset({"local", "github", "oidc"})
 
 
 def authenticated_client(thread_id: str) -> str:

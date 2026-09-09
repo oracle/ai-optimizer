@@ -525,7 +525,7 @@ async def test_evaluate_rejects_invalid_tid(app_client, auth_headers):
 @pytest.mark.anyio
 async def test_collect_answers_uses_request_scoped_orchestrator(monkeypatch):
     """Testbed MCP-backed answers retain the inbound bearer credential."""
-    monkeypatch.setattr(settings, "auth_mode", "dev")
+    monkeypatch.setattr(settings, "auth_mode", "local")
     request = Request(
         {
             "type": "http",
