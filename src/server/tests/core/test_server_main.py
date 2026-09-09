@@ -304,7 +304,7 @@ class TestLifespan:
             patch(
                 f"{MODULE}.init_core_database",
                 new_callable=AsyncMock,
-                side_effect=Exception("Local authentication requires an Oracle CORE database"),
+                side_effect=Exception("End-user authentication requires an Oracle CORE database"),
             ),
             patch(f"{MODULE}.load_default_models", new_callable=AsyncMock),
             patch(f"{MODULE}.apply_env_overrides"),
@@ -328,7 +328,7 @@ class TestLifespan:
         ):
             from server.app.main import lifespan
 
-            with pytest.raises(Exception, match="Local authentication requires an Oracle CORE database"):
+            with pytest.raises(Exception, match="End-user authentication requires an Oracle CORE database"):
                 async with lifespan(MagicMock()):
                     pass
 
