@@ -53,8 +53,15 @@ jobs:
           cache-from: type=gha,scope=aio-image
           cache-to: type=gha,mode=max,scope=aio-image,compression=zstd
 
+      - name: Set up Trivy
+        uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1
+        with:
+          cache: true
+
       - name: Prepare Trivy Cache Directory
-        run: mkdir -p "${{ github.workspace }}/.trivy-cache"
+        run: |
+          mkdir -p "${{ github.workspace }}/.trivy-cache"
+          sudo chown -R "$(id -u):$(id -g)" "${{ github.workspace }}/.trivy-cache"
 
       - name: Get Date
         id: date
@@ -68,50 +75,45 @@ jobs:
           restore-keys: |
             trivy-db-
 
-      # One scan produces HIGH+CRITICAL JSON; two fast `trivy convert` calls
-      # derive the SARIF (CRITICAL only, uploaded to Security tab) and the
-      # table (HIGH+CRITICAL, logged for maintainer awareness).
+      # The first scan logs HIGH+CRITICAL findings; the second produces the
+      # CRITICAL-only SARIF report uploaded to the Security tab.
       #
       # Skips ibm_watsonx_ai/connections.py: docstring shows a Google BigQuery
       # service-account JSON example with placeholder values, which Trivy's
       # secret scanner flags as a GCP service-account credential.
-      - name: Run Trivy Scan (JSON)
-        run: |
-          docker run --rm \
-            -v /var/run/docker.sock:/var/run/docker.sock \
-            -v "${{ github.workspace }}:/workspace" \
-            -v "${{ github.workspace }}/.trivy-cache:/root/.cache/trivy" \
-            ghcr.io/aquasecurity/trivy:0.71.1 \
-            image \
-            --severity HIGH,CRITICAL \
-            --format json \
-            --output /workspace/trivy-results.json \
-            --ignore-unfixed \
-            --skip-files "**/ibm_watsonx_ai/connections.py" \
-            --exit-code 0 \
-            "aio:${{ github.sha }}"
-
       - name: Log HIGH+CRITICAL Findings
         if: always()
-        run: |
-          docker run --rm \
-            -v "${{ github.workspace }}:/workspace" \
-            ghcr.io/aquasecurity/trivy:0.71.1 \
-            convert --format table \
-            /workspace/trivy-results.json
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: aio:${{ github.sha }}
+          severity: HIGH,CRITICAL
+          format: table
+          ignore-unfixed: true
+          skip-files: "**/ibm_watsonx_ai/connections.py"
+          docker-host: unix:///var/run/docker.sock
+          exit-code: '0'
+          cache: false
+          cache-dir: ${{ github.workspace }}/.trivy-cache
+          skip-setup-trivy: true
 
       - name: Generate CRITICAL-only SARIF (fails build on CRITICAL)
         if: always()
-        run: |
-          docker run --rm \
-            -v "${{ github.workspace }}:/workspace" \
-            ghcr.io/aquasecurity/trivy:0.71.1 \
-            convert \
-            --severity CRITICAL \
-            --format sarif \
-            --output /workspace/trivy-results.sarif \
-            --exit-code 1 \
-            /workspace/trivy-results.json
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: aio:${{ github.sha }}
+          severity: CRITICAL
+          format: sarif
+          output: trivy-results.sarif
+          limit-severities-for-sarif: true
+          ignore-unfixed: true
+          skip-files: "**/ibm_watsonx_ai/connections.py"
+          docker-host: unix:///var/run/docker.sock
+          exit-code: '1'
+          cache: false
+          cache-dir: ${{ github.workspace }}/.trivy-cache
+          skip-setup-trivy: true
 
       - name: Upload Trivy SARIF to GitHub Security
         if: always()
@@ -119,12 +121,6 @@ jobs:
         with:
           sarif_file: trivy-results.sarif
           category: trivy-aio
-
-      - name: Fix Trivy Cache Permissions
-        # Trivy runs as root inside the container, so cache files are owned by
-        # root. Reclaim ownership so the actions/cache post-step can tar them.
-        if: always()
-        run: sudo chown -R "$(id -u):$(id -g)" "${{ github.workspace }}/.trivy-cache"
 
   # Macaron - check GitHub Actions for known vulnerabilities
   macaron:

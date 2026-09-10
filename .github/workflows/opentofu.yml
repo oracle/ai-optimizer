@@ -32,7 +32,7 @@ jobs:
     if: github.event.pull_request.draft == false || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/opentofu/opentofu:1.11.6
+      image: ghcr.io/opentofu/opentofu:1.12.6
     permissions:
       contents: read
 
@@ -107,16 +107,21 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Set up Trivy
+        uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1
+        with:
+          cache: true
+
       - name: Run Trivy Security Scan for IaC
-        run: |
-          docker run --rm \
-            -v "${{ github.workspace }}:/workspace" \
-            ghcr.io/aquasecurity/trivy:0.71.1 \
-            config \
-            --format sarif \
-            --output /workspace/trivy-results.sarif \
-            --exit-code 0 \
-            /workspace/opentofu
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: config
+          scan-ref: opentofu
+          format: sarif
+          output: trivy-results.sarif
+          exit-code: '0'
+          cache: false
+          skip-setup-trivy: true
 
   verify-iac-summary:
     name: Validation Summary
