@@ -21,7 +21,6 @@ dependencies = [
     "langchain==1.4.0",
     "httpx==0.28.1",
     "oracledb~=4.0",
-    "matplotlib==3.11.1",
     "pydantic-settings==2.15.0"
 ]
 

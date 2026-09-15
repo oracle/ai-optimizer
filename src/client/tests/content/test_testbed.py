@@ -9,6 +9,7 @@ Unit tests for client.app.content.testbed (functions only — not module-level p
 import sys
 from contextlib import ExitStack
 from unittest.mock import MagicMock, patch
+from xml.etree import ElementTree
 
 import pandas as pd
 import pytest
@@ -149,7 +150,7 @@ def _ensure_testbed_loaded():
             "text_input",
             "text_area",
             "download_button",
-            "pyplot",
+            "image",
             "dataframe",
             "markdown",
         ):
@@ -671,10 +672,9 @@ class TestEvaluationReport:
         mock_get.assert_not_called()
         mock_st.subheader.assert_any_call("Evaluation Settings")
         mock_st.columns.assert_called_once_with([1, 2, 1])
-        gauge_plot = gauge_columns[1].pyplot
-        figure = gauge_plot.call_args.args[0]
-        assert figure.axes[0].texts[-1].get_text() == "85%"
-        assert figure.get_size_inches().tolist() == [5.0, 2.5]
+        gauge_plot = gauge_columns[1].image
+        svg = ElementTree.fromstring(gauge_plot.call_args.args[0])
+        assert svg.findall("{*}text")[-1].text == "85%"
         assert gauge_plot.call_args.kwargs == {"width": "stretch"}
 
     def test_no_report_shows_error(self):
@@ -749,25 +749,38 @@ class TestEvaluationReport:
 
         self._call(mock_st, report=report)
 
-        figure = mock_st.columns.return_value[1].pyplot.call_args.args[0]
+        svg = ElementTree.fromstring(mock_st.columns.return_value[1].image.call_args.args[0])
         topic_frame = next(
             call.args[0]
             for call in mock_st.dataframe.call_args_list
             if isinstance(call.args[0], pd.DataFrame) and "Correctness %" in call.args[0].columns
         )
-        assert figure.axes[0].texts[-1].get_text() == "0%"
+        assert svg.findall("{*}text")[-1].text == "0%"
         assert topic_frame.loc[0, "Correctness %"] == 0
 
 
 @pytest.mark.parametrize(("value", "expected"), [(-1, "0%"), (85.4, "85%"), (101, "100%")])
 def test_create_gauge_clamps_percentage(value, expected):
     """Gauge values are constrained to the displayed percentage range."""
-    from client.app.content.testbed import _create_gauge
+    from client.app.content.testbed import _create_gauge_svg
 
-    figure = _create_gauge(value)
+    svg = ElementTree.fromstring(_create_gauge_svg(value))
 
-    assert figure.axes[0].texts[-1].get_text() == expected
-    assert len(figure.axes[0].patches) == 4
+    assert svg.findall("{*}text")[-1].text == expected
+    title = svg.find("{*}title")
+    assert title is not None
+    assert title.text == f"Overall Correctness Score: {expected}"
+
+
+@pytest.mark.parametrize(("value", "endpoint"), [(0, (117.4, 220)), (50, (250, 87.4)), (100, (382.6, 220))])
+def test_create_gauge_needle_position(value, endpoint):
+    from client.app.content.testbed import _create_gauge_svg
+
+    svg = ElementTree.fromstring(_create_gauge_svg(value))
+    needle = svg.find("{*}line")
+
+    assert needle is not None
+    assert (float(needle.attrib["x2"]), float(needle.attrib["y2"])) == pytest.approx(endpoint)
 
 
 def _deep_copy_report():
