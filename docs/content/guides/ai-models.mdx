@@ -10,19 +10,19 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
-The AI Optimizer needs a [language model](#language-models) for chat and Natural Language to SQL (NL2SQL). To use Retrieval-Augmented Generation (RAG), it also needs an [embedding model](#embedding-models). Configure the selected models in [Configuration > Models](../client/configuration/models).
+The AI Optimizer runtime uses a [language model](#language-models) for the LLM-only Agent, the NL2SQL Agent, the Vector Search Flow, and the combined route. To use Retrieval-Augmented Generation (RAG), it also needs an [embedding model](#embedding-models). Configure the selected models in [Configuration > Models](../client/configuration/models).
 
 ## Language Models
 
-Language models generate chat responses, perform NL2SQL tasks, and can provide Vector Search features such as store discovery, document grading, and prompt rephrasing. Choose a model that supports the capabilities your application needs.
+Language models generate responses and power the model calls in the AI Optimizer's agents and flows. They also support Vector Search steps such as store discovery, document grading, and prompt rephrasing. Choose a model that supports the capabilities your application needs.
 
-### Choose a Chat Model with Reliable Tool Use
+### Choose a Language Model with Reliable Tool Use
 
-Tool use is a chat model's ability to recognize when it needs an external capability, select the appropriate tool, send valid structured arguments, and use the tool's result in its response. For example, a model might use a database tool to answer a question about your data instead of trying to answer from its existing knowledge.
+Tool use is a language model's ability to recognize when it needs an external capability, select the appropriate tool, send valid structured arguments, and use the tool's result in its response. For example, a model might use a database tool to answer a question about your data instead of trying to answer from its existing knowledge.
 
 Reliable tool use is important for agentic AI. An agent relies on the model to decide when to query data, retrieve relevant documents, or take another configured action. A model with weak tool use can select an inappropriate tool, produce invalid arguments, repeat unnecessary calls, or fail to use the result correctly.
 
-When evaluating chat models, first confirm that the provider documents support for function or tool calling. Then test each candidate with representative tasks that require the agent to choose the correct tool, provide valid arguments, handle a tool error, and accurately use the returned result. Prefer the model that performs these tasks consistently in your environment, rather than selecting one based only on general chat quality.
+When evaluating language models, first confirm that the provider documents support for function or tool calling. Then test each candidate with representative tasks that require the agent to choose the correct tool, provide valid arguments, handle a tool error, and accurately use the returned result. Prefer the model that performs these tasks consistently in your environment, rather than selecting one based only on general response quality.
 
 #### Example: `granite4.1:8b`
 
@@ -54,7 +54,7 @@ Follow the [Getting Started](https://docs.oracle.com/en-us/iaas/Content/generati
 
 OCI GenAI models are not added one at a time. Instead, the **AI Optimizer** loads the chat and embedding models available in your configured Region—either interactively from the OCI tab, or automatically at startup when a usable profile already has a GenAI Compartment OCID and Region persisted. See [Loading OCI GenAI Models](../client/configuration/oci#loading-oci-genai-models) for the client workflow.
 
-:::tip[Skip the GUI!]
+:::tip[Skip the client!]
 The GenAI Compartment OCID and Region can be supplied through the [Models environment variables](./env-vars#models).
 
 Alternatively, specify the following in the `~/.oci/config` file under the appropriate OCI profile:
@@ -81,7 +81,7 @@ Many AI runners provide OpenAI-compatible APIs. Configure these with LiteLLM Ope
 
 When configuring an Ollama model in the **AI Optimizer**, set the **Provider URL** (for example, `http://127.0.0.1:11434`) and leave the API key blank. Substitute the IP address with the address of the host where Ollama is running.
 
-:::tip[Skip the GUI!]
+:::tip[Skip the client!]
 Ollama models can be enabled through the [Models environment variables](./env-vars#models).
 :::
 
@@ -115,7 +115,7 @@ Example of running `granite4.1:8b` on a Linux host:
    ollama serve
    ```
 
-For more information and instructions on running Ollama on other platforms, see the [Ollama GitHub Repository](https://github.com/ollama/ollama/blob/main/README.md#quickstart).
+For more information and instructions on running Ollama on other platforms, see the [Ollama quickstart](https://docs.ollama.com/quickstart).
 
 </TabItem>
 <TabItem value="huggingface" label="HuggingFace">
@@ -124,7 +124,7 @@ For more information and instructions on running Ollama on other platforms, see 
 
 [HuggingFace](https://huggingface.co/) is a platform where the machine learning community collaborates on models, datasets, and applications. In the **AI Optimizer**, the built-in HuggingFace embedding configuration is intended for a Hugging Face Text Embeddings Inference (TEI) endpoint.
 
-:::tip[Skip the GUI!]
+:::tip[Skip the client!]
 The built-in HuggingFace TEI configuration can be enabled through the [Models environment variables](./env-vars#models).
 :::
 
@@ -190,11 +190,11 @@ Examples of CPU-friendly model choices include:
 
 When a selected model name includes a parameter count below 7B, such as `llama3.2:1b` or `gemma3:1b`, the **AI Optimizer** automatically disables these Vector Search features:
 
-- **Store Discovery**: Uses the Language Model to select the most appropriate Vector Store. When disabled, you must select the Vector Store manually if more than one is available.
+- **Store Discovery**: Uses the language model to select the most appropriate Vector Store. When disabled, you must select the Vector Store manually if more than one is available.
 - **Document Grading**: Evaluates retrieved documents for relevance before they are used.
 - **Prompt Rephrase**: Rephrases queries using the conversation context to improve retrieval.
 
-Disabling these features reduces the number of Language Model calls and can significantly improve response times. You can manually enable or disable each feature using the checkboxes in the Vector Search sidebar, regardless of model size.
+Disabling these features reduces the number of language model calls and can significantly improve response times. You can manually enable or disable each feature using the checkboxes in the Vector Search sidebar, regardless of model size.
 
 ### Performance Tips
 

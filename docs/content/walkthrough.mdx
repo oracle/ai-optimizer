@@ -11,13 +11,13 @@ import TabItem from '@theme/TabItem';
 import LocalContainer from './_assets/partials/local-container.mdx';
 import OracleAiDatabaseFree from './_assets/partials/oracle-ai-database-free.mdx';
 
-This walkthrough will guide you through a basic installation of the **Oracle AI Optimizer and Toolkit** (the **AI Optimizer**). It will allow you to experiment with GenAI, using Retrieval-Augmented Generation (**RAG**) and Natural Language to SQL (**NL2SQL**) with the Oracle AI Database at the core.
+This walkthrough will guide you through a basic installation of the **Oracle AI Optimizer and Toolkit** (the **AI Optimizer**). It will allow you to experiment with tool-enabled agents and retrieval workflows using Retrieval-Augmented Generation (**RAG**) and Natural Language to SQL (**NL2SQL**) with the Oracle AI Database at the core.
 
 By the end of the walkthrough you will be familiar with:
 
-- Configuring a Language Model
-- Configuring an Embedding Model
-- Configuring the Vector Storage
+- Configuring a language model
+- Configuring an embedding model
+- Configuring a Vector Store
 - Splitting, Embedding, and Storing vectors
 - Experimenting with the **AI Optimizer**
 
@@ -32,22 +32,22 @@ What you'll need for the walkthrough:
 :::info[Performance: A Word of Caution]
 The performance will vary depending on the infrastructure.
 
-Language and Embedding Models are designed to use GPUs, but this walkthrough _can work_ on machines with just CPUs; albeit _much_ slower!
-When testing the Language Model, if you don't get a response in a couple of minutes; your hardware is not sufficient to continue with the walkthrough.
+Language and embedding models are designed to use GPUs, but this walkthrough _can work_ on machines with just CPUs; albeit _much_ slower!
+When testing the language model, if you don't get a response in a couple of minutes; your hardware is not sufficient to continue with the walkthrough.
 :::
 
 ## Installation
 
 You will run four container images to establish the "Infrastructure":
 
-- On-Premises Language Model - granite4.1:8b
-- On-Premises Embedding Model - mxbai-embed-large
-- Vector Storage - Oracle AI Database Free
+- On-premises language model - granite4.1:8b
+- On-premises embedding model - mxbai-embed-large
+- Vector Store - Oracle AI Database Free
 - The **AI Optimizer**
 
 ### Language Model - granite4.1:8b
 
-To enable the _ChatBot_ functionality, access to a Language Model is required. The walkthrough will use [Ollama](https://ollama.com/) to run the _granite4.1:8b_ model.
+To start the _Chatbot_, configure a language model. The walkthrough will use [Ollama](https://ollama.com/) to run the _granite4.1:8b_ model.
 
 :::tip[Same... but different!]
 
@@ -110,13 +110,13 @@ Set-Alias podman docker
 
         </Tabs>
 
-1.  Pull the Language Model into the container:
+1.  Pull the language model into the container:
 
     ```bash
     podman exec -it ollama ollama pull granite4.1:8b
     ```
 
-1.  Test the Language Model:
+1.  Test the language model:
 
     :::warning[Performance: Fail Fast...]
 
@@ -145,7 +145,7 @@ To enable the **RAG** functionality, access to an embedding model is required. T
 
 ### The AI Optimizer
 
-The **AI Optimizer** provides an easy-to-use front-end for experimenting with Language Model parameters and **RAG**.
+The **AI Optimizer** provides a web client for experimenting with language-model parameters, agent routes, and **RAG**.
 
 <LocalContainer />
 
@@ -155,9 +155,9 @@ The **AI Optimizer** provides an easy-to-use front-end for experimenting with La
    podman run -d --name ai-optimizer-aio --network=host localhost/ai-optimizer-aio:latest
    ```
 
-### Vector Storage - Oracle AI Database Free
+### Vector Store - Oracle AI Database Free
 
-AI Vector Search in Oracle AI Database provides the ability to store and query private business data using a natural language interface. The **AI Optimizer** uses these capabilities to provide more accurate and relevant Language Model responses via Retrieval-Augmented Generation (**RAG**). [Oracle AI Database Free](https://www.oracle.com/database/free/get-started/) provides an ideal, no-cost vector store for this walkthrough.
+AI Vector Search in Oracle AI Database provides the ability to store and query private business data using a natural language interface. The **AI Optimizer** uses these capabilities to ground model responses via Retrieval-Augmented Generation (**RAG**). [Oracle AI Database Free](https://www.oracle.com/database/free/get-started/) provides an ideal, no-cost vector store for this walkthrough.
 
 <OracleAiDatabaseFree />
    5. Create a [database user](./guides/database#database-user) for the walkthrough:
@@ -218,33 +218,33 @@ Notice that there are no language models configured to use. Let's start the conf
 
 ### Configure the Language Model
 
-To configure the On-Premises Language Model, navigate to **Configuration** > **Models**:
+To configure the on-premises language model, navigate to **Configuration** > **Models**:
 
 1. Enable the `granite4.1:8b` model that you pulled earlier by clicking the _Edit_ button
    ![Configure Language Model](_assets/images/models-edit.png)
 1. Tick the _Enabled_ checkbox, leave all other settings as-is, and _Save_
    ![Enable Language Model](_assets/images/models-enable-llm.png)
-   ⭐️ More information about configuring Language Models can be found in the [Model Configuration](./client/configuration/models) documentation.
+   ⭐️ More information about configuring language models can be found in the [Model Configuration](./client/configuration/models) documentation.
 
 #### Say "Hello?"
 
-Navigate to the _ChatBot_ screen:
+Navigate to the _Chatbot_ screen:
 
 ![Say Hello?](_assets/images/chatbot-say-hello.png)
 
 The error about language models will have disappeared, but there is a new warning about the database. You'll take care of that in the next steps.
 
-The `Chat model:` will have been pre-set to the only enabled Language Model and a dialog box to interact with the Language Model will be ready for input.
+The `Chat Model:` field will have been pre-set to the only enabled language model and the chat input will be ready for your first request.
 
 Feel free to play around with the different Language Model Parameters, hovering over the ︖ icons to get more information on what they do.
 
-You'll come back to the _ChatBot_ later to experiment further.
+You'll come back to the _Chatbot_ later to experiment further.
 
 ### Configure the Embedding Model
 
 To configure the On-Premises Embedding Model, navigate back to the _Configuration_ screen and _Models_ tab:
 
-1. Enable the `mxbai-embed-large` Embedding Model following the same process as you did for the Language Model.
+1. Enable the `mxbai-embed-large` embedding model following the same process as you did for the language model.
    ![Configure Embedding Model](_assets/images/models-edit-embed.png)
 
 ⭐️ More information about configuring embedding models can be found in the [Model Configuration](./client/configuration/models) documentation.
@@ -312,17 +312,17 @@ From the command line:
 
 With the **AI Optimizer** configured, you're ready for some experimentation.
 
-Navigate back to the _ChatBot_.
+Navigate back to the _Chatbot_.
 
 For this guided experiment, perform the following:
 
-1. Ask the _ChatBot_:
+1. Ask the _Chatbot_:
    ```text
    What are the required packages for a successful
    installation of an Oracle AI Database?
    ```
 
-Responses may vary, but generally the _ChatBot_'s response will be inaccurate, including:
+Responses may vary, but generally the _Chatbot_'s ungrounded response will be inaccurate, including:
 
 - Not understanding that there is an Oracle AI Database release. This is known as **knowledge-cutoff**.
 - Suggestions of requiring unrelated software. These are **hallucinations**.
@@ -336,15 +336,15 @@ and simply ask: `Are you sure?`
 :::note[Performance: Host Overload...]
 With **RAG** enabled, all the services (Language/Embedding Models and Database) are being utilized simultaneously:
 
-- The Language Model is rephrasing "Are you sure?" into a query that takes into account the conversation history and context
+- The language model is rephrasing "Are you sure?" into a query that takes into account the conversation history and context
 - The embedding model is being used to convert the rephrased query into vectors for a similarity search
 - The database is being queried for documentation chunks similar to the rephrased query (AI Vector Search)
-- The Language Model is completing its response using the documents from the database (if the documents are relevant)
+- The language model is completing its response using the documents from the database (if the documents are relevant)
 
 Depending on your hardware, this may cause the response to be **_significantly_** delayed.
 :::
 
-By asking `Are you sure?`, you are taking advantage of the **AI Optimizer**'s history and context functionality. The response should be different and include a list of Operating System packages and maybe even an apology!
+By asking `Are you sure?`, you are taking advantage of the **AI Optimizer**'s history and context functionality. The Vector Search flow uses the earlier exchange to rephrase the follow-up before retrieving documents. The response should be different and include a list of operating-system packages and maybe even an apology!
 
 Under "Vector Search Details" you should see the PDF source, the vector store tables searched, and the rephrased query.
 
@@ -353,14 +353,14 @@ Under "Vector Search Details" you should see the PDF source, the vector store ta
 You should now have a solid foundation using the **AI Optimizer**.
 
 :::info[Try a full Use Case]
-The [Use Cases](./use-cases/intro) walk you through using your new **AI Optimizer** installation through an end-to-end demo that shows the progressive value of **NL2SQL**, **Vector Search**, and combined-mode grounding a synthetic dataset. 
+The [Use Cases](./use-cases/intro) walk you through using your new **AI Optimizer** installation through an end-to-end demo that shows the progressive value of **NL2SQL**, **Vector Search**, and combined-mode grounding a synthetic dataset.
 :::
 
 To take your experiments further, consider exploring:
 
 - Turn On/Off/Clear history
-- Experiment with different Language Models and Embedding Models
-- Tweak Language Model parameters, including Temperature and Penalties, to fine-tune model performance
+- Experiment with different language and embedding models
+- Tweak language-model parameters, including Temperature and Penalties, to fine-tune model performance
 - Investigate various strategies for splitting and embedding text data, such as adjusting chunk-sizes, overlaps, and distance metrics
 
 ## Clean Up

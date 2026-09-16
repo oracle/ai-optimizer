@@ -131,7 +131,7 @@ The **AI Optimizer** uses [AgentSpec](./agents/intro) to define agents and flows
 
 The built-in NL2SQL agent is therefore not the same surface as an external MCP client. External clients can use all tools registered by the API server and permitted by the SQLcl restrict level, while the built-in agent receives only `sqlcl_connect`, `sqlcl_schema_information`, `sqlcl_sql_run`, and `sqlcl_request_status`.
 
-**MCPTool** — References a single tool by name with explicit inputs and outputs, wired into a flow graph. The built-in VecSearch Flow uses this pattern. Adding a tool requires modifying the flow definition.
+**MCPTool** — References a single tool by name with explicit inputs and outputs, wired into a flow graph. The built-in Vector Search Flow uses this pattern. Adding a tool requires modifying the flow definition.
 
 #### Example: Agent with MCPToolBox
 

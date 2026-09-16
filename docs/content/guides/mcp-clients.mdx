@@ -22,9 +22,9 @@ External MCP clients can use all tools registered on the server that are availab
 
 ## Get Client Configuration
 
-Start the AI Optimizer Server and obtain its API key. In the included GUI, the key is available on the [API Server](../client/api_server) page. For standalone deployments, configure `AIO_API_KEY` before starting the server. See [Environment Variables](./env-vars).
+Start the AI Optimizer Server and obtain its API key. In the included web client, the key is available on the [API Server](../client/api_server) page. For standalone deployments, configure `AIO_API_KEY` before starting the server. See [Environment Variables](./env-vars).
 
-The recommended approach is to use the client configuration generated in **Configuration** > **MCP Server** in the GUI. It provides the settings or command required by the selected client. Alternatively, request the configuration from the server:
+The recommended approach is to use the client configuration generated in **Configuration** > **MCP Server** in the web client. It provides the settings or command required by the selected client. Alternatively, request the configuration from the server:
 
 ```bash
 curl -H "X-API-Key: $AIO_API_KEY" \
@@ -47,13 +47,13 @@ The configurations contains a secret to access the server, so do not commit or s
 | LangGraph                      | `langgraph`      | Streamable HTTP            |
 | Claude Desktop                 | `claude-desktop` | Local `mcp-remote` bridge  |
 
-To retrieve Cline, LangGraph, or Claude Desktop configuration, replace `generic` in the command above with the client's query value. The GUI provides an importable JSON configuration for MCP Inspector.
+To retrieve Cline, LangGraph, or Claude Desktop configuration, replace `generic` in the command above with the client's query value. The web client provides an importable JSON configuration for MCP Inspector.
 
-For a client that is not listed, select **Generic Streamable HTTP** in the GUI, or use `client=generic` in the command. Use that configuration only when the client accepts Streamable HTTP server entries.
+For a client that is not listed, select **Generic Streamable HTTP** in the web client, or use `client=generic` in the command. Use that configuration only when the client accepts Streamable HTTP server entries.
 
 ## MCP Inspector
 
-The [MCP Inspector](https://github.com/modelcontextprotocol/inspector) is a developer tool for inspecting MCP servers. In the GUI, select **MCP Inspector** under **Configuration** > **MCP Server** and save the displayed JSON as `mcp.json`. The generated configuration includes the required API key header; import it unchanged.
+The [MCP Inspector](https://github.com/modelcontextprotocol/inspector) is a developer tool for inspecting MCP servers. In the web client, select **MCP Inspector** under **Configuration** > **MCP Server** and save the displayed JSON as `mcp.json`. The generated configuration includes the required API key header; import it unchanged.
 
 To use the configuration from the command line, run:
 
@@ -74,15 +74,15 @@ Then use **Import from client config** to import the saved `mcp.json` file.
 
 ## Cline for VS Code
 
-In the GUI, select **Cline for VS Code**, then add the generated `oracle-ai-optimizer` entry under `mcpServers` in Cline's MCP server settings. This configuration uses Streamable HTTP and includes Cline's `type` field.
+In the web client, select **Cline for VS Code**, then add the generated `oracle-ai-optimizer` entry under `mcpServers` in Cline's MCP server settings. This configuration uses Streamable HTTP and includes Cline's `type` field.
 
 ## LangGraph
 
-In the GUI, select **LangGraph**, then use the generated `url` and `headers` values when creating a Streamable HTTP MCP client in your LangGraph application. The LangGraph variant deliberately omits the `type` field.
+In the web client, select **LangGraph**, then use the generated `url` and `headers` values when creating a Streamable HTTP MCP client in your LangGraph application. The LangGraph variant deliberately omits the `type` field.
 
 ## Claude Desktop
 
-Claude Desktop runs local MCP server processes. In the GUI, select **Claude Desktop** to generate a configuration that uses `mcp-remote` to bridge a local process to the AI Optimizer's HTTP endpoint. Add the generated `oracle-ai-optimizer` entry under `mcpServers` in Claude Desktop's configuration, then restart Claude Desktop. Node.js must be available so that the `npx` command in the generated configuration can run `mcp-remote`.
+Claude Desktop runs local MCP server processes. In the web client, select **Claude Desktop** to generate a configuration that uses `mcp-remote` to bridge a local process to the AI Optimizer's HTTP endpoint. Add the generated `oracle-ai-optimizer` entry under `mcpServers` in Claude Desktop's configuration, then restart Claude Desktop. Node.js must be available so that the `npx` command in the generated configuration can run `mcp-remote`.
 
 ## Verify the Connection
 
