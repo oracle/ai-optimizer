@@ -8,7 +8,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 The **Oracle AI Optimizer and Toolkit** (the **AI Optimizer**) integrates with [Giskard](https://www.giskard.ai/) to generate and evaluate Q&A test sets. You can create a test set from PDFs or upload an existing [JSON/JSONL](#upload-an-existing-test-set) test set.
 
-During evaluation, the configured agent answers each question and an LLM judge compares the response with the reference answer.
+During evaluation, the configured agent route answers each question and an LLM judge compares the response with the reference answer.
 
 ## Generate Q&A Test Set
 From the **Testbed** page, enable **Generate Q&A Test Set**, upload one or more PDF files, select the Q&A language/embedding models, and specify the number of Q&A pairs to generate:
@@ -66,11 +66,11 @@ After you generate or load a test set, configure the evaluation settings in the 
 
 ![Evaluation](../_assets/images/testbed-evaluation.png)
 
-Similar to the [Chatbot](./chatbot), the sidebar controls configure the language model, request parameters, and enabled tools used for the evaluation. Change these settings to compare their effect on the results.
+Similar to the [Chatbot](./chatbot), the sidebar controls configure the language model, request parameters, and enabled tools used by the evaluated agent route. Change these settings to compare their effect on the results.
 
 ### Judge Model and Prompt
 
-Select a **Judge Language Model** to evaluate responses. The judge compares each agent response with the reference answer for **semantic equivalence**: the response does not need to use the same wording, but it must convey the same meaning.
+Select a **Judge Language Model** to evaluate responses. The judge compares each agent route's response with the reference answer for **semantic equivalence**: the response does not need to use the same wording, but it must convey the same meaning.
 
 The **Testbed Judge Prompt** controls the judge's behavior. Customize it on the [Prompts](./tools/prompts.mdx) configuration page to adjust evaluation strictness, such as requiring more precise answers or allowing broader interpretations.
 

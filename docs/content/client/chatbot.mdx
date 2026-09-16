@@ -10,9 +10,20 @@ import LanguageParametersImage from '../_assets/images/chatbot-lm-params.png';
 import ToolkitImage from '../_assets/images/chatbot-toolkit.png';
 import VectorSearchOptionsImage from '../_assets/images/chatbot-vs-options.png';
 
-The **Oracle AI Optimizer and Toolkit** (the **AI Optimizer**) provides a Chatbot to experiment with Language Model settings and AI tools. It allows you to manually find an appropriate configuration for your AI project before launching it into production.
+The **Oracle AI Optimizer and Toolkit** (the **AI Optimizer**) provides an interactive workbench for exercising its agents, flows, and AI tools. Use the Chatbot to compare model settings, prompts, and tool configurations before deploying an application.
 
-There are a number of configurations you can experiment with to explore AI, RAG, and NL2SQL capabilities to understand their behavior without requiring deep technical knowledge.
+Each Chatbot turn follows the runtime route selected by **Tool Selection**. The selected language model may generate the answer directly, choose tool calls as an agent, or participate in a Vector Search flow.
+
+## Agentic Routes
+
+| Tool selection    | Runtime route      | How the request is handled                                                                                                  |
+| ----------------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------- |
+| No tools          | LLM-only Agent     | The model generates an answer using the selected system prompt and optional conversation history.                           |
+| **NL2SQL**        | NL2SQL Agent       | The model selects from the restricted SQLcl MCP tools needed to connect, inspect schema, run a query, and check its status. |
+| **Vector Search** | Vector Search Flow | The flow can rephrase the question, discover a store, retrieve documents, grade relevance, and generate an answer.          |
+| Both tools        | Combined Router    | A classifier chooses a route or runs both routes and asks the model to synthesize the results.                              |
+
+For implementation details, see [Agents and Flows](../advanced-guides/agents/intro).
 
 ## History and Context
 
@@ -32,7 +43,7 @@ Use the "Clear" button to reset the "context window" and start a fresh interacti
 
   <div>
 
-You can select from enabled models to experiment with. To enable, disable, or add models, use the [Configuration - Models](configuration/models) page. Choose a Language Model based on your requirements, which may include:
+You can select from enabled models to experiment with. To enable, disable, or add models, use the [Configuration - Models](configuration/models) page. Choose a language model based on your requirements, which may include:
 
 **Privacy Concerns** - Locally run, open-source models offer more control over your data.
 
@@ -65,7 +76,7 @@ For more details on the parameters, ask the Chatbot or review [Concepts for Gene
 
   <div>
 
-The **AI Optimizer** provides tools to augment Large Language Models with your proprietary data, including:
+The **AI Optimizer** provides MCP tools and runtime routes that ground model responses in your proprietary data, including:
 
     <ul>
       <li><a href="#vector-search">Vector Search</a> for unstructured data</li>
@@ -105,26 +116,26 @@ Choose the type of search to perform and its additional parameters.
 
 ### NL2SQL (Natural Language to SQL)
 
-The Natural Language to SQL (NL2SQL) tool enables users to query structured data stored in Oracle AI Database by using natural language instead of SQL statements.
+The Natural Language to SQL (NL2SQL) agent enables users to query structured data stored in Oracle AI Database by using natural language instead of SQL statements.
 
-The **AI Optimizer** uses a local [SQLcl MCP proxy](../guides/sqlcl-mcp-server) for NL2SQL. Container installations include SQLcl and register the proxy automatically at startup. For bare-metal installations, install SQLcl so that the `sql` command is available on `PATH`.
+The **AI Optimizer** uses a local [SQLcl MCP proxy](../guides/sqlcl-mcp-server) for NL2SQL. Container installations include SQLcl and register the proxy automatically at startup. For bare-metal installations, install SQLcl so that the `sql` command is available on `PATH`. The NL2SQL agent then selects the SQLcl tools it needs for the request.
 
 ⭐️ For more information about SQLcl and its MCP capabilities, see the [Oracle SQLcl MCP server documentation](https://docs.oracle.com/en/database/oracle/sql-developer-command-line/25.2/sqcug/using-oracle-sqlcl-mcp-server.html).
 
-To enable NL2SQL, configure and select a database with valid credentials in [Configuration → Databases](configuration/databases). The NL2SQL tool becomes available when both the database connection and SQLcl proxy are available. You can then issue natural language queries against structured data, such as the dataset shown in the example below:
+To enable NL2SQL, configure and select a database with valid credentials in [Configuration → Databases](configuration/databases). The NL2SQL agent becomes available when both the database connection and SQLcl proxy are available. You can then issue natural language queries against structured data, such as the dataset shown in the example below:
 
 ![Customer Data](../_assets/images/vscode-customer-table.png)
 
-To interact with the tool, navigate to **Chatbot**, select NL2SQL from the tool dropdown menu, and enter a query such as:
+To use the agent, navigate to **Chatbot**, select **NL2SQL** under **Tool Selection**, and enter a query such as:
 
 ```text
 Can you give me the list of customers?
 ```
 
-The response returned by the tool will be equivalent to the result of an actual SQL query executed against the database:
+The agent's answer is based on a SQL query executed against the database:
 
 ![NL2SQL Example](../_assets/images/chatbot-nl2sql-output.png)
 
-By using this tool, the **AI Optimizer** allows users to query structured data without writing any SQL code, simplifying data access and exploration.
+By using this agent, the **AI Optimizer** allows users to query structured data without writing any SQL code, simplifying data access and exploration.
 
-You can experiment freely with your own structured datasets and progressively issue more complex natural language queries to explore the full capabilities of the NL2SQL tool.
+You can experiment freely with your own structured datasets and progressively issue more complex natural language queries to explore the full capabilities of the NL2SQL agent.

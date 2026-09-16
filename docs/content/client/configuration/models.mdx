@@ -7,17 +7,17 @@ sidebar_position: 15
 {/* Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl. */}
 
-The **AI Optimizer** can connect to language and embedding models supported by [LiteLLM](https://docs.litellm.ai/docs/providers) for completions and vector creation. You can add, modify, and delete model configurations from the client.
+The **AI Optimizer** can connect to language and embedding models supported by [LiteLLM](https://docs.litellm.ai/docs/providers) for language-model generation and vector creation. You can add, modify, and delete model configurations from the client.
 
-At a minimum, a _Language Model_ must be configured in the **AI Optimizer** for basic functionality. For Retrieval-Augmented Generation (**RAG**), an _Embedding Model_ will also need to be configured.
+At a minimum, a _language model_ must be configured for the LLM-only Agent and the model calls used by tool-enabled routes. For Retrieval-Augmented Generation (**RAG**), an _embedding model_ will also need to be configured.
 
-:::note[Too Small to Handle]
-Some older and small _Language Models_ may not have native function/tool calling support for NL2SQL and RAG, which may result in unexpected results.
+:::note[Choose a Tool-Calling Model]
+Some older and small _language models_ may not have native function or tool-calling support for the NL2SQL Agent and model-driven Vector Search steps, which may result in unexpected behavior.
 :::
 
 ## Configuration
 
-To configure a _Language Model_ or _Embedding Model_, from the **AI Optimizer**, navigate to **Configuration** > **Models**:
+To configure a _language model_ or _embedding model_, from the **AI Optimizer**, navigate to **Configuration** > **Models**:
 
 
 ![Model Config](../../_assets/images/models-config.png)
@@ -28,7 +28,7 @@ To configure a _Language Model_ or _Embedding Model_, from the **AI Optimizer**,
 
 Set the Provider, API Key, and Provider URL as required.
 
-For _Language Models_ you can also set the **Max Input Tokens (Context Length)** and **Max Output (Completion) Tokens**.
+For _language models_ you can also set the **Max Input Tokens (Context Length)** and **Max Output (Completion) Tokens**.
 
 For _Embedding Models_, set the **Max Chunk Size**. These values can often be found on the model card—if they are not listed, the defaults are usually sufficient.
 
@@ -68,6 +68,6 @@ Examples:
 
 #### API Keys
 
-Third-party cloud models, such as [OpenAI](https://openai.com/api/) and [Perplexity AI](https://docs.perplexity.ai/getting-started), require API keys. These keys are tied to registered, funded accounts on these platforms. For more information on creating an account, funding it, and generating API keys for third-party cloud models, visit their respective sites.
+Third-party cloud models, such as [OpenAI](https://openai.com/api/) and [Perplexity AI](https://docs.perplexity.ai/docs/getting-started/overview), require API keys. These keys are tied to registered, funded accounts on these platforms. For more information on creating an account, funding it, and generating API keys for third-party cloud models, visit their respective sites.
 
 On-premises models, such as those from [Ollama](https://ollama.com/) or [HuggingFace](https://huggingface.co/), usually do not require API keys. These values can be left blank.

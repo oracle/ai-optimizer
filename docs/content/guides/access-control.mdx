@@ -7,7 +7,7 @@ sidebar_position: 10
 {/* Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl. */}
 
-One **AI Optimizer Server** can serve many GUI sessions, IDE or MCP clients, and external applications. Teams sharing one server use [separate client sessions](../server/multi-user-sessions) to keep conversations and working selections apart while using the same configured resources.
+One **AI Optimizer Server** can serve many web client sessions, IDE and MCP clients, and external applications. Teams sharing one server use [separate client sessions](../server/multi-user-sessions) to keep conversations and working selections apart while using the same configured resources.
 
 ## Choose a Deployment Boundary
 
@@ -36,7 +36,7 @@ When the password is set, the gate is enabled and protected controls are read-on
 When it is unset, the gate is disabled and all controls are accessible.
 
 :::note
-This check applies only to the GUI. It does not replace or affect API Server authentication. External clients still authenticate with `AIO_API_KEY`. See [Environment Variables](../guides/env-vars).
+This check applies only to the web client. It does not replace or affect API Server authentication. External clients still authenticate with `AIO_API_KEY`. See [Environment Variables](../guides/env-vars).
 :::
 
 ### What the gate covers

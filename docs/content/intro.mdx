@@ -7,11 +7,24 @@ sidebar_position: 1
 {/* Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl. */}
 
-The **Oracle AI Optimizer and Toolkit** (the **AI Optimizer**) provides a streamlined environment where developers and data scientists can explore the potential of Generative Artificial Intelligence (**GenAI**).
+The **Oracle AI Optimizer and Toolkit** (the **AI Optimizer**) is an agentic AI platform for designing, running, evaluating, and refining GenAI applications. It gives developers and data scientists a practical workbench for model-driven agents and flows.
 
-By integrating [_Oracle AI Database_](https://www.oracle.com/database/) [Vector Search](https://www.oracle.com/database/ai-vector-search/) and [SQLcl MCP](https://www.oracle.com/database/sqldeveloper/technologies/sqlcl/) with familiar Open Source Software (**OSS**), the **AI Optimizer** enables users to enhance existing Language Models through Retrieval Augmented Generation (**RAG**) and Natural Language to SQL (**NL2SQL**).
+Agents can use configured tools to retrieve information or act on external systems, while flows compose model and tool steps into a controlled sequence. The built-in routes ground responses in private structured and unstructured data through [_Oracle AI Database_](https://www.oracle.com/database/) [Vector Search](https://www.oracle.com/database/ai-vector-search/) and [SQLcl MCP](https://www.oracle.com/database/sqldeveloper/technologies/sqlcl/), using Retrieval-Augmented Generation (**RAG**) and Natural Language to SQL (**NL2SQL**).
 
-This method significantly improves the accuracy of AI models, helping to avoid common issues such as knowledge cut-off and hallucinations.
+Grounding gives the runtime relevant application data at request time, which can improve accuracy and reduce reliance on a model's training knowledge.
+
+## Agentic Runtime
+
+The Chatbot selects a runtime route from the tools enabled in **Tool Selection**:
+
+| Tool selection    | Runtime route      | Behavior                                                                                 |
+| ----------------- | ------------------ | ---------------------------------------------------------------------------------------- |
+| No tools          | LLM-only Agent     | Generates a response with the selected language model and conversation context.           |
+| **NL2SQL**        | NL2SQL Agent       | Selects from a restricted SQLcl MCP tool inventory to query structured data.             |
+| **Vector Search** | Vector Search Flow | Runs the configured retrieval steps and uses the results to generate a grounded answer.  |
+| Both tools        | Combined Router    | Classifies the request, runs one route or both routes, and can synthesize their results. |
+
+The reusable AgentSpec definitions and their LangGraph runtime are described in [Agents and Flows](./advanced-guides/agents/intro).
 
 <div className="home-integrations">
   <div className="home-integrations__image">![AI Optimizer Integrations](/img/integrations.png)</div>
@@ -53,14 +66,14 @@ This method significantly improves the accuracy of AI models, helping to avoid c
 
 ## Architecture
 
-The **Oracle AI Optimizer and Toolkit** (the **AI Optimizer**) consists of an API Server ([**AI Optimizer Server**](./server/intro)) and an _optional_ web-based GUI ([**AI Optimizer Client**](./client/intro)) component. Both the API Server and GUI can run directly on a developer workstation, in on-premises infrastructure, or in cloud environments.
+The **Oracle AI Optimizer and Toolkit** (the **AI Optimizer**) consists of an API Server ([**AI Optimizer Server**](./server/intro)) and an _optional_ web client ([**AI Optimizer Client**](./client/intro)) component. The server hosts the REST API, agent runtime, and MCP endpoint. Both the API Server and client can run directly on a developer workstation, in on-premises infrastructure, or in cloud environments.
 
 ![Architecture Overview](_assets/images/arch-overview.png)
 
 Depending on the capabilities you plan to use, you may also need the following components, which are not delivered with the **AI Optimizer**. These can be local, on premises, or cloud-hosted:
 
 - [Oracle AI Database](guides/database), including [Oracle AI Database **Free**](https://www.oracle.com/database/free)
-- Access to at least one [Large Language Model](guides/ai-models#language-models) (for completions)
+- Access to at least one [language model](guides/ai-models#language-models)
 - Access to at least one [Embedding Model](guides/ai-models#embedding-models) (for Retrieval Augmented Generation)
 - (Optional) Access to an [SQLcl **MCP Server**-enabled](https://docs.oracle.com/en/database/oracle/sql-developer-command-line/25.2/sqcug/using-oracle-sqlcl-mcp-server.html) instance
 
@@ -70,10 +83,10 @@ The **AI Optimizer** supports Kubernetes deployments using a Helm chart. For dep
 
 ## Features
 
-The **AI Optimizer** brings together the capabilities you need to build, test, and refine GenAI solutions on the **Oracle AI Database**:
+The **AI Optimizer** brings together the capabilities you need to build, test, and refine agentic GenAI solutions on the **Oracle AI Database**:
 
 - [Configuring **Embedding** and **Language** Models](./client/configuration/models)
-- [Experimenting with **Language Model** Parameters](./client/chatbot)
+- [Running agents and flows from the **Chatbot**](./client/chatbot)
 - [Splitting and **Embedding** Documentation](./client/tools/split-embed)
 - [Modifying System **Prompts** (Prompt Engineering)](./client/tools/prompts)
 - [Enforcing **Deep Data Security**](./client/tools/dds)

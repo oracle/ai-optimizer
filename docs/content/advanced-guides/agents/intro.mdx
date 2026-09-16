@@ -1,11 +1,11 @@
 ---
 title: Agents and Flows
-description: AgentSpec and LangGraph.
+description: AgentSpec definitions and runtime execution.
 pagination_prev: null
 sidebar_position: 0
 ---
 
-The **AI Optimizer** uses [Oracle AgentSpec](https://oracle.github.io/agent-spec/development/) to define its AI agents and flows as portable, serializable configurations. These configurations are loaded into [LangGraph](https://langchain-ai.github.io/langgraph/) for execution.
+The **AI Optimizer** is an agentic platform built around [Oracle AgentSpec](https://oracle.github.io/agent-spec/development/) and [LangGraph](https://langchain-ai.github.io/langgraph/). AgentSpec defines the reusable agents and flows as portable, serializable configurations; LangGraph loads those definitions for execution. MCP supplies the tools, prompts, and resources that the runtime exposes to clients and agent routes.
 
 ## What is AgentSpec?
 
@@ -19,7 +19,7 @@ AgentSpec configurations are pure data (JSON/YAML). They contain no executable c
 
 ## How They Work Together
 
-Every agent in this project follows a three-stage pattern:
+The reusable AgentSpec components follow a three-stage pattern:
 
 ```mermaid
 flowchart LR
@@ -38,6 +38,8 @@ Builder functions create the AgentSpec definitions:
 
 Each builder takes the user's client settings (model provider, model ID, temperature, etc.) and constructs a complete AgentSpec definition.
 
+The Chatbot also provides a combined route that classifies each request and coordinates the NL2SQL Agent and Vector Search Flow at runtime. That router is intentionally runtime orchestration rather than an exported AgentSpec component; see [Combined Router](./combined).
+
 ### 2. Load — Runtime Loader
 
 The runtime loader converts an AgentSpec definition into engine-specific objects. A plugin system handles custom components — for example, the **LiteLLM plugin** converts the AgentSpec LLM configuration into the appropriate model adapter.
@@ -50,7 +52,7 @@ Once loaded, agents and flows are executed through session objects that manage c
 
 ### Error Handling
 
-All session objects catch exceptions raised during execution. When a flow or agent call fails:
+All runtime sessions catch exceptions raised during execution. When a flow or agent call fails:
 
 - The error is logged at ERROR level on the server.
 - The non-streaming chat API returns a 400 response for database connection errors, a 503 response for LLM configuration errors, and a 502 response with a cleaned error detail for other execution failures.
@@ -59,7 +61,7 @@ All session objects catch exceptions raised during execution. When a flow or age
 
 ### Prompt Fetching
 
-All agents and flows attempt to fetch their system prompt from the MCP server. If the MCP server is unavailable, a hardcoded default instruction is used instead. This allows prompts to be managed externally without breaking the system.
+Each route fetches its system prompt from the MCP server. If the MCP server is unavailable, a factory default instruction is used instead. This lets prompts be managed externally while keeping the runtime available when the prompt service cannot be reached.
 
 ## Porting Specs to Your Own Application
 
@@ -105,7 +107,7 @@ Provider API keys are not included in exported specs. For models that require
 one, replace `<LLM config id>` with the LLM configuration's `id` and supply the
 key through `components_registry` before loading the component.
 
-NL2SQL and VecSearch specs also omit MCP credentials. For each
+NL2SQL and Vector Search specs also omit MCP credentials. For each
 `sensitive_headers` `$component_ref` in the exported spec, add an entry keyed by
 that reference (instead of `<MCP transport id>.sensitive_headers`) that maps
 `X-API-Key` to the MCP server API key.

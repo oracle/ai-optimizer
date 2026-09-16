@@ -7,24 +7,27 @@ pagination_prev: null
 {/* Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl. */}
 
-The included web-based client is built with [Streamlit](https://streamlit.io/) and communicates with the [AI Optimizer Server](../server/intro) through its REST API.
+The included web-based client is built with [Streamlit](https://streamlit.io/) and communicates with the [AI Optimizer Server](../server/intro) through its REST API. It is a workbench for configuring and exercising the AI Optimizer's agents, flows, and MCP-backed tools.
 
 :::tip[BYO Client]
 You can replace the included client with any client that can communicate with the REST API.
 :::
 
-The client provides a simple interface for working with the **AI Optimizer**. You can:
+The client provides a practical interface for working with the **AI Optimizer**. You can:
 
-- [Interact with language models](./chatbot)
-- [Accelerate chatbot response testing](./testbed)
+- [Run LLM-only and tool-enabled agent routes](./chatbot)
+- [Evaluate agent and flow responses](./testbed)
 - [Experiment with prompt engineering](./tools/prompts)
 - [Split and embed documents](./tools/split-embed)
 - [Configure Deep Data Security](./tools/dds)
+- [Inspect portable AgentSpec definitions](./configuration/agentspec)
 - [Set up databases, models, and access to Oracle Cloud Infrastructure](./configuration)
 
 ## Choose a Path
 
-- **Chat with a language model:** Configure a [language model](./configuration/models), then open the [Chatbot](./chatbot).
-- **Query your data with a chatbot:** Configure an [Oracle AI Database](./configuration/databases), make [SQLcl MCP Server](../guides/sqlcl-mcp-server.mdx) available, then enable **NL2SQL** in the [Chatbot](./chatbot).
-- **Build a [RAG chatbot](./chatbot#vector-search):** Configure an [Oracle AI Database](./configuration/databases) and [language and embedding models](./configuration/models). Then use [Split/Embed](./tools/split-embed) to create a vector store.
-- **Evaluate AI Models with Data:** Use the [Testbed](./testbed) to see how different model configurations perform with your data.
+- **Run an LLM-only Agent:** Configure a [language model](./configuration/models), then open the [Chatbot](./chatbot).
+- **Run an NL2SQL Agent:** Configure an [Oracle AI Database](./configuration/databases), make [SQLcl MCP Server](../guides/sqlcl-mcp-server.mdx) available, then enable **NL2SQL** in the [Chatbot](./chatbot).
+- **Run a grounded Vector Search Flow:** Configure an [Oracle AI Database](./configuration/databases) and [language and embedding models](./configuration/models). Then use [Split/Embed](./tools/split-embed) to create a vector store.
+- **Evaluate agent routes with data:** Use the [Testbed](./testbed) to compare model, prompt, and tool configurations against your data.
+
+The Chatbot's **Tool Selection** controls which route handles each request. See [Agents and Flows](../advanced-guides/agents/intro) for the runtime details.

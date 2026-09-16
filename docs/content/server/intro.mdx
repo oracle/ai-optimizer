@@ -7,7 +7,7 @@ pagination_prev: null
 {/* Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl. */}
 
-The workhorse of the **AI Optimizer** is the API Server, referred to as the **AI Optimizer Server**. By default, the **AI Optimizer Server** starts on port 8000.
+The service layer of the **AI Optimizer** is the API Server, referred to as the **AI Optimizer Server**. By default, the **AI Optimizer Server** starts on port 8000.
 
 :::note[All the docs]
 The **AI Optimizer Server** API documentation is available at `http://<IP Address>:<Port>/v1/docs` for a running instance. Enter the API key to view and use the documented endpoints.
@@ -15,7 +15,7 @@ The **AI Optimizer Server** API documentation is available at `http://<IP Addres
 
 ![API Server](../_assets/images/fastapi-docs.png)
 
-Powered by [FastAPI](https://fastapi.tiangolo.com/) and [Uvicorn](https://www.uvicorn.org/), the **AI Optimizer Server** acts as an intermediary between REST-capable clients, AI models, and the Oracle AI Database.
+Powered by [FastAPI](https://fastapi.tiangolo.com/) and [Uvicorn](https://uvicorn.dev/), the **AI Optimizer Server** hosts the REST API, agent and flow runtime, and MCP server. It connects REST-capable clients to AI models, configured tools, and the Oracle AI Database.
 
 ## [Calling the API](./api-examples/intro)
 
@@ -63,6 +63,6 @@ The command uses the namespace and Helm release name from the documented install
 
 ## Multiple Clients
 
-Several GUI, IDE, MCP, and external clients can use the same server. The server keeps their working sessions separate while they use the same configured resources.
+Several web clients, IDEs, MCP clients, and external applications can use the same server. The server keeps their working sessions separate while they use the same configured resources.
 
 Use [separate client sessions](./multi-user-sessions) for a shared deployment. For the security boundary, see [Access Control](../guides/access-control).

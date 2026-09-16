@@ -1,9 +1,9 @@
 ---
-title: VecSearch Flow
+title: Vector Search Flow
 sidebar_position: 15
 ---
 
-The VecSearch flow implements a Retrieval-Augmented Generation (RAG) pipeline with conditional nodes for query rephrasing, store discovery, retrieval, and document grading. It is exposed through the AgentSpec REST API under the name `vecsearch_flow`.
+The Vector Search flow implements a Retrieval-Augmented Generation (RAG) pipeline with conditional nodes for query rephrasing, store discovery, retrieval, and document grading. It is exposed through the AgentSpec REST API under the name `vecsearch_flow`.
 
 ```mermaid
 flowchart TD
@@ -32,5 +32,5 @@ flowchart TD
 - **Retriever** (`optimizer_vs_retriever`) performs the core vector similarity search and always runs.
 - **Grade** (`optimizer_vs_grade`) filters retrieved documents for relevance before answer generation.
 - The final LLM node generates the answer using the system prompt and the retrieved (or graded) documents.
-- Unlike NL2SQL, VecSearch does not require a database connection name — it operates entirely through vector search tools.
-- When a small model is selected in the GUI, its first CPU-optimization pass disables Store Discovery, Rephrase, and Grade. You can re-enable these options; API and persisted settings are otherwise used as configured. See [Model Configuration](../../guides/ai-models#cpu-optimization) for details.
+- The flow uses Vector Search MCP tools against the active database configuration.
+- When a small model is selected in the client, its first CPU-optimization pass disables Store Discovery, Rephrase, and Grade. You can re-enable these options; API and persisted settings are otherwise used as configured. See [Model Configuration](../../guides/ai-models#cpu-optimization) for details.

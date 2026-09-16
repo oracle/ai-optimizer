@@ -7,7 +7,7 @@ sidebar_position: 5
 {/* Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl. */}
 
-One **AI Optimizer Server** can serve many GUI, IDE, MCP, and external clients. Clients on the same server share configured resources, while each client ID keeps its own working session.
+One **AI Optimizer Server** can serve many web clients, IDEs, MCP clients, and external applications. Clients on the same server share configured resources, while each client ID keeps its own working session.
 
 ## Working on a Shared Server
 
@@ -26,8 +26,8 @@ For a trusted group, give each participant a separate browser or external-client
 
 A client ID selects the settings and conversation history for an API session. It does not authenticate a client or provide access isolation.
 
-- The **AI Optimizer GUI client** generates a random ID for each browser session. You can view the current ID under **☰** > **About**.
-- **MCP clients** use the `server` client by default. Copy GUI settings to that client from the [API Server](../client/api_server) page in the GUI.
+- The **AI Optimizer web client** generates a random ID for each browser session. You can view the current ID under **☰** > **About**.
+- **MCP clients** use the `server` client by default. Copy web client settings to that client from the [API Server](../client/api_server) page in the web client.
 - **External applications** choose their own ID. Send it in the `client` header on chat requests or the `client` query parameter on settings requests.
 
 When a chat request omits the `client` header, it uses the `server` client. Settings requests that omit `?client=...` operate on `CONFIGURED`.
