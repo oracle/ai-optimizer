@@ -15,8 +15,6 @@ from typing import Optional
 import httpx
 import pandas as pd
 import streamlit as st
-from matplotlib.figure import Figure
-from matplotlib.patches import Circle, Wedge
 from streamlit import session_state as state
 
 from client.app.core import sidebar
@@ -182,59 +180,53 @@ def _qa_update_gui(qa_testset: list) -> None:
     st.text_input("Metadata:", dataframe.loc[idx, "metadata"], disabled=True)
 
 
-def _create_gauge(value: float) -> Figure:
-    """Create a correctness gauge for a percentage value."""
+def _create_gauge_svg(value: float) -> str:
+    """Create an SVG correctness gauge for a percentage value."""
     gauge_value = min(max(value, 0.0), 100.0)
-    figure = Figure(figsize=(5, 2.5), layout="constrained")
-    axis = figure.subplots()
+    parts = [
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 280" '
+        'font-family="sans-serif" text-anchor="middle" fill="#222">',
+        f"<title>Overall Correctness Score: {gauge_value:.0f}%</title>",
+        '<rect width="500" height="280" fill="white"/>',
+        '<text x="250" y="28" font-size="24">Overall Correctness Score</text>',
+    ]
+
+    def point(percentage: float, radius: float) -> tuple[float, float]:
+        angle = math.radians(180 - percentage * 1.8)
+        return 250 + radius * math.cos(angle), 220 - radius * math.sin(angle)
 
     for lower, upper, color in (
         (0, 75, "#d62728"),
         (75, 90, "#ffd700"),
         (90, 100, "#2ca02c"),
     ):
-        axis.add_patch(
-            Wedge(
-                (0, 0),
-                1,
-                180 - upper * 1.8,
-                180 - lower * 1.8,
-                width=0.28,
-                facecolor=color,
-                edgecolor="white",
-                linewidth=2,
-            )
+        outer_start = point(lower, 170)
+        outer_end = point(upper, 170)
+        inner_end = point(upper, 122.4)
+        inner_start = point(lower, 122.4)
+        parts.append(
+            f'<path d="M {outer_start[0]:.2f} {outer_start[1]:.2f} '
+            f"A 170 170 0 0 1 {outer_end[0]:.2f} {outer_end[1]:.2f} "
+            f"L {inner_end[0]:.2f} {inner_end[1]:.2f} "
+            f'A 122.4 122.4 0 0 0 {inner_start[0]:.2f} {inner_start[1]:.2f} Z" '
+            f'fill="{color}" stroke="white" stroke-width="2"/>'
         )
 
-    needle_angle = math.radians(180 - gauge_value * 1.8)
-    axis.plot(
-        [0, 0.78 * math.cos(needle_angle)],
-        [0, 0.78 * math.sin(needle_angle)],
-        color="#1f77b4",
-        linewidth=4,
-        solid_capstyle="round",
-        zorder=4,
+    needle_x, needle_y = point(gauge_value, 132.6)
+    parts.extend(
+        [
+            f'<line x1="250" y1="220" x2="{needle_x:.2f}" y2="{needle_y:.2f}" '
+            'stroke="#1f77b4" stroke-width="5" stroke-linecap="round"/>',
+            '<circle cx="250" cy="220" r="9.35" fill="#1f77b4"/>',
+        ]
     )
-    axis.add_patch(Circle((0, 0), 0.055, color="#1f77b4", zorder=5))
 
     for tick in (0, 75, 90, 100):
-        tick_angle = math.radians(180 - tick * 1.8)
-        axis.text(
-            1.12 * math.cos(tick_angle),
-            1.12 * math.sin(tick_angle),
-            str(tick),
-            ha="center",
-            va="center",
-            fontsize=10,
-        )
+        tick_x, tick_y = point(tick, 190.4)
+        parts.append(f'<text x="{tick_x:.2f}" y="{tick_y:.2f}" font-size="14" dominant-baseline="middle">{tick}</text>')
 
-    axis.text(0, 1.3, "Overall Correctness Score", ha="center", va="center", fontsize=20)
-    axis.text(0, -0.18, f"{gauge_value:.0f}%", ha="center", va="center", fontsize=24, fontweight="bold")
-    axis.set_xlim(-1.25, 1.25)
-    axis.set_ylim(-0.35, 1.42)
-    axis.set_aspect("equal")
-    axis.axis("off")
-    return figure
+    parts.append(f'<text x="250" y="264" font-size="32" font-weight="bold">{gauge_value:.0f}%</text></svg>')
+    return "".join(parts)
 
 
 @st.dialog("Evaluation Report", width="large")
@@ -283,7 +275,7 @@ def _evaluation_report(eid: Optional[str] = None, report: Optional[dict] = None)
 
     # Gauge
     _, gauge_column, _ = st.columns([1, 2, 1])
-    gauge_column.pyplot(_create_gauge(float(report["correctness"]) * 100), width="stretch")
+    gauge_column.image(_create_gauge_svg(float(report["correctness"]) * 100), width="stretch")
 
     # Correctness by Topic
     st.subheader("Correctness By Topic")

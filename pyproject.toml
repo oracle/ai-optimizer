@@ -114,6 +114,9 @@ py-modules = ["_version", "entrypoint", "logging_config", "logging_redaction", "
 [tool.setuptools.package-dir]
 "" = "src"
 
+[tool.setuptools.package-data]
+"server.patches" = ["LICENSE.giskard", "README.md"]
+
 [tool.setuptools.packages.find]
 where = ["src"]
 namespaces = false

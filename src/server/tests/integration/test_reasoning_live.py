@@ -15,10 +15,14 @@ set (typically via ``.env.pytest`` at the repo root).
 """
 
 import os
+from unittest.mock import patch
 
 import litellm
 import pytest
+from langchain_core.messages import HumanMessage
 from litellm import ModelResponse
+
+from server.app.runtime.langgraph.adapters.litellm import OracleChatLiteLLM
 
 pytestmark = [pytest.mark.live_oci, pytest.mark.integration]
 
@@ -50,13 +54,15 @@ def openai_ll_models(live_oci_genai_models) -> list[str]:
     ``AIO_GENAI_REGION`` (the region completion calls target) and dedupe.
     """
     region = os.environ["AIO_GENAI_REGION"]
-    models = sorted({
-        m["model_name"]
-        for m in live_oci_genai_models
-        if (m.get("vendor") or "").lower() == "openai"
-        and "CHAT" in (m.get("capabilities") or [])
-        and m.get("region") == region
-    })
+    models = sorted(
+        {
+            m["model_name"]
+            for m in live_oci_genai_models
+            if (m.get("vendor") or "").lower() == "openai"
+            and "CHAT" in (m.get("capabilities") or [])
+            and m.get("region") == region
+        }
+    )
     if not models:
         pytest.skip(
             f"no OpenAI-family CHAT models in region {region} "
@@ -104,15 +110,24 @@ async def test_openai_lineup_accepts(label, call_kwargs, stream, openai_ll_model
     for model_id in openai_ll_models:
         try:
             if stream:
-                chunks = list(
-                    litellm.completion(
-                        model=_litellm_id(model_id),
-                        messages=_USER_MESSAGE,
-                        stream=True,
-                        **call_kwargs,
-                        **live_oci_litellm_kwargs,
-                    )
+                llm = OracleChatLiteLLM(
+                    model=_litellm_id(model_id),
+                    model_kwargs=live_oci_litellm_kwargs,
+                    streaming=True,
+                    **call_kwargs,
                 )
+                with patch.object(
+                    llm,
+                    "_afallback_non_streaming",
+                    side_effect=AssertionError("streaming fell back to non-streaming"),
+                ):
+                    chunks = [
+                        chunk
+                        async for chunk in llm.astream(
+                            [HumanMessage(content=_USER_MESSAGE[0]["content"])],
+                            extra_headers={"Accept-Encoding": "zstd"},
+                        )
+                    ]
                 if not chunks:
                     raise AssertionError("no chunks yielded")
             else:

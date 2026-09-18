@@ -12,6 +12,7 @@ conversion) is owned by ``langchain_litellm.ChatLiteLLM`` and tested there.
 from typing import Any, Iterator
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import litellm
 import pytest
 from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, ToolMessage
@@ -490,6 +491,37 @@ class TestClientParamsOverrides:
         )
         assert "max_tokens" not in params
         assert "max_completion_tokens" not in params
+
+
+class TestOCIStreamingHeaders:
+    """OCI streaming must use a response encoding supported by the adapter."""
+
+    def test_oci_requests_do_not_advertise_zstd(self):
+        llm = OracleChatLiteLLM(
+            model="oci/xai.grok-4.3",
+            extra_headers={"accept-encoding": "zstd", "X-Test": "preserved"},
+        )
+
+        headers = llm._client_params["extra_headers"]
+
+        assert headers["Accept-Encoding"] == "gzip, deflate"
+        assert "accept-encoding" not in headers
+        assert headers["X-Test"] == "preserved"
+        assert "zstd" not in headers["Accept-Encoding"]
+
+        with httpx.Client(headers=headers) as client:
+            assert client.headers["accept-encoding"] == "gzip, deflate"
+
+    def test_oci_requests_preserve_model_kwargs_headers(self):
+        llm = OracleChatLiteLLM(
+            model="oci/xai.grok-4.3",
+            model_kwargs={"extra_headers": {"X-Test": "preserved"}},
+        )
+
+        headers = llm._client_params["extra_headers"]
+
+        assert headers["X-Test"] == "preserved"
+        assert headers["Accept-Encoding"] == "gzip, deflate"
 
 
 class TestStreamingFallback:

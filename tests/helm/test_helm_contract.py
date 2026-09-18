@@ -544,6 +544,7 @@ class TestApplicationEnvironmentNames:
 
         assert tns_admin["secret"]["secretName"] == "test-adb-tns-admin-1"
         wallet_password = _server_env(deployment, "AIO_DB_WALLET_PASSWORD")
+        assert wallet_password is not None
         assert wallet_password["valueFrom"]["secretKeyRef"] == {
             "name": "test-adb-wallet-pass-1",
             "key": "test-adb-wallet-pass-1",
@@ -566,6 +567,7 @@ class TestApplicationEnvironmentNames:
 
         assert tns_admin["secret"]["secretName"] == "test-ai-optimizer-adb-tns-admin-1"
         wallet_password = _server_env(deployment, "AIO_DB_WALLET_PASSWORD")
+        assert wallet_password is not None
         assert wallet_password["valueFrom"]["secretKeyRef"] == {
             "name": "test-ai-optimizer-adb-wallet-pass-1",
             "key": "test-ai-optimizer-adb-wallet-pass-1",
@@ -591,6 +593,7 @@ class TestApplicationEnvironmentNames:
 
         assert tns_admin["secret"]["secretName"] == "custom-tns-admin"
         wallet_password = _server_env(deployment, "AIO_DB_WALLET_PASSWORD")
+        assert wallet_password is not None
         assert wallet_password["valueFrom"]["secretKeyRef"] == {
             "name": "custom-wallet-password",
             "key": "custom-wallet-key",

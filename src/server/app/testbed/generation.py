@@ -12,11 +12,11 @@ import logging
 
 import pandas as pd
 from giskard.llm import set_embedding_model, set_llm_model
-from giskard.rag import KnowledgeBase, generate_testset
-from giskard.rag.question_generators import complex_questions, simple_questions
 from llama_index.core import Document
 from llama_index.core.node_parser import SentenceSplitter
 from pypdf import PdfReader
+
+from server.patches.giskard import KnowledgeBase, complex_questions, generate_testset, simple_questions
 
 LOGGER = logging.getLogger(__name__)
 
