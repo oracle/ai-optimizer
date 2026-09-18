@@ -26,8 +26,6 @@ from fastapi import (
 )
 from fastapi import Path as PathParam
 from giskard.llm import set_llm_model
-from giskard.rag import QATestset, evaluate
-from giskard.rag.base import AgentAnswer
 from litellm.exceptions import APIConnectionError
 from pydantic import ValidationError
 
@@ -63,6 +61,7 @@ from server.app.testbed.generation import (
 )
 from server.app.testbed.metrics import CustomCorrectnessMetric
 from server.app.testbed.schemas import EvalId, QARecord, QuestionCount, TestsetId, TestsetName
+from server.patches.giskard import AgentAnswer, QATestset, evaluate
 
 LOGGER = logging.getLogger(__name__)
 

@@ -14,7 +14,8 @@ from typing import Any
 
 from giskard.llm.client import ChatMessage, get_default_client
 from giskard.llm.errors import LLMGenerationError
-from giskard.rag.question_generators.utils import parse_json_output
+
+from server.patches.giskard import parse_json_output
 
 
 def format_conversation(conversation: list[dict]) -> str:
