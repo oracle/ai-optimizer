@@ -38,16 +38,13 @@ jobs:
         build:
           - name: aio
             dockerfile: src/Dockerfile
-            smoke_env: "-e API_SERVER_KEY=test-key-for-ci"
-            smoke_url: http://127.0.0.1:8501
+            components: "client server"
           - name: client
             dockerfile: src/client/Dockerfile
-            smoke_env: "-e API_SERVER_KEY=test-key-for-ci -e API_SERVER_URL=http://localhost -e API_SERVER_PORT=8000"
-            smoke_url: http://127.0.0.1:8501
+            components: "client"
           - name: server
             dockerfile: src/server/Dockerfile
-            smoke_env: "-e API_SERVER_KEY=test-key-for-ci"
-            smoke_url: ""
+            components: "server"
 
     name: Build & Test - ${{ matrix.build.name }}
 
@@ -76,54 +73,67 @@ jobs:
           cache-to: type=gha,mode=max,scope=${{ matrix.build.name }}-image,compression=zstd
 
       - name: Smoke Test - ${{ matrix.build.name }} Container
+        env:
+          IMAGE: ${{ matrix.build.name }}:${{ github.sha }}
+          COMPONENTS: ${{ matrix.build.components }}
         run: |
-          NAME="test-${{ matrix.build.name }}"
-          echo "Testing ${{ matrix.build.name }} container startup..."
-
-          docker run -d --name "$NAME" \
-            ${{ matrix.build.smoke_url && '-p 8501:8501' || '' }} \
-            ${{ matrix.build.smoke_env }} \
-            ${{ matrix.build.name }}:${{ github.sha }}
-
-          # Full 10s stabilization window — catches containers that start
-          # successfully and then crash shortly after. Checking earlier would
-          # let short-lived startup failures pass.
-          echo "Waiting 10s for container to stabilize..."
-          sleep 10
-
-          if docker ps --filter "name=$NAME" --filter "status=running" --format '{{.Names}}' | grep -qx "$NAME"; then
-            echo "✅ ${{ matrix.build.name }} container started and is still running"
-          else
-            echo "❌ ${{ matrix.build.name }} container failed to start or crashed"
+          fail() {
+            echo "❌ $NAME: $1"
             docker logs "$NAME" 2>&1 || true
             exit 1
-          fi
+          }
 
-          if [ -z "${{ matrix.build.smoke_url }}" ]; then
-            docker stop "$NAME"
-            exit 0
-          fi
+          is_running() {
+            [ "$(docker inspect --format '{{.State.Running}}' "$NAME")" = true ]
+          }
 
-          echo "Waiting for ${{ matrix.build.smoke_url }} to return a successful response..."
-          for _ in $(seq 1 30); do
-            if curl --fail --silent --show-error "${{ matrix.build.smoke_url }}" >/dev/null; then
-              echo "✅ ${{ matrix.build.name }} client returned a successful response"
-              docker stop "$NAME"
-              exit 0
+          for COMPONENT in $COMPONENTS; do
+            NAME="test-${{ matrix.build.name }}-$COMPONENT"
+            case "$COMPONENT" in
+              client) PORT=8501; PROBE=/_stcore/health ;;
+              server) PORT=8000; PROBE=/v1/liveness ;;
+              *) fail "unknown component: $COMPONENT" ;;
+            esac
+            echo "Testing $IMAGE in $COMPONENT mode..."
+
+            docker run -d --name "$NAME" \
+              -p "127.0.0.1::$PORT" \
+              -e AIO_API_KEY=test-key-for-ci \
+              "$IMAGE" "$COMPONENT"
+            URL="http://$(docker port "$NAME" "$PORT/tcp")$PROBE"
+
+            READY=false
+            DEADLINE=$((SECONDS + 180))
+            while (( SECONDS < DEADLINE )); do
+              is_running || fail "container exited during startup"
+              if curl --fail --silent --max-time 2 "$URL" >/dev/null; then
+                READY=true
+                break
+              fi
+              sleep 1
+            done
+            if [ "$READY" != true ]; then
+              fail "$URL did not become ready within 180 seconds"
             fi
-            sleep 1
-          done
 
-          echo "❌ ${{ matrix.build.name }} client did not return a successful response"
-          docker logs "$NAME" 2>&1 || true
-          exit 1
+            # Require ten healthy seconds after application startup completes.
+            for _ in $(seq 1 10); do
+              sleep 1
+              is_running || fail "container exited after becoming ready"
+              curl --fail --silent --max-time 2 "$URL" >/dev/null || fail "$URL became unhealthy"
+            done
+            echo "✅ $NAME completed startup and remained healthy"
+            docker stop "$NAME"
+          done
 
       - name: Cleanup Test Container
         if: always()
         run: |
-          NAME="test-${{ matrix.build.name }}"
-          docker stop "$NAME" 2>/dev/null || true
-          docker rm "$NAME" 2>/dev/null || true
+          for COMPONENT in ${{ matrix.build.components }}; do
+            NAME="test-${{ matrix.build.name }}-$COMPONENT"
+            docker stop "$NAME" 2>/dev/null || true
+            docker rm "$NAME" 2>/dev/null || true
+          done
 
   # Summary job
   image-validation-summary:
