@@ -8,6 +8,18 @@ sidebar_position: 40
 {/* Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl. */}
 
+## v2.5.0 — 18 September 2026
+
+This release removes the matplotlib dependency, updates Testbed report rendering, and improves OCI GenAI streaming compatibility.
+
+### Highlights
+
+- **Testbed reporting:** The overall correctness gauge now uses scalable SVG rendering. Q&A generation, evaluation, and report exports operate without matplotlib.
+- **OCI GenAI streaming:** Improved compatibility with compressed streaming responses while preserving custom request headers.
+- **Dependencies:** Refreshed application dependencies, including the OCI SDK, LangChain Core, PyTorch, and Transformers, along with development tools.
+
+For the complete set of changes, see [`v2.4.1...v2.5.0`](https://github.com/oracle/ai-optimizer/compare/v2.4.1...v2.5.0).
+
 ## v2.4.1 — 20 August 2026
 
 This maintenance release improves the Oracle Backend as a Service (OBaaS) deployment, the mortgage demonstration, and client configuration workflows.
@@ -31,7 +43,7 @@ This release adds [Oracle Deep Data Security](./client/tools/dds.mdx) support, e
 - Existing bare-metal environments should be recreated with `uv sync --all-extras` before starting the application with `uv run python src/entrypoint.py client`.
 - The model configuration API now reports runtime availability through `status` instead of the previous `usable` Boolean. Possible values are `available`, `unreachable`, `not_pulled`, and `no_key`.
 - Helm service types are limited to `ClusterIP`, `NodePort`, and `LoadBalancer`.
- 
+
 ### Highlights
 
 - **Oracle Deep Data Security:** Create and manage data roles, end users, and data grants from the client. Vector Search and NL2SQL can connect as a selected end user so that database-enforced row- and column-level access applies to tool results.
