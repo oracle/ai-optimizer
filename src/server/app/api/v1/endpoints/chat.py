@@ -28,7 +28,7 @@ from server.app.api.v1.schemas.chat import (
     VsMetadata,
 )
 from server.app.api.v1.schemas.common import ClientId
-from server.app.core.auth import INTERNAL_PROXY_TOKEN
+from server.app.core.auth import GATEWAY_AUTH_MODES, INTERNAL_PROXY_TOKEN, PRINCIPAL_SCOPE_KEY
 from server.app.core.secrets import reveal
 from server.app.core.settings import resolve_client, settings
 from server.app.database.config import DdsConnectionError
@@ -70,23 +70,31 @@ def get_orchestrator() -> ChatOrchestrator:
     return _orchestrator
 
 
+def _with_working_session(request: Request, headers: dict[str, str]) -> dict[str, str]:
+    """Forward the selected working session to an internal MCP request."""
+    if session_id := request.headers.get("x-aio-session"):
+        headers["X-AIO-Session"] = session_id
+    return headers
+
+
 def get_request_orchestrator(request: Request) -> ChatOrchestrator:
     """Use the inbound bearer credential for principal-authenticated MCP calls."""
     authorization = request.headers.get("authorization")
-    if settings.auth_mode in {"dev", "oidc"} and authorization:
-        headers = {"Authorization": authorization}
-        if session_id := request.headers.get("x-aio-session"):
-            headers["X-AIO-Session"] = session_id
-        return _orchestrator.for_request_headers(headers)
+    if settings.auth_mode in GATEWAY_AUTH_MODES and authorization:
+        return _orchestrator.for_request_headers(_with_working_session(request, {"Authorization": authorization}))
     if settings.auth_mode == "proxy":
-        headers = {
-            "X-AIO-Internal-Subject": request.headers.get(settings.auth_proxy_subject_header, ""),
-            "X-AIO-Internal-Roles": request.headers.get(settings.auth_proxy_roles_header, ""),
-            "X-AIO-Internal-Token": INTERNAL_PROXY_TOKEN,
-        }
-        if session_id := request.headers.get("x-aio-session"):
-            headers["X-AIO-Session"] = session_id
-        return _orchestrator.for_request_headers(headers)
+        principal = getattr(request.state, PRINCIPAL_SCOPE_KEY, None)
+        if principal is None:
+            return _orchestrator
+        return _orchestrator.for_request_headers(
+            _with_working_session(
+                request,
+                {
+                    "X-AIO-Internal-Principal": principal.principal_id,
+                    "X-AIO-Internal-Token": INTERNAL_PROXY_TOKEN,
+                },
+            )
+        )
     return _orchestrator
 
 

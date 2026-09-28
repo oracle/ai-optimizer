@@ -24,7 +24,7 @@ from server.app.testbed.database import (
     upsert_qa,
 )
 
-OWNER = ("issuer-a", "subject-a")
+OWNER = "principal-a"
 
 
 def _make_async_cursor(out_value=None):
@@ -78,7 +78,7 @@ async def test_get_testsets_empty():
     with patch("server.app.testbed.database.execute_sql", new_callable=AsyncMock, return_value=None) as mock_exec:
         result = await get_testsets(conn, OWNER)
     assert result == []
-    assert mock_exec.call_args.args[2] == {"owner_issuer": "issuer-a", "owner_subject": "subject-a"}
+    assert mock_exec.call_args.args[2] == {"owner_principal_id": "principal-a"}
 
 
 @pytest.mark.unit
@@ -125,8 +125,7 @@ async def test_get_testset_qa_with_data():
     # Verify hex ID was converted to bytes for RAW column binding
     binds = mock_exec.call_args[0][2]
     assert binds["tid"] == bytes.fromhex("AABB")
-    assert binds["owner_issuer"] == "issuer-a"
-    assert binds["owner_subject"] == "subject-a"
+    assert binds["owner_principal_id"] == "principal-a"
 
 
 # ---------------------------------------------------------------------------

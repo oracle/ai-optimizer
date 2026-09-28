@@ -1,0 +1,1 @@
+"""Authentication gateway tests."""

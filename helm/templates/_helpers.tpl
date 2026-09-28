@@ -233,36 +233,36 @@ letting a whitespace cookieSecret clobber an operator-owned external Secret.
 former UI behavior. */}}
 {{- define "ai-optimizer.client.passwordDeprecated.fail" -}}
 {{- if or (default "" .Values.client.password | trim) (default "" .Values.client.passwordSecretName | trim) (default "" .Values.client.passwordSecretKey | trim) (default false .Values.client.passwordAutoGenerate) -}}
-{{- fail "client.password* is retired; use server.devOidc.passwordSecretName, passwordSecretKey, or passwordAutoGenerate" -}}
+{{- fail "client.password* is retired; use server.auth.passwordSecretName, passwordSecretKey, or passwordAutoGenerate" -}}
 {{- end -}}
 {{- end -}}
 
-{{/* Development OIDC administrator password Secret helpers. */}}
-{{- define "ai-optimizer.server.devOidc.password.validate" -}}
-{{- $passwordSecretName := default "" .Values.server.devOidc.passwordSecretName | trim -}}
-{{- $passwordAutoGenerate := default false .Values.server.devOidc.passwordAutoGenerate -}}
+{{/* Local-account administrator password Secret helpers. */}}
+{{- define "ai-optimizer.server.auth.password.validate" -}}
+{{- $passwordSecretName := default "" .Values.server.auth.passwordSecretName | trim -}}
+{{- $passwordAutoGenerate := default false .Values.server.auth.passwordAutoGenerate -}}
 {{- $serverEnvSecret := .Values.server.envSecret | default dict -}}
 {{- $serverEnvSecretName := default "" $serverEnvSecret.secretName | trim -}}
 {{- $serverEnvContent := $serverEnvSecret.content | default dict -}}
 {{- $envPassword := "" -}}
-{{- if hasKey $serverEnvContent "AIO_AUTH_DEV_ADMIN_PASSWORD" -}}
-{{- $envPassword = get $serverEnvContent "AIO_AUTH_DEV_ADMIN_PASSWORD" | toString | trim -}}
+{{- if hasKey $serverEnvContent "AIO_AUTH_LOCAL_ADMIN_PASSWORD" -}}
+{{- $envPassword = get $serverEnvContent "AIO_AUTH_LOCAL_ADMIN_PASSWORD" | toString | trim -}}
 {{- end -}}
 {{- if and $passwordSecretName $passwordAutoGenerate -}}
-{{- fail "server.devOidc.passwordSecretName and server.devOidc.passwordAutoGenerate are mutually exclusive" -}}
+{{- fail "server.auth.passwordSecretName and server.auth.passwordAutoGenerate are mutually exclusive" -}}
 {{- end -}}
-{{- if and .Values.server.devOidc.enabled (not (or $passwordSecretName $passwordAutoGenerate $serverEnvSecretName $envPassword)) -}}
-{{- fail "server.devOidc.enabled requires server.devOidc.passwordSecretName, server.devOidc.passwordAutoGenerate=true, or server.envSecret with AIO_AUTH_DEV_ADMIN_PASSWORD so the bootstrap password is retrievable" -}}
+{{- if and .Values.server.auth.enabled (eq .Values.server.auth.mode "local") (not (or $passwordSecretName $passwordAutoGenerate $serverEnvSecretName $envPassword)) -}}
+{{- fail "local server.auth requires a password Secret, passwordAutoGenerate=true, or server.envSecret with AIO_AUTH_LOCAL_ADMIN_PASSWORD" -}}
 {{- end -}}
-{{- end -}}
-
-{{- define "ai-optimizer.server.devOidc.passwordSecretName" -}}
-{{- $explicit := default "" .Values.server.devOidc.passwordSecretName | trim -}}
-{{- if $explicit -}}{{ $explicit }}{{- else -}}{{ printf "%s-dev-oidc-password" (include "ai-optimizer.fullname" .) }}{{- end -}}
 {{- end -}}
 
-{{- define "ai-optimizer.server.devOidc.passwordSecretKey" -}}
-{{- default "password" .Values.server.devOidc.passwordSecretKey | trim -}}
+{{- define "ai-optimizer.server.auth.passwordSecretName" -}}
+{{- $explicit := default "" .Values.server.auth.passwordSecretName | trim -}}
+{{- if $explicit -}}{{ $explicit }}{{- else -}}{{ printf "%s-auth-password" (include "ai-optimizer.fullname" .) }}{{- end -}}
+{{- end -}}
+
+{{- define "ai-optimizer.server.auth.passwordSecretKey" -}}
+{{- default "password" .Values.server.auth.passwordSecretKey | trim -}}
 {{- end -}}
 
 {{/* ******************************************
@@ -301,25 +301,25 @@ Secret-change requires a reloader controller and is out of scope for this chart.
 
 {{- define "ai-optimizer.client.oidcSecretsToml" -}}
 [auth]
-redirect_uri = {{ required "server.devOidc.webClientRedirectUri is required when devOidc is enabled" .oidc.webClientRedirectUri | quote }}
+redirect_uri = {{ required "server.auth.webClientRedirectUri is required when auth is enabled" .oidc.webClientRedirectUri | quote }}
 cookie_secret = {{ .cookieSecret | quote }}
 client_id = "platform-web-client"
 client_secret = {{ .webClientSecret | quote }}
 server_metadata_url = {{ printf "%s/.well-known/openid-configuration" (.oidc.issuer | trimSuffix "/") | quote }}
-client_kwargs = { scope = "openid profile email aio.api" }
+client_kwargs = { scope = "openid profile email" }
 expose_tokens = "access"
 {{- end -}}
 
 
 {{- define "ai-optimizer.client.oidcSecretChecksum" -}}
 {{- $name := printf "%s-client-oidc" (include "ai-optimizer.fullname" .) -}}
-{{- $issuer := .Values.server.devOidc.issuer | trimSuffix "/" -}}
-{{- $redirect := .Values.server.devOidc.webClientRedirectUri -}}
+{{- $issuer := .Values.server.auth.issuer | trimSuffix "/" -}}
+{{- $redirect := .Values.server.auth.webClientRedirectUri -}}
 {{- $found := lookup "v1" "Secret" .Release.Namespace $name -}}
 {{- if and $found $found.data (hasKey $found.data "cookieSecret") (hasKey $found.data "webClientSecret") -}}
 {{- $cookieSecretData := index $found.data "cookieSecret" -}}
 {{- $webClientSecretData := index $found.data "webClientSecret" -}}
-{{- $secretsToml := include "ai-optimizer.client.oidcSecretsToml" (dict "oidc" .Values.server.devOidc "cookieSecret" ($cookieSecretData | b64dec) "webClientSecret" ($webClientSecretData | b64dec)) -}}
+{{- $secretsToml := include "ai-optimizer.client.oidcSecretsToml" (dict "oidc" .Values.server.auth "cookieSecret" ($cookieSecretData | b64dec) "webClientSecret" ($webClientSecretData | b64dec)) -}}
 {{- $desiredData := dict "cookieSecret" $cookieSecretData "webClientSecret" $webClientSecretData "secrets.toml" (printf "%s\n" $secretsToml | b64enc) -}}
 {{- printf "desired:%s:%s" $name (toJson $desiredData) | sha256sum -}}
 {{- else -}}
@@ -328,10 +328,10 @@ expose_tokens = "access"
 {{- end -}}
 
 
-{{- define "ai-optimizer.server.devOidc.passwordSecretChecksum" -}}
-{{- if or (default "" .Values.server.devOidc.passwordSecretName | trim) (default false .Values.server.devOidc.passwordAutoGenerate) -}}
-  {{- $name := include "ai-optimizer.server.devOidc.passwordSecretName" . -}}
-  {{- $key := include "ai-optimizer.server.devOidc.passwordSecretKey" . -}}
+{{- define "ai-optimizer.server.auth.passwordSecretChecksum" -}}
+{{- if or (default "" .Values.server.auth.passwordSecretName | trim) (default false .Values.server.auth.passwordAutoGenerate) -}}
+  {{- $name := include "ai-optimizer.server.auth.passwordSecretName" . -}}
+  {{- $key := include "ai-optimizer.server.auth.passwordSecretKey" . -}}
   {{- $found := lookup "v1" "Secret" .Release.Namespace $name -}}
   {{- if and $found $found.data (hasKey $found.data $key) -}}
 {{- printf "live:%s:%s" $name (index $found.data $key) | sha256sum -}}
@@ -483,13 +483,13 @@ Secret-mounted file rather than as pod env entries. Operator-supplied
 {{- $_ = set $out "AIO_OCI_CLI_AUTH" "oke_workload_identity" -}}
 {{- end -}}
 {{- end -}}
-{{- with .Values.server.devOidc -}}
+{{- with .Values.server.auth -}}
 {{- if .enabled -}}
-{{- $_ = set $out "AIO_AUTH_MODE" "dev" -}}
-{{- $_ = set $out "AIO_AUTH_DEV_ISSUER" (required "server.devOidc.issuer is required when devOidc is enabled" .issuer) -}}
-{{- $_ = set $out "AIO_AUTH_DEV_WEB_REDIRECT_URI" (required "server.devOidc.webClientRedirectUri is required when devOidc is enabled" .webClientRedirectUri) -}}
-{{- $_ = set $out "AIO_AUTH_DEV_LISTEN_HOST" "0.0.0.0" -}}
-{{- $_ = set $out "AIO_AUTH_DEV_LISTEN_PORT" (.listenPort | toString) -}}
+{{- $_ = set $out "AIO_AUTH_MODE" .mode -}}
+{{- $_ = set $out "AIO_AUTH_ISSUER" (required "server.auth.issuer is required when auth is enabled" .issuer) -}}
+{{- $_ = set $out "AIO_AUTH_WEB_REDIRECT_URI" (required "server.auth.webClientRedirectUri is required when auth is enabled" .webClientRedirectUri) -}}
+{{- $_ = set $out "AIO_AUTH_LISTEN_HOST" "0.0.0.0" -}}
+{{- $_ = set $out "AIO_AUTH_LISTEN_PORT" (.listenPort | toString) -}}
 {{- end -}}
 {{- end -}}
 {{- if .Values.ollama.enabled -}}

@@ -81,7 +81,7 @@ from server.app.oci.schemas import OciProfileConfig
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture(params=[None, "dev"], ids=["api-key", "development"])
+@pytest.fixture(params=[None, "local"], ids=["api-key", "local"])
 def test_auth_mode(request, monkeypatch):
     """Run authenticated HTTP tests with each currently supported auth posture."""
     monkeypatch.setattr(settings, "auth_mode", request.param)
@@ -90,16 +90,19 @@ def test_auth_mode(request, monkeypatch):
 
 @pytest.fixture
 def dev_principal(test_auth_mode, monkeypatch):
-    """Provide a deterministic administrator principal in development mode."""
-    if test_auth_mode != "dev":
+    """Provide a deterministic administrator principal in local mode."""
+    if test_auth_mode != "local":
         return None
-    principal = Principal(
-        issuer=settings.auth_dev_issuer,
-        subject="api-test-user",
-        roles=frozenset({"aio.api", *settings.auth_admin_claim_values}),
-        authentication_method="oidc",
-    )
-    monkeypatch.setattr("server.app.core.auth._decode_oidc_token", lambda _token: principal)
+    principal = Principal("api-test-principal", frozenset({"aio.user", *settings.auth_admin_claim_values}), "gateway")
+
+    async def authenticate_scope(_scope):
+        return principal
+
+    async def select_owned_session(_principal, supplied_session_id):
+        return OwnedSession(principal, supplied_session_id or "default")
+
+    monkeypatch.setattr("server.app.core.auth.authenticate_scope", authenticate_scope)
+    monkeypatch.setattr("server.app.core.auth.select_owned_session", select_owned_session)
     return principal
 
 

@@ -159,19 +159,19 @@ When two examples use the same top-level key, such as `server:`, add their setti
 Use Kubernetes Secrets rather than committing credentials to a values file.
 :::
 
-### Built-in Development OIDC
+### Embedded Authentication Gateway
 
-The chart can expose the built-in development provider from the Server pod;
-it does not deploy a separate identity-service image. It requires a configured
-CORE Oracle Database and is for development or evaluation, not production.
+The chart exposes the embedded authentication gateway from the Server pod. It
+uses CORE and does not deploy a separate identity-service image.
 
 Give the provider a dedicated HTTPS hostname and route that hostname to the
 provider listener. The issuer is the root URL, so do not add an `/oidc` path.
 
 ```yaml
 server:
-  devOidc:
+  auth:
     enabled: true
+    mode: local
     issuer: https://auth.example.com
     webClientRedirectUri: https://optimizer.example.com/oauth2callback
     passwordAutoGenerate: true
@@ -182,22 +182,23 @@ server:
       tlsSecretName: optimizer-auth-tls
 ```
 
-This configures `AIO_AUTH_MODE=dev`, exposes port `8765` inside the
-Server pod, and mounts a Streamlit OIDC configuration that exposes only the
-API access token. The Client callback URL must use the Client's public origin
-and end with `/oauth2callback`. The provider ingress terminates TLS and
-forwards requests to port `8765`.
+This configures `AIO_AUTH_MODE=local`, exposes port `8765` inside the Server
+pod, and mounts a Streamlit OIDC configuration that exposes the opaque API
+access token. The Client callback URL must use the Client's public origin and
+end with `/oauth2callback`. The gateway ingress terminates TLS and forwards
+requests to port `8765`.
 
 To provide a stable bootstrap password, create a Kubernetes Secret and set
-`server.devOidc.passwordSecretName` and `server.devOidc.passwordSecretKey`.
-The value is applied to the bootstrap account whenever the Server starts.
-Alternatively, set `server.devOidc.passwordAutoGenerate=true` for a
-chart-managed retained Secret. The chart provides that value only to the Server
-as `AIO_AUTH_DEV_ADMIN_PASSWORD`. You can also provide
-`AIO_AUTH_DEV_ADMIN_PASSWORD` through `server.envSecret.content` or a prebuilt
-Secret referenced by `server.envSecret.secretName`. One of these sources is
-required when the provider is enabled; Helm rejects a configuration that would
-leave the bootstrap password unretrievable.
+`server.auth.passwordSecretName` and `server.auth.passwordSecretKey`.
+Alternatively, set `server.auth.passwordAutoGenerate=true` for a chart-managed
+retained Secret. The chart provides that value only to the Server as
+`AIO_AUTH_LOCAL_ADMIN_PASSWORD`.
+
+For GitHub or external OIDC, set `server.auth.mode` to `github` or `oidc` and
+provide the corresponding `AIO_AUTH_GITHUB_*` or `AIO_AUTH_OIDC_*` credentials
+through `server.envSecret`. The ingress and Streamlit configuration remain the
+same. See [Access Control](../guides/access-control.mdx) for the provider
+configuration examples.
 
 ### Configure the Database
 

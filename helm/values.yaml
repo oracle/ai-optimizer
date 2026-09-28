@@ -137,25 +137,26 @@ server:
     # dial the server). The container always listens on 8000.
     port: 8000
 
-  # Optional built-in development OIDC provider. It runs in the server process
-  # and uses the configured CORE database; it is not an additional container.
-  devOidc:
+  # Embedded authentication gateway. It runs in the server process and uses
+  # CORE; it is not an additional container.
+  auth:
     enabled: false
+    # One of local, github, or oidc. Provider credentials are supplied through
+    # server.envSecret.content as AIO_AUTH_GITHUB_* or AIO_AUTH_OIDC_* values.
+    mode: local
     # Externally reachable root issuer. Use the loopback default only locally;
     # deployed issuers must use HTTPS.
     issuer: ""
     # Public Streamlit callback URL. It must end in /oauth2callback and be
     # reachable by the browser using the same origin as the Client ingress.
     webClientRedirectUri: ""
-    # -- Name of a retained Secret holding the development administrator password.
-    # Required when enabled unless passwordAutoGenerate is true or
-    # server.envSecret provides AIO_AUTH_DEV_ADMIN_PASSWORD.
+    # -- Name of a retained Secret holding the local administrator password.
+    # Required for local mode unless passwordAutoGenerate is true or
+    # server.envSecret provides AIO_AUTH_LOCAL_ADMIN_PASSWORD.
     passwordSecretName: ""
     # -- Key inside passwordSecretName or the generated Secret.
     passwordSecretKey: "password"
     # -- Generate a retained password Secret for the bootstrapped administrator.
-    # Required when enabled unless passwordSecretName is configured or
-    # server.envSecret provides AIO_AUTH_DEV_ADMIN_PASSWORD.
     passwordAutoGenerate: false
     listenPort: 8765
     service:

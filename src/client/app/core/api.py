@@ -5,8 +5,6 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 # spell-checker:ignore apiserver pypath
 
 import atexit
-import base64
-import binascii
 import contextlib
 import json
 import logging
@@ -74,8 +72,7 @@ _SERVER: dict = {"process": None, "log_file": None}
 
 _SERVER_READY_TIMEOUT_SECONDS = float(os.environ.get("AIO_SERVER_READY_TIMEOUT", "180"))
 _SERVER_READY_POLL_INTERVAL = 5.0
-_ACCESS_TOKEN_EXPIRY_BUFFER_SECONDS = 30
-_RETIRED_CLIENT_PASSWORD_MESSAGE = "AIO_CLIENT_PASSWORD is retired; use AIO_AUTH_DEV_ADMIN_PASSWORD in development mode"
+_RETIRED_CLIENT_PASSWORD_MESSAGE = "AIO_CLIENT_PASSWORD is retired; use AIO_AUTH_LOCAL_ADMIN_PASSWORD in local mode"
 
 
 _SRC_DIR = Path(__file__).resolve().parents[3]
@@ -258,10 +255,6 @@ def _headers() -> dict:
         access_token = st.user.tokens.get("access") if st.user.is_logged_in else None
     except (AttributeError, KeyError):
         access_token = None
-    if isinstance(access_token, str) and _access_token_expires_soon(access_token):
-        LOGGER.info("OIDC access token is expired or nearing expiry; starting a new login")
-        st.login()
-        st.stop()
     if access_token:
         headers["Authorization"] = f"Bearer {access_token}"
     else:
@@ -271,31 +264,17 @@ def _headers() -> dict:
     return headers
 
 
-def _access_token_expires_soon(access_token: str) -> bool:
-    """Return whether a JWT-shaped access token is expired or nearly expired.
-
-    Streamlit exposes only the provider's ID and access tokens, and its identity
-    cookie can outlive the access token.  Built-in development access tokens are
-    JWTs, so their ``exp`` claim lets us start a new authorization flow before
-    an API request receives a 401.  Opaque or malformed tokens are left alone
-    for external providers whose lifecycle is managed by Streamlit or the IdP.
-    """
-    try:
-        parts = access_token.split(".")
-        if len(parts) != 3:
-            return False
-        payload = base64.urlsafe_b64decode(parts[1] + "=" * (-len(parts[1]) % 4))
-        claims = json.loads(payload)
-        if not isinstance(claims, dict):
-            return False
-        expiry = claims.get("exp")
-    except (binascii.Error, UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError):
-        return False
-    return (
-        isinstance(expiry, (int, float))
-        and not isinstance(expiry, bool)
-        and expiry <= (time.time() + _ACCESS_TOKEN_EXPIRY_BUFFER_SECONDS)
-    )
+def _raise_for_status(response: httpx.Response) -> None:
+    """Renew an expired Streamlit OIDC login before surfacing a 401 response."""
+    if response.status_code == 401:
+        try:
+            signed_in = st.user.is_logged_in
+        except (AttributeError, KeyError):
+            signed_in = False
+        if signed_in:
+            st.login()
+            st.stop()
+    response.raise_for_status()
 
 
 def api_get(
@@ -314,7 +293,7 @@ def api_get(
         httpx.Client(headers=headers, timeout=timeout, verify=verify_for_url(base)) as client,
     ):
         resp = client.get(url, params=params)
-        resp.raise_for_status()
+        _raise_for_status(resp)
         return resp.json()
 
 
@@ -344,7 +323,7 @@ def api_post(
             resp = client.post(url, files=files, data=data, params=params)
         else:
             resp = client.post(url, json=json, params=params)
-        resp.raise_for_status()
+        _raise_for_status(resp)
         if toast:
             st.toast(toast, icon="✅")
         return resp.json()
@@ -362,7 +341,7 @@ def api_post_stream(
         httpx.Client(headers=_headers(), timeout=timeout, verify=verify_for_url(url)) as client,
         client.stream("POST", url, json=json_body) as resp,
     ):
-        resp.raise_for_status()
+        _raise_for_status(resp)
         for raw_line in resp.iter_lines():
             stripped = raw_line.strip()
             if not stripped:
@@ -390,7 +369,7 @@ def api_put(
         httpx.Client(headers=headers, timeout=timeout, verify=verify_for_url(url)) as client,
     ):
         resp = client.put(url, json=json, params=params)
-        resp.raise_for_status()
+        _raise_for_status(resp)
         if toast:
             st.toast(toast, icon="✅")
         return resp.json()
@@ -412,7 +391,7 @@ def api_patch(
         httpx.Client(headers=headers, timeout=timeout, verify=verify_for_url(url)) as client,
     ):
         resp = client.patch(url, json=json)
-        resp.raise_for_status()
+        _raise_for_status(resp)
         if toast:
             st.toast(toast, icon="✅")
         return resp.json() if resp.content else None
@@ -433,7 +412,7 @@ def api_delete(
         httpx.Client(headers=headers, timeout=timeout, verify=verify_for_url(url)) as client,
     ):
         resp = client.delete(url)
-        resp.raise_for_status()
+        _raise_for_status(resp)
         if toast:
             st.toast(toast, icon="✅")
 
@@ -457,7 +436,7 @@ def get_server_settings(client: str, include_sensitive: bool = False) -> dict | 
     try:
         with httpx.Client(headers=headers, timeout=5, verify=verify_for_url(base)) as client_settings:
             resp = client_settings.get(f"{base}/settings", params=params)
-            resp.raise_for_status()
+            _raise_for_status(resp)
             return resp.json()
     except httpx.HTTPError as exc:
         LOGGER.warning("Failed to fetch server settings from %s: %s", base, exc)
@@ -472,7 +451,7 @@ def export_server_settings(client: str) -> dict | None:
     try:
         with httpx.Client(headers=headers, timeout=5, verify=verify_for_url(base)) as client_settings:
             resp = client_settings.post(f"{base}/settings/export", params=params)
-            resp.raise_for_status()
+            _raise_for_status(resp)
             return resp.json()
     except httpx.HTTPError as exc:
         LOGGER.warning("Failed to export server settings from %s: %s", base, exc)

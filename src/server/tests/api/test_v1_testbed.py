@@ -60,7 +60,7 @@ async def test_list_testsets(app_client, auth_headers, test_auth_mode, mock_core
     body = resp.json()
     assert len(body) == 1
     assert body[0]["tid"] == VALID_TID
-    principal_owner = (settings.auth_dev_issuer, "api-test-user") if test_auth_mode == "dev" else ("api-key", "shared")
+    principal_owner = "api-test-principal" if test_auth_mode == "local" else "api-key:shared"
     mock_get.assert_awaited_once_with(mock_core_pool[0], principal_owner)
 
 
@@ -525,7 +525,7 @@ async def test_evaluate_rejects_invalid_tid(app_client, auth_headers):
 @pytest.mark.anyio
 async def test_collect_answers_uses_request_scoped_orchestrator(monkeypatch):
     """Testbed MCP-backed answers retain the inbound bearer credential."""
-    monkeypatch.setattr(settings, "auth_mode", "dev")
+    monkeypatch.setattr(settings, "auth_mode", "local")
     request = Request(
         {
             "type": "http",

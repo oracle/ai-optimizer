@@ -1,39 +1,131 @@
 ---
 title: Access Control
-description: Configure access control for shared deployments.
+description: Configure end-user authentication and authorization.
 sidebar_position: 10
 ---
 
 {/* Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl. */}
 
-One **AI Optimizer Server** can serve many GUI sessions, IDE or MCP clients, and external applications. Teams sharing one server use [separate client sessions](../server/multi-user-sessions) to keep conversations and working selections apart while using the same configured resources.
+AI Optimizer supports multiple users through an embedded authentication gateway.
+Streamlit always signs in with `st.login()` against that gateway. The gateway
+uses local accounts, GitHub OAuth, or an external OpenID Connect (OIDC)
+provider, then assigns one durable AI Optimizer `principal_id` to the user.
 
-## Choose a Deployment Boundary
+The Server uses `principal_id` for working-session ownership and personal
+artifacts. The Oracle AI Agent Memory integration uses it as `user_id`. Email
+addresses and browser session IDs are profile and transport values, not
+ownership values.
 
-- **No Oracle CORE database:** Use the current shared API-key authentication model. It does not provide durable multi-user OIDC isolation.
-- **Development:** Configure a CORE Oracle Database with the built-in development OIDC provider. The server binds working sessions and personal artifacts to the authenticated principal.
-- **Production eligible:** Configure a CORE Oracle Database with an external OIDC provider, then explicitly select production mode when appropriate.
-- **Administrators:** Grant a configured role or scope claim to manage the shared catalog and Deep Data Security resources.
+## Choose an Authentication Source
 
-## Client IDs and Access Boundary
+| Source | Use it for | Required services |
+| --- | --- | --- |
+| Local | Developer workstation and test environments | Server, Client, and Oracle CORE database |
+| GitHub | Teams that use GitHub accounts | CORE database and a GitHub OAuth application |
+| External OIDC | Enterprise identity and lifecycle management | CORE database and an OIDC provider such as OCI IAM Identity Domains |
 
-In principal-authenticated deployments, `X-AIO-Session` selects an opaque working session after authentication. The server binds that session to its creating principal and rejects access by another principal.
+One source is active for a deployment. Each source produces the same AI
+Optimizer principal and authorization roles.
 
-In the no-database shared API-key deployment, the `Client` header and `client`
-query parameter retain their current behavior. In a principal-authenticated
-deployment, they do not provide access isolation; use `X-AIO-Session` instead.
+## Local Accounts
 
-:::tip
-Use client IDs to separate conversation context and client settings. To isolate untrusted tenants, run separate deployments of the **AI Optimizer** with different API keys.
-:::
+Local mode stores individual scrypt password credentials in CORE. It is suited
+to development and testing on a developer workstation.
 
-## Shared Catalog Access
+```dotenv
+AIO_AUTH_MODE=local
+AIO_AUTH_ISSUER=http://127.0.0.1:8765
+AIO_AUTH_LOCAL_ADMIN_USERNAME=admin@example.test
+AIO_AUTH_LOCAL_ADMIN_PASSWORD=choose-a-password
+```
 
-The Server is the authority for shared catalog access. The Client does not add a separate password gate.
+The All-In-One launcher generates and retains the bootstrap password and the
+Streamlit client secret when they are unset. The local administrator can create
+accounts, reset passwords, disable accounts, and grant `aio.admin` with the
+authentication administration CLI:
 
-- **No Oracle CORE database:** `AIO_AUTH_MODE` remains unset and clients use `AIO_API_KEY`. Shared catalog controls are not gated.
-- **CORE database with development authentication:** `AIO_AUTH_MODE=dev` is selected by default. The bootstrapped `admin@example.test` identity has the `aio.admin` claim and can manage the shared catalog.
-- **CORE database with OIDC or trusted-proxy authentication:** values in `AIO_AUTH_ADMIN_CLAIM_VALUES` identify the principals allowed to manage the shared catalog.
+```bash
+uv run python -m server.app.auth_admin add-user \
+  --username carol@example.test --display-name Carol
+```
 
-`AIO_CLIENT_PASSWORD` is retired and rejected at Server startup. Use the development admin password only to bootstrap the built-in development identity provider; it does not create a client-side gate.
+## GitHub OAuth
+
+GitHub OAuth is an authorization server, not an OIDC provider. AI Optimizer
+bridges GitHub's OAuth callback to its own OIDC gateway, so Streamlit retains
+its native `st.login()` flow.
+
+Create a GitHub OAuth application with this authorization callback:
+
+```text
+https://auth.example.com/callback
+```
+
+Configure the gateway and register the Streamlit redirect URI separately:
+
+```dotenv
+AIO_AUTH_MODE=github
+AIO_AUTH_ISSUER=https://auth.example.com
+AIO_AUTH_WEB_REDIRECT_URI=https://optimizer.example.com/oauth2callback
+AIO_AUTH_GITHUB_CLIENT_ID=...
+AIO_AUTH_GITHUB_CLIENT_SECRET=...
+AIO_AUTH_GITHUB_ALLOWED_USERS=12345678,87654321
+AIO_AUTH_GITHUB_ADMIN_USERS=12345678
+```
+
+GitHub's numeric user ID is the stable provider subject. Configure
+`AIO_AUTH_GITHUB_ALLOWED_ORGANIZATIONS` to permit organization members and
+`AIO_AUTH_GITHUB_ADMIN_TEAMS` with `organization/team-slug` values for
+administrator mapping. Those policies request GitHub's `read:org` scope.
+
+## External OIDC
+
+External OIDC mode makes the gateway an OIDC relying party upstream and an OIDC
+provider to Streamlit downstream. The gateway validates the upstream ID token
+and maps its issuer and subject to an AI Optimizer principal.
+
+For OCI IAM Identity Domains, create a confidential application. Add the
+gateway callback as an allowed redirect URI, assign the users or groups that
+may access the application, and use the identity domain discovery URL as the
+issuer.
+
+```dotenv
+AIO_AUTH_MODE=oidc
+AIO_AUTH_ISSUER=https://auth.example.com
+AIO_AUTH_WEB_REDIRECT_URI=https://optimizer.example.com/oauth2callback
+AIO_AUTH_OIDC_ISSUER=https://idcs-example.identity.oraclecloud.com
+AIO_AUTH_OIDC_CLIENT_ID=...
+AIO_AUTH_OIDC_CLIENT_SECRET=...
+AIO_AUTH_OIDC_ROLES_CLAIM=groups
+AIO_AUTH_OIDC_ALLOWED_CLAIM_VALUES=ai-optimizer-users
+AIO_AUTH_ADMIN_CLAIM_VALUES=ai-optimizer-admins
+```
+
+The gateway uses authorization code flow with state, nonce, and PKCE. It
+validates the upstream token signature, issuer, audience, expiry, nonce, and
+subject before a principal is created or updated.
+
+## Authorization and API Access
+
+`aio.user` permits access to the caller's sessions and personal resources.
+`aio.admin` permits shared-catalog and authentication administration. Oracle AI
+Agent Memory retains the caller's `principal_id` scope for administrator
+requests.
+
+The gateway issues a signed ID token to Streamlit and an opaque access token to
+REST and MCP clients. The Server resolves each access token against CORE and
+loads the principal's current roles and active status. Logout revokes the
+gateway session and its API tokens.
+
+`X-AIO-Session` selects a working session after authentication. The Server
+binds that session to the authenticated `principal_id` and rejects use by a
+different principal.
+
+## Shared API-Key Deployments
+
+Without CORE, leave `AIO_AUTH_MODE` unset and use `AIO_API_KEY`. This is a
+single-principal compatibility mode. It cannot provide end-user isolation or
+enable Oracle AI Agent Memory.
+
+`AIO_CLIENT_PASSWORD` is retired and rejected at Server startup.
