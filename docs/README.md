@@ -13,6 +13,26 @@ npm run start
 
 The development server reloads when documentation or site assets change.
 
+## Updating Packages
+
+From this directory, update dependencies within the version requirements in `package.json`:
+
+```bash
+npm update
+```
+
+`npm update` refreshes `package-lock.json` while respecting version ranges and exact pins. To upgrade a pinned package, change its version in `package.json` and run:
+
+```bash
+npm install
+```
+
+Keep the Docusaurus packages on the same version. Review the package file changes, then build the site:
+
+```bash
+npm run build
+```
+
 ## Documentation Images
 
 Organize images by ownership rather than placing every image in `static/img`.

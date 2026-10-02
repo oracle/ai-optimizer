@@ -306,6 +306,34 @@ class TestReasoningContentFlattening:
         assert msg.additional_kwargs.get("reasoning_content") == "let me think about this carefully"
 
 
+class TestNonStreamingResponseChoices:
+    @pytest.fixture
+    def response(self):
+        response = _non_streaming_response("first ")
+        response["choices"].extend(_non_streaming_response("second")["choices"])
+        return response
+
+    @pytest.mark.parametrize(("n", "expected"), [(1, ["first second"]), (2, ["first ", "second"])])
+    @patch("server.app.runtime.langgraph.adapters.litellm.ChatLiteLLM.completion_with_retry")
+    def test_generate_respects_configured_answer_count(self, mock_completion, response, n, expected):
+        mock_completion.return_value = response
+        llm = OracleChatLiteLLM(model=TEST_OPENAI_MODEL_KEY, n=n)
+
+        result = llm._generate([HumanMessage(content="hi")])
+
+        assert [generation.message.content for generation in result.generations] == expected
+
+    @pytest.mark.parametrize(("n", "expected"), [(1, ["first second"]), (2, ["first ", "second"])])
+    @patch("server.app.runtime.langgraph.adapters.litellm.ChatLiteLLM.acompletion_with_retry", new_callable=AsyncMock)
+    async def test_agenerate_respects_per_call_answer_count(self, mock_acompletion, response, n, expected):
+        mock_acompletion.return_value = response
+        llm = OracleChatLiteLLM(model=TEST_OPENAI_MODEL_KEY)
+
+        result = await llm._agenerate([HumanMessage(content="hi")], n=n)
+
+        assert [generation.message.content for generation in result.generations] == expected
+
+
 class TestOracleChatLiteLLMNonOllama:
     """For non-Ollama models, OracleChatLiteLLM defers entirely to upstream."""
 
