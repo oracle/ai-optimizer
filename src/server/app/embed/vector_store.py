@@ -94,7 +94,7 @@ def generate_vs_metadata(
 
 
 def _prepare_documents(input_data: Union[list[DoclingDocumentChunk], list[str]]) -> list[DoclingDocumentChunk]:
-    """Convert input data to documents and remove duplicates."""
+    """Convert input data to documents and remove duplicate text within each file."""
     if not input_data:
         LOGGER.info("No documents to prepare")
         return []
@@ -109,11 +109,12 @@ def _prepare_documents(input_data: Union[list[DoclingDocumentChunk], list[str]])
 
     LOGGER.info("Total Chunks: %i", len(documents))
 
-    unique_texts: dict = {}
+    unique_texts: set[tuple[Optional[str], str]] = set()
     unique_chunks: list[DoclingDocumentChunk] = []
     for chunk in documents:
-        if chunk.page_content not in unique_texts:
-            unique_texts[chunk.page_content] = True
+        key = (chunk.metadata.get("filename"), chunk.page_content)
+        if key not in unique_texts:
+            unique_texts.add(key)
             unique_chunks.append(chunk)
     LOGGER.info("Total Unique Chunks: %i", len(unique_chunks))
     return unique_chunks
@@ -213,7 +214,7 @@ def _merge_and_index_vector_store(
     embed_client: Embeddings,
     modified_filenames: Optional[list[str]] = None,
 ) -> None:
-    """Merge temporary vector store into real one and create index."""
+    """Replace staged modified files and insert new chunks in one transaction, then index."""
     if vector_store.vector_store is None:
         raise ValueError("vector_store.vector_store must be set")
     safe_name = validate_vs_table_name(vector_store.vector_store)
@@ -236,15 +237,7 @@ def _merge_and_index_vector_store(
     if vector_store.index_type == "HNSW":
         drop_index_if_exists(db_conn, vector_store_idx)
 
-    # Delete stale chunks for modified files so the INSERT below replaces them
-    if modified_filenames:
-        LOGGER.info("Deleting stale chunks for %d modified files", len(modified_filenames))
-        delete_sql = f"DELETE FROM {quoted_name} WHERE JSON_VALUE(metadata, '$.filename') = :fname"
-        with db_conn.cursor() as cur:
-            cur.executemany(delete_sql, [{"fname": fn} for fn in modified_filenames])
-        db_conn.commit()
-
-    # Re-encode before the merge copies bytes into the real table.
+    # Normalization commits staging changes, so finish it before replacing rows.
     _normalize_metadata_oson(db_conn, safe_tmp_name)
 
     merge_sql = f"""
@@ -252,9 +245,23 @@ def _merge_and_index_vector_store(
          WHERE NOT EXISTS (SELECT 1 FROM {quoted_name} tgt WHERE tgt.ID = src.ID)
     """
     LOGGER.info("Merging %s into %s", vector_store_tmp.vector_store, vector_store.vector_store)
-    with db_conn.cursor() as cur:
-        cur.execute(merge_sql)
-    db_conn.commit()
+    try:
+        with db_conn.cursor() as cur:
+            if modified_filenames:
+                LOGGER.info("Deleting stale chunks for %d modified files", len(modified_filenames))
+                # Only replace files with staged chunks. Failed or empty parses
+                # must leave their previous documents available.
+                delete_sql = f"""
+                    DELETE FROM {quoted_name} WHERE JSON_VALUE(metadata, '$.filename') = :fname
+                     AND EXISTS (SELECT 1 FROM {quoted_tmp} src
+                                 WHERE JSON_VALUE(src.metadata, '$.filename') = :fname)
+                """
+                cur.executemany(delete_sql, [{"fname": fn} for fn in modified_filenames])
+            cur.execute(merge_sql)
+        db_conn.commit()
+    except Exception:
+        db_conn.rollback()
+        raise
 
     # Drop temp table
     try:

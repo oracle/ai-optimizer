@@ -761,6 +761,9 @@ async def _run_split_embed_pipeline(
                 embed_client=embed_client,
                 input_data=chunks,
                 rate_limit=rate_limit,
+                modified_filenames=sorted(
+                    {chunk.metadata["filename"] for chunk in chunks if chunk.metadata.get("filename")}
+                ),
             )
             # Persist metadata before the next store starts. If a later store
             # fails, this completed table remains discoverable.
