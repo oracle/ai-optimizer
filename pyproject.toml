@@ -138,6 +138,8 @@ filterwarnings = [
     "ignore::DeprecationWarning",
     "ignore::RuntimeWarning:litellm",
     "ignore::requests.exceptions.RequestsDependencyWarning",
+    # LiteLLM's ReadOnly field is enforced by type checkers.
+    "ignore:Item 'summary' on TypedDict class 'ChatCompletionReasoningItem'.*`ReadOnly`:UserWarning:pydantic",
     ]
 markers = [
     "unit: Unit tests (mocked dependencies, fast execution)",

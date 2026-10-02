@@ -378,7 +378,7 @@ class OracleChatLiteLLM(ChatLiteLLM):
             _unsanitize_tool_calls(result, name_map)
             yield _result_as_chunk(result)
 
-    def _create_chat_result(self, response: Any) -> ChatResult:
+    def _create_chat_result(self, response: Mapping[str, Any], **params: Any) -> ChatResult:
         """Flatten any reasoning-injected list content to plain text after upstream parsing.
 
         When a reasoning-capable provider (Claude, Qwen, etc.) returns
@@ -394,7 +394,7 @@ class OracleChatLiteLLM(ChatLiteLLM):
         ``additional_kwargs["reasoning_content"]``, so callers that want to
         surface it (e.g. a thinking-display UI) can still read it.
         """
-        result = super()._create_chat_result(response)
+        result = super()._create_chat_result(response, **params)
         for gen in result.generations:
             msg = gen.message
             if isinstance(msg, AIMessage) and not isinstance(msg.content, str):
@@ -435,7 +435,7 @@ class OracleChatLiteLLM(ChatLiteLLM):
             run_manager=run_manager,
             **params,
         )
-        return self._create_chat_result(response)
+        return self._create_chat_result(response, **params)
 
     async def _afallback_non_streaming(
         self,
@@ -450,7 +450,7 @@ class OracleChatLiteLLM(ChatLiteLLM):
             run_manager=run_manager,
             **params,
         )
-        return self._create_chat_result(response)
+        return self._create_chat_result(response, **params)
 
     @property
     def _client_params(self) -> Dict[str, Any]:
