@@ -80,7 +80,7 @@ Use the **Description** field to say what the store contains and when it should 
 If you select more than one local file or OCI object, you can instead choose **Create one vector store per filename**. The filename, without its extension, becomes a normalized vector store alias.
 
 :::note
-Files with the same filename from different source paths are added to the same vector store, following the usual append behavior. For example, `a/release_notes.pdf` and `b/release_notes.pdf` both populate the `RELEASE_NOTES` vector store. Long names are compacted, and names that normalize to the same alias receive distinct suffixes.
+Files with the same filename from different source paths target the same vector store and document identity. Re-uploading that filename replaces its previous chunks. OCI bucket paths are flattened into distinct local filenames before processing; for example, `a/release_notes.pdf` and `b/release_notes.pdf` both populate the `RELEASE_NOTES` vector store as separate documents. Long names are compacted, and names that normalize to the same alias receive distinct suffixes.
 :::
 
 Other options include:
@@ -101,10 +101,14 @@ The lower section lets you:
 
 - Inspect the current contents of the vector store in the **Existing Embeddings** section;
 - Update the vector store description;
-- Append new content from additional data sources by clicking **Populate Vector Store**.
+- Add or replace documents by clicking **Populate Vector Store**.
+
+Re-uploading a local file with the same filename replaces its content, embeddings, and metadata in the selected store. If the updated file produces fewer chunks, the obsolete chunks are removed. Other filenames remain unchanged. Uploading identical content again does not add duplicate chunks, though it runs parsing and embedding again.
+
+Replacement happens after the new chunks have been embedded. Files that cannot be parsed or produce no chunks retain their previous stored content. An embedding or database merge failure also preserves the previous document. The processing result reports files parsed, files skipped, and chunks generated for the current upload; the chunk count is not a count of rows newly added to the store.
 
 For an OCI Object Storage source, **Refresh from OCI** is often the easiest way to keep an existing store current. It processes supported files in the selected bucket that are new or have changed since the previous OCI import.
 
 ![Populate Existing Embedding](../../_assets/images/split-embed-existing.png)
 
-This approach lets you grow a vector store over time while preserving the embeddings it already contains.
+This approach lets you grow a vector store over time and keep uploaded documents current.
