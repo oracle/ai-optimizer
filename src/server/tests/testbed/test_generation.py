@@ -8,8 +8,7 @@ Tests for testbed generation utilities.
 
 import pytest
 
-from server.app.testbed.generation import get_giskard_config, jsonl_to_json_content
-from server.tests.constants import TEST_OPENAI_EMBED_KEY, TEST_OPENAI_MODEL_KEY
+from server.app.testbed.generation import _extract_json_object, _select_diverse_chunks, jsonl_to_json_content
 
 # ---------------------------------------------------------------------------
 # jsonl_to_json_content
@@ -61,49 +60,36 @@ def test_jsonl_invalid_content():
 
 
 # ---------------------------------------------------------------------------
-# get_giskard_config
+# Generation helpers
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
-def test_giskard_config_ll_model():
-    """LL model config renames 'model' to 'llm_model' and strips params."""
-    config = {
-        "model": TEST_OPENAI_MODEL_KEY,
-        "temperature": 0.5,
-        "max_tokens": 4096,
-        "api_base": "https://api.openai.com",
-        "api_key": "sk-test",
-    }
-    result = get_giskard_config(config, "ll")
-    assert "llm_model" in result
-    assert result["llm_model"] == TEST_OPENAI_MODEL_KEY
-    assert "model" not in result
-    assert "temperature" not in result
-    assert "max_tokens" not in result
-    assert result["api_key"] == "sk-test"
+def test_select_diverse_chunks_chooses_distant_vectors():
+    """Farthest-first selection covers semantically different passages."""
+    chunks = ["A", "near A", "B"]
+    embeddings = [[1.0, 0.0], [0.99, 0.01], [0.0, 1.0]]
+
+    selected = _select_diverse_chunks(chunks, embeddings, 2)
+
+    assert selected == [0, 2]
 
 
 @pytest.mark.unit
-def test_giskard_config_embed_model():
-    """Embed model config preserves 'model' key and max_chunk_size."""
-    config = {
-        "model": TEST_OPENAI_EMBED_KEY,
-        "temperature": 0.5,
-        "max_tokens": 8192,
-        "max_chunk_size": 512,
-    }
-    result = get_giskard_config(config, "embed")
-    assert result["model"] == TEST_OPENAI_EMBED_KEY
-    assert result["max_chunk_size"] == 512
-    assert "temperature" not in result
-    assert "max_tokens" not in result
+def test_select_diverse_chunks_caps_to_available_passages():
+    """Question slots can cycle over a passage set smaller than the request."""
+    selected = _select_diverse_chunks(["A", "B"], [[1.0, 0.0], [0.0, 1.0]], 5)
+    assert selected == [0, 1]
 
 
 @pytest.mark.unit
-def test_giskard_config_does_not_mutate_original():
-    """get_giskard_config does not mutate the input dict."""
-    config = {"model": TEST_OPENAI_MODEL_KEY, "temperature": 0.5}
-    get_giskard_config(config, "ll")
-    assert "model" in config
-    assert "temperature" in config
+def test_extract_json_object_allows_surrounding_text():
+    """JSON extraction accepts provider text before and after the object."""
+    assert _extract_json_object('Result: {"qa_pairs": []} done') == {"qa_pairs": []}
+
+
+@pytest.mark.unit
+def test_extract_json_object_rejects_invalid_content():
+    """Malformed model output has a clear generation error."""
+    with pytest.raises(ValueError, match="invalid JSON"):
+        _extract_json_object("No JSON here")

@@ -45,7 +45,7 @@ def _get_supported_models(model_type: str) -> list[dict[str, Any]]:
     try:
         return api_get("models/supported", params={"model_type": model_type})
     except APIError as exc:
-        st.error(f"Could not load supported models: {exc}")
+        st.error(helpers.format_error(exc, context="Could not load supported models"), icon="🚨")
         return []
     except httpx.HTTPStatusError:
         return []
@@ -123,7 +123,7 @@ def _handle_form_submit(
         helpers.refresh_settings()
         return True
     except httpx.HTTPStatusError as exc:
-        st.error(f"Error: {helpers.extract_error_detail(exc)}")
+        st.error(helpers.format_error(exc), icon="🚨")
         return False
 
 
@@ -137,7 +137,7 @@ def _remove_model(provider: str, model_id: str) -> bool:
         helpers.refresh_settings()
         return True
     except httpx.HTTPStatusError as exc:
-        st.error(f"Remove failed: {helpers.extract_error_detail(exc)}")
+        st.error(helpers.format_error(exc, context="Remove failed"), icon="🚨")
         return False
 
 
@@ -313,7 +313,7 @@ def _handle_dialog_submission(model: dict, model_type: str, action: str, origina
             return success
 
     except httpx.HTTPStatusError as exc:
-        st.error(f"Failed to {action} model: {helpers.extract_error_detail(exc)}")
+        st.error(helpers.format_error(exc, context=f"Failed to {action} model"), icon="🚨")
 
     if cancel_button.button(label="Cancel", type="secondary", width="stretch"):
         st.rerun()
@@ -362,7 +362,7 @@ def pull_model_dialog(provider: str, model_id: str) -> None:
     try:
         for event in api_post_stream(f"models/pull/{provider}/{quoted_id}"):
             if "error" in event:
-                st.error(f"Pull failed: {event['error']}")
+                st.error(helpers.format_error(event["error"], context="Pull failed"), icon="🚨")
                 return
             status = event.get("status", "")
             completed = event.get("completed", 0)
@@ -372,7 +372,7 @@ def pull_model_dialog(provider: str, model_id: str) -> None:
             else:
                 status_text.text(status)
     except httpx.HTTPStatusError as exc:
-        st.error(f"Pull failed: {helpers.extract_error_detail(exc)}")
+        st.error(helpers.format_error(exc, context="Pull failed"), icon="🚨")
         return
 
     helpers.refresh_settings()

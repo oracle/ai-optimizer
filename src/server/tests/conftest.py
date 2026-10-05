@@ -6,16 +6,16 @@ Shared test fixtures.
 """
 # spell-checker: disable
 
+import asyncio
 import contextlib
+import gc
 import logging
 import shutil
-import sys
 import tempfile
 import time
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Generator
-from unittest.mock import MagicMock
 
 import docker
 import oracledb
@@ -28,41 +28,17 @@ from server.tests.constants import TEST_OLLAMA_MODEL_ID, TEST_OPENAI_EMBED_ID, T
 
 logging.getLogger("LiteLLM").setLevel(logging.WARNING)
 
-# Stub giskard before app import to prevent pyarrow incompatibilities
-# during test collection (giskard -> datasets -> pyarrow).
-_gsk = MagicMock()
-for _name in (
-    "giskard",
-    "giskard.llm",
-    "giskard.llm.client",
-    "giskard.llm.errors",
-    "giskard.rag",
-    "giskard.rag.base",
-    "giskard.rag.question_generators",
-    "giskard.rag.question_generators.utils",
-):
-    sys.modules.setdefault(_name, _gsk)
-
-# Prevent LiteLLM from registering its atexit cleanup handler which causes
-# "I/O operation on closed file" errors when it tries to log after pytest
-# closes stderr. Must be set before any lazy litellm attribute access.
+# Suppress LiteLLM's atexit hook before lazy access; pytest_sessionfinish closes its clients.
 import litellm
+from litellm.llms.custom_httpx.async_client_cleanup import close_litellm_async_clients
 
 litellm._async_client_cleanup_registered = True
 
-# Suppress logging errors during interpreter shutdown (aiohttp unclosed
-# client/connector __del__ warnings write to already-closed stderr).
-import atexit
-import logging
-
-atexit.register(lambda: setattr(logging, "raiseExceptions", False))
 
 # Suppress "Task was destroyed but it is pending!" from asyncio logger.
 # oracledb's async pool machinery can leave background connection tasks
 # pending when a pool is created against an unreachable host and then closed.
-logging.getLogger("asyncio").addFilter(
-    lambda record: "Task was destroyed but it is pending" not in record.getMessage()
-)
+logging.getLogger("asyncio").addFilter(lambda record: "Task was destroyed but it is pending" not in record.getMessage())
 
 from pyagentspec.flows.flow import Flow
 from pyagentspec.flows.nodes import EndNode, LlmNode
@@ -73,6 +49,26 @@ from server.app.database.schemas import DatabaseConfig
 from server.app.main import app
 from server.app.models.schemas import ModelConfig
 from server.app.oci.schemas import OciProfileConfig
+
+
+def pytest_sessionfinish() -> None:
+    from litellm.llms.custom_httpx.http_handler import HTTPHandler
+
+    # Test capture can leave application handlers bound to closed streams.
+    root_logger = logging.getLogger()
+    loggers = (root_logger, *root_logger.manager.loggerDict.values())
+    for logger in loggers:
+        if isinstance(logger, logging.Logger):
+            for log_handler in tuple(logger.handlers):
+                if getattr(getattr(log_handler, "stream", None), "closed", False):
+                    logger.removeHandler(log_handler)
+
+    # LiteLLM retains some sync handlers outside its client cache.
+    for client_handler in gc.get_objects():
+        if HTTPHandler in type(client_handler).__mro__:
+            client_handler.close()
+    asyncio.run(close_litellm_async_clients())
+
 
 # ---------------------------------------------------------------------------
 # Oracle container and constants

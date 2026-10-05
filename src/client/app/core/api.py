@@ -312,7 +312,11 @@ def api_post_stream(
         httpx.Client(headers=_headers(), timeout=timeout, verify=verify_for_url(url)) as client,
         client.stream("POST", url, json=json_body) as resp,
     ):
-        resp.raise_for_status()
+        try:
+            resp.raise_for_status()
+        except httpx.HTTPStatusError:
+            resp.read()
+            raise
         for raw_line in resp.iter_lines():
             stripped = raw_line.strip()
             if not stripped:

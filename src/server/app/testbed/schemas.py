@@ -33,14 +33,7 @@ QuestionCount = Annotated[
 
 
 class QARecord(BaseModel):
-    """One QA sample as Giskard's ``QuestionSample`` expects on load.
-
-    Mirrors ``giskard.rag.testset.QuestionSample``. Unknown extras are
-    rejected (``extra='forbid'``): Giskard's ``QATestset.load`` instantiates
-    ``QuestionSample(**record)``, a dataclass that raises ``TypeError`` on
-    unexpected kwargs — so a record that's stored with extras would upload
-    fine but fail at evaluate time.
-    """
+    """One saved question, its reference answer, and optional context."""
 
     model_config = {"extra": "forbid"}
 
@@ -55,7 +48,7 @@ class QARecord(BaseModel):
 
 
 class RAGReportPayload(BaseModel):
-    """Shape of the Giskard RAG report persisted in aio_evaluations.rag_report.
+    """Shape of a Testbed evaluation report persisted in aio_evaluations.rag_report.
 
     Each field is a dict produced by ``DataFrame.to_json()`` — keys are column
     names, values are nested ``{index: cell}`` dicts. Field-level defaults

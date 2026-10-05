@@ -15,6 +15,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Optional
 
+import pandas as pd
 from fastapi import (
     APIRouter,
     File,
@@ -25,7 +26,6 @@ from fastapi import (
     UploadFile,
 )
 from fastapi import Path as PathParam
-from giskard.llm import set_llm_model
 from litellm.exceptions import APIConnectionError
 from pydantic import ValidationError
 
@@ -35,13 +35,14 @@ from server.app.api.v1.schemas.chat import MessageResponse
 from server.app.api.v1.schemas.common import ClientId
 from server.app.api.v1.schemas.testbed import Evaluation, EvaluationReport, QASetData, QASets, RejectedFile
 from server.app.core.error_detail import response_error_detail
-from server.app.core.file_utils import get_temp_directory, safe_filename
+from server.app.core.file_utils import get_temp_directory
 from server.app.core.settings import resolve_client
 from server.app.database.config import get_core_pool
 from server.app.mcp.prompts.registry import find_prompt
 from server.app.mcp.tools.schemas import get_oci_profile
 from server.app.models.litellm_utils import LiteLlmModelSpec
 from server.app.models.schemas import ModelIdentity
+from server.app.runtime.common import llm_error_detail
 from server.app.testbed.database import (
     delete_testset,
     get_evaluations,
@@ -52,16 +53,14 @@ from server.app.testbed.database import (
     upsert_qa,
 )
 from server.app.testbed.generation import (
-    _GISKARD_LOCK,
+    _TESTBED_LOCK,
     MIN_CHUNKS_PER_FILE,
-    build_knowledge_base,
-    get_giskard_config,
+    generate_qa_records,
     jsonl_to_json_content,
     load_and_split,
 )
-from server.app.testbed.metrics import CustomCorrectnessMetric
+from server.app.testbed.metrics import build_evaluation_suite
 from server.app.testbed.schemas import EvalId, QARecord, QuestionCount, TestsetId, TestsetName
-from server.patches.giskard import AgentAnswer, QATestset, evaluate
 
 LOGGER = logging.getLogger(__name__)
 
@@ -79,6 +78,13 @@ def _require_core_pool():
     if not pool:
         raise HTTPException(status_code=503, detail="CORE database is not available")
     return pool
+
+
+def _get_litellm_config(model_key: str, client: str) -> dict:
+    """Resolve a configured model into LiteLLM request parameters."""
+    identity = ModelIdentity.from_key(model_key)
+    oci_profile = get_oci_profile(client)
+    return LiteLlmModelSpec.from_model_identity(identity, oci_profile).to_litellm_kwargs()
 
 
 # ---------------------------------------------------------------------------
@@ -199,16 +205,9 @@ async def generate_testset_endpoint(
     """Generate a Q&A testset from uploaded PDF files."""
     # Fail fast: verify CORE DB is available before starting expensive LLM work.
     pool = _require_core_pool()
-    oci_profile = get_oci_profile(client)
     try:
-        ll_config = get_giskard_config(
-            LiteLlmModelSpec.from_model_identity(ModelIdentity.from_key(ll_model), oci_profile).to_litellm_kwargs(),
-            "ll",
-        )
-        embed_config = get_giskard_config(
-            LiteLlmModelSpec.from_model_identity(ModelIdentity.from_key(embed_model), oci_profile).to_litellm_kwargs(),
-            "embed",
-        )
+        ll_config = _get_litellm_config(ll_model, client)
+        embed_config = _get_litellm_config(embed_model, client)
     except ValueError as ex:
         raise HTTPException(status_code=400, detail=str(ex)) from ex
 
@@ -242,24 +241,12 @@ async def generate_testset_endpoint(
         base_q, extra = divmod(questions, num_accepted)
         for idx, (_filename, disk_path) in enumerate(accepted):
             file_questions = base_q + (1 if idx < extra else 0)
-            await _process_pdf_file(
-                disk_path, temp_directory, name, embed_config, ll_config, file_questions, full_testsets
-            )
+            await _process_pdf_file(disk_path, embed_config, ll_config, file_questions, full_testsets)
         db_id = await _store_generated_testset(full_testsets, name, pool)
         async with pool.acquire() as conn:
             qa_result = await get_testset_qa(conn, db_id)
         return QASetData(qa_data=qa_result["qa_data"], rejected_files=rejected)
 
-    except KeyError as ex:
-        if "None of" in str(ex) and "are in the columns" in str(ex):
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    f"Failed to generate questions using model '{ll_model}'. "
-                    "The model may be unavailable or retired. Please try a different model."
-                ),
-            ) from ex
-        raise
     except ValueError as ex:
         raise HTTPException(
             status_code=400,
@@ -286,7 +273,7 @@ async def evaluate_testset(
     client: Annotated[ClientId, Header()] = "server",
 ):
     """Run an evaluation against a testset using the configured chatbot and judge model."""
-    if _GISKARD_LOCK.locked():
+    if _TESTBED_LOCK.locked():
         raise HTTPException(
             status_code=409,
             detail="An evaluation is currently running, please retry once complete.",
@@ -297,23 +284,25 @@ async def evaluate_testset(
     cs.ll_model.chat_history = False
     cs.vector_search.grade = False
 
-    temp_directory = get_temp_directory(client, "testbed", unique=True)
-
     try:
         pool = _require_core_pool()
-        loaded_testset = await _load_testset_from_db(pool, tid, temp_directory)
+        qa_records = await _load_testset_from_db(pool, tid)
         judge_config, judge_prompt = _get_judge_config(judge, client)
-        answers = await _collect_answers(loaded_testset, client)
-        report = await _run_giskard_evaluation(loaded_testset, answers, judge_config, judge_prompt)
+        try:
+            report = await _run_giskard_evaluation(qa_records, client, judge_config, judge_prompt)
+        except Exception as ex:
+            detail = llm_error_detail(ex)
+            raise HTTPException(status_code=502, detail=detail) from ex
+        report_payload = _serialise_report(report)
 
         async with pool.acquire() as conn:
             eid = await insert_evaluation(
                 conn,
                 tid=tid,
                 evaluated=evaluated,
-                correctness=report.correctness,
+                correctness=report_payload.pop("correctness"),
                 settings_json=json.dumps(cs.model_dump(mode="json")),
-                rag_report=_serialise_report(report),
+                rag_report=report_payload,
             )
             await conn.commit()
 
@@ -325,7 +314,6 @@ async def evaluate_testset(
 
     finally:
         cs.ll_model.chat_history, cs.vector_search.grade = originals
-        shutil.rmtree(temp_directory, ignore_errors=True)
 
 
 # ---------------------------------------------------------------------------
@@ -338,11 +326,51 @@ def _df_to_json_safe(obj) -> dict:
 
 
 def _serialise_report(report) -> dict:
-    """Reduce a Giskard RAGReport to JSON-safe dicts (NaN/Inf → None for Oracle/FastAPI)."""
+    """Convert Giskard v3 check results to the persisted testbed report shape."""
+    rows = []
+    topic_rows = []
+    for scenario_result in report.results:
+        interaction = scenario_result.final_trace.last
+        if interaction is None:
+            continue
+        inputs = interaction.inputs
+        outputs = interaction.outputs
+        metadata = interaction.metadata
+        check_results = [result for step in scenario_result.steps for result in step.results]
+        check_result = check_results[-1] if check_results else None
+        correctness = bool(check_result and check_result.passed)
+        reason = None if correctness or check_result is None else check_result.message
+        record_metadata = metadata.get("metadata", {})
+        rows.append(
+            {
+                "id": metadata.get("id", scenario_result.scenario_name),
+                "question": inputs["question"],
+                "reference_answer": metadata.get("reference_answer", ""),
+                "reference_context": metadata.get("reference_context", ""),
+                "conversation_history": metadata.get("conversation_history", []),
+                "metadata": record_metadata,
+                "agent_answer": outputs["answer"],
+                "correctness": correctness,
+                "correctness_reason": reason,
+            }
+        )
+        topic_rows.append({"topic": record_metadata.get("topic", "General"), "correctness": correctness})
+
+    frame = pd.DataFrame(rows)
+    if not frame.empty:
+        frame.set_index("id", inplace=True)
+        correct_by_topic = pd.DataFrame(topic_rows).groupby("topic", dropna=False)["correctness"].mean().to_frame()
+        failures = frame[~frame["correctness"]]
+        correctness = float(frame["correctness"].mean())
+    else:
+        correct_by_topic = pd.DataFrame(columns=["correctness"])
+        failures = frame
+        correctness = 0.0
     return {
-        "report": _df_to_json_safe(report.to_pandas()),
-        "correct_by_topic": _df_to_json_safe(report.correctness_by_topic()),
-        "failures": _df_to_json_safe(report.failures),
+        "report": _df_to_json_safe(frame),
+        "correct_by_topic": _df_to_json_safe(correct_by_topic),
+        "failures": _df_to_json_safe(failures) if not failures.empty else {},
+        "correctness": correctness,
     }
 
 
@@ -382,26 +410,15 @@ async def _load_file_chunks(
 
 
 async def _process_pdf_file(
-    disk_path: Path,
-    temp_directory: Path,
-    name: str,
-    embed_config: dict,
-    ll_config: dict,
-    questions: int,
-    full_testsets: Path,
+    disk_path: Path, embed_config: dict, ll_config: dict, questions: int, full_testsets: Path
 ) -> None:
-    """Build a Giskard testset from one saved PDF and append to the combined JSONL."""
+    """Generate grounded Q&A records from one saved PDF and append them to JSONL."""
     text_nodes = await asyncio.to_thread(load_and_split, disk_path, embed_config.get("max_chunk_size", 512))
-    async with _GISKARD_LOCK:
-        test_set = await asyncio.to_thread(build_knowledge_base, text_nodes, questions, ll_config, embed_config)
-
-    test_set_filename = temp_directory / safe_filename(f"{name}.jsonl")
-    test_set.save(test_set_filename)
-    with (
-        open(test_set_filename, "r", encoding="utf-8") as source,
-        open(full_testsets, "a", encoding="utf-8") as destination,
-    ):
-        destination.write(source.read())
+    async with _TESTBED_LOCK:
+        qa_records = await generate_qa_records(text_nodes, questions, ll_config, embed_config)
+    with open(full_testsets, "a", encoding="utf-8") as destination:
+        for record in qa_records:
+            destination.write(json.dumps(record, ensure_ascii=False) + "\n")
 
 
 async def _store_generated_testset(full_testsets: Path, name: str, pool) -> str:
@@ -415,24 +432,18 @@ async def _store_generated_testset(full_testsets: Path, name: str, pool) -> str:
     return db_id
 
 
-async def _load_testset_from_db(pool, tid: str, temp_directory: Path):
-    """Load a QATestset from the database via a temporary file."""
+async def _load_testset_from_db(pool, tid: str) -> list[QARecord]:
+    """Load saved Q&A records for Giskard scenario construction."""
     async with pool.acquire() as conn:
         testset_data = await get_testset_qa(conn, tid.upper())
-    qa_test = "\n".join(item if isinstance(item, str) else json.dumps(item) for item in testset_data["qa_data"])
-    temp_file = temp_directory / f"{tid}_output.txt"
-    temp_file.write_text(qa_test, encoding="utf-8")
-    return QATestset.load(temp_file)
+    records = [json.loads(item) if isinstance(item, str) else item for item in testset_data["qa_data"]]
+    return [QARecord.model_validate(record) for record in records]
 
 
 def _get_judge_config(judge: str, client: str) -> tuple[dict, str]:
     """Parse the judge model key, build its config, and retrieve the judge prompt."""
-    oci_profile = get_oci_profile(client)
     try:
-        judge_identity = ModelIdentity.from_key(judge)
-        judge_config = get_giskard_config(
-            LiteLlmModelSpec.from_model_identity(judge_identity, oci_profile).to_litellm_kwargs(), "ll"
-        )
+        judge_config = _get_litellm_config(judge, client)
     except ValueError as ex:
         raise HTTPException(status_code=400, detail=str(ex)) from ex
     pc = find_prompt("optimizer_testbed-judge")
@@ -441,40 +452,20 @@ def _get_judge_config(judge: str, client: str) -> tuple[dict, str]:
     return judge_config, pc.text
 
 
-async def _run_giskard_evaluation(loaded_testset, answers, judge_config: dict, judge_prompt: str):
-    """Run Giskard evaluation under the serialization lock."""
-    async with _GISKARD_LOCK:
-        custom_metric = CustomCorrectnessMetric(
-            name="correctness",
-            system_prompt=judge_prompt,
-            agent_description="A chatbot answering questions.",
-        )
+async def _run_giskard_evaluation(qa_records, client: str, judge_config: dict, judge_prompt: str):
+    """Run the Giskard v3 evaluation suite under the serialization lock."""
+    async with _TESTBED_LOCK:
+        orchestrator = get_orchestrator()
 
-        def _run():
-            set_llm_model(**judge_config)
-            return evaluate(answers, testset=loaded_testset, metrics=[custom_metric])
+        async def target(inputs: dict) -> dict:
+            result = await orchestrator.execute_chat(
+                question=inputs["question"],
+                client=client,
+            )
+            content = result.get("result", "") or ""
+            if isinstance(content, dict):
+                content = json.dumps(content, default=str)
+            return {"answer": content}
 
-        try:
-            return await asyncio.to_thread(_run)
-        except KeyError as ex:
-            if str(ex) == "'correctness'":
-                raise HTTPException(
-                    status_code=500, detail="Unable to determine the correctness; please retry."
-                ) from ex
-            raise
-
-
-async def _collect_answers(loaded_testset, client: str) -> list:
-    """Collect answers from the chatbot for all questions in the testset."""
-    orchestrator = get_orchestrator()
-    answers = []
-    for sample in loaded_testset.to_pandas().itertuples():
-        result = await orchestrator.execute_chat(
-            question=sample.question,
-            client=client,
-        )
-        content = result.get("result", "") or ""
-        if isinstance(content, dict):
-            content = json.dumps(content, default=str)
-        answers.append(AgentAnswer(message=content))
-    return answers
+        suite = build_evaluation_suite(qa_records, target, judge_config, judge_prompt)
+        return await suite.run(parallel=False, return_exception=False, verbose=False)

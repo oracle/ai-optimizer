@@ -44,6 +44,13 @@ def clean_llm_error(exc: BaseException) -> str:
     return msg or "An unexpected LLM error occurred."
 
 
+def llm_error_detail(exc: BaseException) -> str:
+    """Preserve the exception type alongside the cleaned provider message."""
+    message = clean_llm_error(exc)
+    prefix = f"{type(exc).__name__}:"
+    return message if message.startswith(prefix) else f"{prefix} {message}"
+
+
 class HistoryStore:
     """Per-client in-memory conversation message store."""
 
@@ -260,6 +267,7 @@ _CLASSIFIER_REQUIRED_SUBSTRINGS = (
 
 # Required str.format slots in an admin-supplied synthesis template.
 _SYNTHESIS_REQUIRED_SLOTS = ("{system_prompt}", "{query}", "{sql_answer}", "{search_answer}")
+
 
 def validate_classifier_prompt(text: str) -> bool:
     """Return False if any decision token or the ``{{query}}`` slot is missing."""

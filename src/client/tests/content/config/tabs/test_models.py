@@ -1104,6 +1104,9 @@ class TestPullModelDialog:
             patch(f"{MODULE}.api_post_stream", return_value=iter(events)),
             patch(f"{MODULE}.helpers") as hlp,
         ):
+            from client.app.core.helpers import format_error
+
+            hlp.format_error.side_effect = format_error
             self._unwrap()("ollama", "llama3")
 
         mock_st.error.assert_called_once()

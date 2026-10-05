@@ -278,6 +278,27 @@ class TestStreamChat:
 
         return client_ctx
 
+    async def test_http_error_retains_response_detail(self):
+        """A failed chat stream exposes its JSON detail after the stream closes."""
+        from client.app.content.chatbot import _stream_chat
+        from client.app.core.helpers import format_error
+
+        detail = "AuthenticationError: Incorrect API key provided: sk-proj-****AQEA."
+        client = httpx.AsyncClient(
+            transport=httpx.MockTransport(lambda _request: httpx.Response(502, json={"detail": detail}))
+        )
+        with (
+            patch(f"{MODULE}.httpx.AsyncClient", return_value=client),
+            patch(f"{MODULE}._base_url", return_value="http://test/v1"),
+            patch(f"{MODULE}._headers", return_value={}),
+            patch(f"{MODULE}.state", _make_state()),
+            pytest.raises(httpx.HTTPStatusError) as caught,
+        ):
+            async for _ in _stream_chat([{"role": "user", "content": "Hello"}], {}):
+                pass
+
+        assert format_error(caught.value) == "**AuthenticationError**\n\nIncorrect API key provided"
+
     async def test_yields_chunks(self):
         """Stream chunks are yielded as text content."""
         state = _make_state()

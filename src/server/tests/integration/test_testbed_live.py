@@ -16,10 +16,8 @@ import pytest
 pytestmark = [pytest.mark.live_oci, pytest.mark.integration]
 
 
-async def test_giskard_generation_and_evaluation_without_matplotlib(
-    live_oci_genai_models, live_oci_litellm_kwargs, tmp_path: Path
-):
-    """Generate and judge real questions through OCI in a fresh, unmocked process."""
+async def test_giskard_v3_generation_and_evaluation(live_oci_genai_models, live_oci_litellm_kwargs, tmp_path: Path):
+    """Generate grounded questions and evaluate a Giskard v3 suite through OCI."""
     models = [model for model in live_oci_genai_models if model.get("region") == os.environ["AIO_GENAI_REGION"]]
     chat_models = sorted(
         model["model_name"]
@@ -34,22 +32,18 @@ async def test_giskard_generation_and_evaluation_without_matplotlib(
     if not chat_models or not embedding_models:
         pytest.skip("Requires Google CHAT and Cohere TEXT_EMBEDDINGS models in the configured OCI region")
 
-    code = textwrap.dedent("""
+    code = textwrap.dedent(
+        """
         import asyncio
         import json
         import sys
-        from importlib.util import find_spec
-        from pathlib import Path
 
-        assert find_spec("matplotlib") is None, "Run this test in an environment without matplotlib"
-        from server.app.api.v1.endpoints.testbed import _run_giskard_evaluation, _serialise_report
-        from server.app.testbed.generation import build_knowledge_base, get_giskard_config
-        from server.patches.giskard import AgentAnswer, QATestset
+        from server.app.api.v1.endpoints.testbed import _serialise_report
+        from server.app.testbed.generation import generate_qa_records
+        from server.app.testbed.metrics import build_evaluation_suite
         from llama_index.core.schema import TextNode
 
         config = json.load(sys.stdin)
-        ll_config = get_giskard_config(config["chat"], "ll")
-        embed_config = get_giskard_config(config["embedding"], "embed")
         destinations = [
             ("France", "Paris", "French", "Eiffel Tower"),
             ("Italy", "Rome", "Italian", "Colosseum"),
@@ -69,26 +63,28 @@ async def test_giskard_generation_and_evaluation_without_matplotlib(
                           f"Visitors to {capital} can see the {landmark}.")
             for country, capital, language, landmark in destinations
         ]
-        testset = build_knowledge_base(nodes, 2, ll_config, embed_config)
-        assert len(testset) == 2
-        assert set(testset.get_metadata_values("question_type")) == {"simple", "complex"}
-        assert all(sample.question and sample.reference_answer for sample in testset.samples)
-        testset.save("generated.jsonl")
-        restored = QATestset.load("generated.jsonl")
-        answers = [AgentAnswer(message=sample.reference_answer) for sample in restored.samples]
-        report = asyncio.run(_run_giskard_evaluation(
-            restored, answers, ll_config,
-            "Compare the agent answer to the expected answer. Equivalent answers are correct.",
-        ))
-        payload = _serialise_report(report)
+        qa_records = asyncio.run(generate_qa_records(nodes, 2, config["chat"], config["embedding"]))
+        assert len(qa_records) == 2
+        assert all(record["question"] and record["reference_answer"] for record in qa_records)
+
+        references = {record["question"]: record["reference_answer"] for record in qa_records}
+
+        async def target(inputs):
+            return {"answer": references[inputs["question"]]}
+
+        suite = build_evaluation_suite(
+            qa_records,
+            target,
+            config["chat"],
+            "Compare the agent answer with the expected answer. Semantically equivalent answers are correct.",
+        )
+        result = asyncio.run(suite.run(verbose=False))
+        payload = _serialise_report(result)
         assert len(payload["report"]["correctness"]) == 2
-        assert all(value is True for value in payload["report"]["correctness"].values())
-        assert report.correctness == 1.0
-        report.save("live-report")
-        assert "Bokeh" in Path("live-report/report.html").read_text()
-        assert "matplotlib" not in sys.modules
-        print("Live Giskard generation, evaluation, serialization and rendering passed")
-    """)
+        assert payload["correctness"] == 1.0
+        print("Live Giskard v3 generation and suite evaluation passed")
+        """
+    )
     result = await asyncio.to_thread(
         subprocess.run,
         [sys.executable, "-B", "-c", code],

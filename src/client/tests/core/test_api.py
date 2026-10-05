@@ -75,6 +75,24 @@ def _mock_client_ctx(response=None, side_effect=None):
     return ctx, instance
 
 
+def test_stream_http_error_retains_response_detail():
+    """A failed streaming request exposes its JSON detail after the stream closes."""
+    from client.app.core.api import api_post_stream
+    from client.app.core.helpers import format_error
+
+    detail = "AuthenticationError: OpenAIException - Incorrect API key provided: sk-proj-****AQEA."
+    client = httpx.Client(transport=httpx.MockTransport(lambda _request: httpx.Response(502, json={"detail": detail})))
+    with (
+        patch(f"{MODULE}.httpx.Client", return_value=client),
+        patch(f"{MODULE}._base_url", return_value="http://test/v1"),
+        patch(f"{MODULE}._headers", return_value={}),
+        pytest.raises(httpx.HTTPStatusError) as caught,
+    ):
+        list(api_post_stream("models/pull/openai/model"))
+
+    assert format_error(caught.value) == "**AuthenticationError**\n\nIncorrect API key provided"
+
+
 # ---------------------------------------------------------------------------
 # _base_url
 # ---------------------------------------------------------------------------
@@ -621,7 +639,6 @@ class TestGetServerSettings:
         assert result == {"settings": "ok"}
         assert mock_cls.call_args.kwargs["verify"] is True
 
-
     def test_http_error_returns_none(self):
         """Verify get_server_settings returns None when the server is unreachable."""
         fail_resp = _resp(503, json_data={"detail": "down"})
@@ -654,7 +671,6 @@ class TestGetServerSettings:
         _, kwargs = instance.get.call_args
         assert kwargs["params"]["client"] == "my-client"
         assert "include_sensitive" not in kwargs["params"]
-
 
     def test_include_sensitive_routes_to_export(self):
         """``include_sensitive=True`` triggers the export helper."""
@@ -980,8 +996,8 @@ class TestStartServer:
         # ``settings.api_key`` is a ``SecretStr`` after migration; reveal it
         # for the assertion.
         from client.app.core.secrets import reveal
-        assert reveal(settings.api_key) == "generated-key"
 
+        assert reveal(settings.api_key) == "generated-key"
 
 
 # ---------------------------------------------------------------------------

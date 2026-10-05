@@ -48,7 +48,7 @@ def _drop_vector_store(db_alias: str, table_name: str) -> None:
         helpers.refresh_settings()
         state["runtime_database_selector"] = db_alias
     except httpx.HTTPStatusError as exc:
-        st.error(f"Drop failed: {helpers.extract_error_detail(exc)}")
+        st.error(helpers.format_error(exc, context="Drop failed"), icon="🚨")
 
 
 def _handle_form_submit(selected: str, is_new: bool, alias: str, form_data: dict, db_config: dict) -> bool:
@@ -103,7 +103,7 @@ def _handle_form_submit(selected: str, is_new: bool, alias: str, form_data: dict
         st.error(msg)
         return False
     except httpx.HTTPStatusError as exc:
-        st.error(f"Error: {helpers.extract_error_detail(exc)}")
+        st.error(helpers.format_error(exc), icon="🚨")
         return False
 
 
@@ -114,7 +114,7 @@ def _remove_database(selected: str) -> None:
             api_delete(f"databases/{selected}")
         helpers.refresh_settings()
     except httpx.HTTPStatusError as exc:
-        st.error(f"Remove failed: {helpers.extract_error_detail(exc)}")
+        st.error(helpers.format_error(exc, context="Remove failed"), icon="🚨")
 
 
 #####################################################
@@ -170,7 +170,7 @@ def _render_databases(database_lookup: dict, database_aliases: list, current_ali
     # Configuration Form
     with st.container(border=True):
         if (connect_warning := state.pop("_db_connect_warning", None)) is not None:
-            st.warning(f"Saved, but connection failed: {connect_warning}")
+            st.warning(helpers.format_error(connect_warning, context="Saved, but connection failed"))
         if fields_disabled:
             st.info("CORE is the persistence database and cannot be modified while connected.", icon="ℹ️")
         if force_core:

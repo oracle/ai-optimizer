@@ -262,7 +262,7 @@ def _render_oci_genai_section(oci_lookup: dict, selected_oci_auth_profile: str, 
                 except httpx.HTTPStatusError as ex:
                     state.genai_models = []
                     st.error(
-                        f"Unable to list OCI GenAI models: {helpers.extract_error_detail(ex)}",
+                        helpers.format_error(ex, context="Unable to list OCI GenAI models"),
                         icon="🚨",
                     )
 
@@ -287,7 +287,7 @@ def _render_oci_genai_section(oci_lookup: dict, selected_oci_auth_profile: str, 
                         _create_genai_models(selected_oci_auth_profile)
                     except httpx.HTTPStatusError as ex:
                         st.error(
-                            f"Unable to enable OCI GenAI models: {helpers.extract_error_detail(ex)}",
+                            helpers.format_error(ex, context="Unable to enable OCI GenAI models"),
                             icon="🚨",
                         )
                         st.stop()
@@ -316,7 +316,7 @@ def _get_oci(force: bool = False) -> None:
             state["settings"]["oci_configs"] = detailed
             state["_oci_sensitive_loaded"] = True
         except httpx.HTTPStatusError as ex:
-            st.error(f"Unable to load OCI configs: {helpers.extract_error_detail(ex)}", icon="🚨")
+            st.error(helpers.format_error(ex, context="Unable to load OCI configs"), icon="🚨")
 
 
 def _get_genai_models(auth_profile: str) -> list[dict]:
@@ -342,7 +342,7 @@ def _create_oci(auth_profile: str | None, supplied: dict) -> None:
         _get_oci(force=True)
         state["_pending_oci_select"] = name
     except httpx.HTTPStatusError as exc:
-        st.error(f"Error: {helpers.extract_error_detail(exc)}")
+        st.error(helpers.format_error(exc), icon="🚨")
 
 
 def _remove_oci(auth_profile: str) -> None:
@@ -352,7 +352,7 @@ def _remove_oci(auth_profile: str) -> None:
             api_delete(f"oci/{auth_profile}")
         _get_oci(force=True)
     except httpx.HTTPStatusError as exc:
-        st.error(f"Remove failed: {helpers.extract_error_detail(exc)}")
+        st.error(helpers.format_error(exc, context="Remove failed"), icon="🚨")
 
 
 def _update_oci(auth_profile: str, supplied: dict, toast: bool = True) -> bool:
@@ -381,7 +381,7 @@ def _update_oci(auth_profile: str, supplied: dict, toast: bool = True) -> bool:
             LOGGER.info("OCI Profile updated: %s", auth_profile)
         except httpx.HTTPStatusError as ex:
             LOGGER.error("OCI Update failed: %s", ex)
-            st.error(f"Update Failed: {helpers.extract_error_detail(ex)}", icon="🚨")
+            st.error(helpers.format_error(ex, context="Update Failed"), icon="🚨")
             _get_oci(force=True)
             return False
         helpers.refresh_settings()

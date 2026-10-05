@@ -32,7 +32,7 @@ def _client_header() -> dict:
 
 
 def _error(prefix: str, exc: httpx.HTTPStatusError) -> None:
-    st.error(f"{prefix}: {helpers.extract_error_detail(exc)}")
+    st.error(helpers.format_error(exc, context=prefix), icon="🚨")
 
 
 def _db_alias():

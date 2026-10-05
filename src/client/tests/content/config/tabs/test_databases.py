@@ -637,9 +637,9 @@ class TestHTTPErrorFeedback:
             patch(f"{MODULE}.helpers") as hlp,
             patch(f"{MODULE}.api_post", side_effect=error),
         ):
-            from client.app.core.helpers import extract_error_detail
+            from client.app.core.helpers import format_error
 
-            hlp.extract_error_detail.side_effect = extract_error_detail
+            hlp.format_error.side_effect = format_error
             _handle_form_submit("Add New...", True, "DUP", form_data, {})
 
         error_messages = [call.args[0] for call in mock_st.error.call_args_list]
@@ -886,16 +886,17 @@ class TestHandleFormSubmitErrors:
         error_messages = [call.args[0] for call in mock_st.error.call_args_list]
         assert any("Vector config locked" in m for m in error_messages)
 
-    def test_empty_response_content_falls_back_to_str(self, make_state, mock_st):
-        """When exc.response.content is empty, falls back to str(exc)."""
+    def test_empty_response_content_shows_http_status(self, make_state, mock_st):
+        """An empty response shows its HTTP status without a request URL."""
         from client.app.content.config.tabs.databases import _handle_form_submit
 
         state = make_state(["MYDB"], "MYDB")
         db_config = {"username": "old"}
         form_data = {"username": "user"}
 
-        mock_resp = MagicMock(status_code=500, content=b"")
-        error = httpx.HTTPStatusError("raw error text", request=MagicMock(), response=mock_resp)
+        request = httpx.Request("PUT", "http://test")
+        response = httpx.Response(500, request=request)
+        error = httpx.HTTPStatusError("raw error text", request=request, response=response)
 
         with (
             patch(f"{MODULE}.state", state),
@@ -905,7 +906,7 @@ class TestHandleFormSubmitErrors:
             _handle_form_submit("MYDB", False, "MYDB", form_data, db_config)
 
         error_messages = [call.args[0] for call in mock_st.error.call_args_list]
-        assert any("raw error text" in m for m in error_messages)
+        assert any("500 Internal Server Error" in m for m in error_messages)
 
 
 # ---------------------------------------------------------------------------
@@ -1013,9 +1014,9 @@ class TestDropVectorStore:
             patch(f"{MODULE}.state", state),
             patch(f"{MODULE}.helpers") as hlp,
         ):
-            from client.app.core.helpers import extract_error_detail
+            from client.app.core.helpers import format_error
 
-            hlp.extract_error_detail.side_effect = extract_error_detail
+            hlp.format_error.side_effect = format_error
             _drop_vector_store("MYDB", "MISSING")
 
         error_messages = [call.args[0] for call in mock_st.error.call_args_list]
@@ -1261,7 +1262,7 @@ class TestActiveEmbedJobsPanelWiring:
             patch(f"{MODULE}.api_get", return_value={"alias": "CORE"}),
             patch(
                 f"{MODULE}._render_databases",
-                side_effect=lambda *a, **k: (call_order.append("databases") or ("CORE", False)),
+                side_effect=lambda *a, **k: call_order.append("databases") or ("CORE", False),
             ),
             patch(
                 f"{MODULE}._render_vector_stores",
@@ -1305,7 +1306,7 @@ class TestActiveEmbedJobsPanelWiring:
             patch(f"{MODULE}.helpers") as hlp,
             patch(
                 f"{MODULE}._render_databases",
-                side_effect=lambda *a, **k: (call_order.append("databases") or ("Add New...", True)),
+                side_effect=lambda *a, **k: call_order.append("databases") or ("Add New...", True),
             ),
             patch(
                 f"{MODULE}._render_vector_stores",

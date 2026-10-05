@@ -46,7 +46,7 @@ def _save_prompt(prompt_name: str | None, new_prompt: str | None, current_prompt
         api_put(f"prompts/{prompt_name}", json={"text": new_prompt}, toast="Prompt saved.")
         helpers.refresh_settings()
     except httpx.HTTPStatusError as exc:
-        st.error(f"Prompt not saved: {helpers.extract_error_detail(exc)}")
+        st.error(helpers.format_error(exc, context="Prompt not saved"), icon="🚨")
 
 
 def _reset_prompt(prompt_name: str) -> None:
@@ -55,7 +55,7 @@ def _reset_prompt(prompt_name: str) -> None:
         api_post(f"prompts/{prompt_name}/reset", toast="Prompt reset to default.")
         helpers.refresh_settings()
     except httpx.HTTPStatusError as exc:
-        st.error(f"Prompt not reset: {helpers.extract_error_detail(exc)}")
+        st.error(helpers.format_error(exc, context="Prompt not reset"), icon="🚨")
 
 
 def _export_prompts() -> str:
@@ -93,7 +93,7 @@ def _import_prompts(uploaded_file) -> None:
     except json.JSONDecodeError:
         st.toast("Invalid JSON file format.", icon="❌")
     except httpx.HTTPStatusError as exc:
-        st.toast(f"Failed to import prompts: {helpers.extract_error_detail(exc)}", icon="❌")
+        st.toast(helpers.format_error(exc, context="Failed to import prompts"), icon="❌")
 
 
 def _reset_all_prompts() -> None:
@@ -102,7 +102,7 @@ def _reset_all_prompts() -> None:
         api_post("prompts/reset", toast="All prompts reset to defaults.")
         helpers.refresh_settings()
     except httpx.HTTPStatusError as exc:
-        st.error(f"Failed to reset prompts: {helpers.extract_error_detail(exc)}")
+        st.error(helpers.format_error(exc, context="Failed to reset prompts"), icon="🚨")
 
 
 #####################################################

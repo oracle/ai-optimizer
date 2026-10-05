@@ -2,26 +2,15 @@
 Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 
-Custom metrics for testbed evaluation.
-
-This module provides a customizable correctness metric for evaluating chatbot answers
-against reference answers. Unlike Giskard's default CorrectnessMetric which has a
-hardcoded prompt, this allows the system prompt to be configured via MCP prompts.
+Giskard checks for testbed evaluation.
 """
-# spell-checker:ignore giskard
+# spell-checker:ignore giskard litellm
 
-from typing import Any
+import json
+from typing import Any, cast
 
-from giskard.llm.client import ChatMessage, get_default_client
-from giskard.llm.errors import LLMGenerationError
-
-from server.patches.giskard import parse_json_output
-
-
-def format_conversation(conversation: list[dict]) -> str:
-    """Format conversation history as XML-like tags for the evaluation prompt."""
-    return "\n\n".join([f"<{msg['role'].lower()}>{msg['content']}</{msg['role'].lower()}>" for msg in conversation])
-
+import litellm
+from giskard.checks import Check, CheckResult, Scenario, Suite
 
 CORRECTNESS_INPUT_TEMPLATE = """
 ### AGENT DESCRIPTION
@@ -41,81 +30,104 @@ You MUST respond with ONLY a valid JSON object (no markdown, no extra text) with
 """
 
 
-class CustomCorrectnessMetric:
-    """Custom correctness metric with configurable system prompt.
+def format_conversation(conversation: list[dict]) -> str:
+    """Format conversation history as XML-like tags for the evaluation prompt."""
+    return "\n\n".join(f"<{msg['role'].lower()}>{msg['content']}</{msg['role'].lower()}>" for msg in conversation)
 
-    Designed to be compatible with Giskard's evaluate() which calls metrics as
-    callables.
-    """
 
-    def __init__(
-        self,
-        name: str,
-        system_prompt: str,
-        llm_client=None,
-        agent_description: str | None = None,
-    ):
-        """Initialize the custom correctness metric.
+def _record_value(record: Any, name: str, default: Any = None) -> Any:
+    if isinstance(record, dict):
+        return record.get(name, default)
+    return getattr(record, name, default)
 
-        Args:
-            name: The metric name (typically "correctness").
-            system_prompt: The system prompt for the judge LLM.
-            llm_client: Optional LLM client. If not provided, uses Giskard's default.
-            agent_description: Description of the agent being evaluated.
-        """
-        self.name = name
-        self._llm_client = llm_client
-        self.system_prompt = system_prompt
-        self.agent_description = agent_description or "A chatbot answering questions."
 
-    def __call__(self, question_sample: Any, answer: Any) -> dict:
-        """Evaluate correctness of agent answer vs reference."""
-        return self.evaluate(question_sample, answer)
+def _parse_json_object(content: str) -> dict:
+    start = content.find("{")
+    end = content.rfind("}")
+    if start < 0 or end < start:
+        raise ValueError("The judge returned invalid JSON")
+    try:
+        result = json.loads(content[start : end + 1])
+    except json.JSONDecodeError as ex:
+        raise ValueError("The judge returned invalid JSON") from ex
+    if not isinstance(result, dict):
+        raise ValueError("The judge returned an invalid result")
+    return result
 
-    def evaluate(self, question_sample: Any, answer: Any) -> dict:
-        """Score a single question-answer pair for correctness."""
-        llm_client = self._llm_client or get_default_client()
-        try:
-            out = llm_client.complete(
-                messages=[
-                    ChatMessage(role="system", content=self.system_prompt),
-                    ChatMessage(
-                        role="user",
-                        content=CORRECTNESS_INPUT_TEMPLATE.format(
-                            conversation=format_conversation(
-                                question_sample.conversation_history
-                                + [{"role": "user", "content": question_sample.question}]
-                            ),
-                            answer=answer.message,
-                            reference_answer=question_sample.reference_answer,
-                            description=self.agent_description,
-                        ),
-                    ),
-                ],
-                temperature=0,
-                format="json_object",
-            )
 
-            json_output = parse_json_output(
-                out.content or "",
-                llm_client=llm_client,
-                keys=["correctness", "correctness_reason"],
-                caller_id=self.__class__.__name__,
-            )
+@Check.register("testbed_correctness")
+class CustomCorrectnessCheck(Check):
+    """Judge whether an agent answer matches the reference answer."""
 
-            if "correctness" in json_output and not isinstance(json_output["correctness"], bool):
-                raise LLMGenerationError(
-                    f"Error in correctness evaluation: {json_output['correctness']}. "
-                    "Expected boolean value for 'correctness' key."
-                )
+    judge_config: dict[str, Any]
+    system_prompt: str
+    agent_description: str = "A chatbot answering questions."
 
-            # Strip correctness_reason when correct (LLM sometimes includes it anyway)
-            if json_output.get("correctness") is True:
-                json_output.pop("correctness_reason", None)
+    async def run(self, trace: Any) -> CheckResult:
+        interaction = trace.last
+        if interaction is None:
+            return CheckResult.error(message="The evaluation scenario has no interaction")
 
-            return json_output
+        question = interaction.inputs["question"]
+        answer = interaction.outputs["answer"]
+        history = interaction.metadata.get("conversation_history", [])
+        conversation = format_conversation(history + [{"role": "user", "content": question}])
+        user_message = CORRECTNESS_INPUT_TEMPLATE.format(
+            conversation=conversation,
+            answer=answer,
+            reference_answer=interaction.metadata["reference_answer"],
+            description=self.agent_description,
+        )
+        request = {
+            **self.judge_config,
+            "messages": [
+                {"role": "system", "content": self.system_prompt},
+                {"role": "user", "content": user_message},
+            ],
+            "stream": False,
+            "temperature": 0,
+            "response_format": {"type": "json_object"},
+        }
+        response = await litellm.acompletion(**request)
+        result = _parse_json_object(cast(litellm.ModelResponse, response).choices[0].message.content or "")
+        correctness = result.get("correctness")
+        if not isinstance(correctness, bool):
+            raise ValueError("Expected a boolean 'correctness' value from the judge")
 
-        except LLMGenerationError:
-            raise
-        except Exception as err:
-            raise LLMGenerationError("Error while evaluating the agent") from err
+        if correctness:
+            return CheckResult.success(details={"correctness": True})
+
+        reason = str(result.get("correctness_reason") or "The answer does not match the reference answer.").strip()
+        return CheckResult.failure(
+            message=reason,
+            details={"correctness": False, "correctness_reason": reason},
+        )
+
+
+def build_evaluation_suite(
+    qa_records: list[Any],
+    target,
+    judge_config: dict,
+    judge_prompt: str,
+) -> Suite:
+    """Create a Giskard v3 suite with one correctness check per Q&A record."""
+    suite = Suite(name="Testbed evaluation", target=target)
+    for index, record in enumerate(qa_records):
+        question = _record_value(record, "question", "")
+        history = _record_value(record, "conversation_history", []) or []
+        reference_answer = _record_value(record, "reference_answer", "")
+        metadata = _record_value(record, "metadata", {}) or {}
+        scenario = Scenario(name=f"question-{index + 1}")
+        scenario.interact(
+            inputs={"question": question},
+            metadata={
+                "id": _record_value(record, "id", str(index)),
+                "conversation_history": history,
+                "reference_answer": reference_answer,
+                "reference_context": _record_value(record, "reference_context", ""),
+                "metadata": metadata,
+            },
+        )
+        scenario.check(CustomCorrectnessCheck(judge_config=judge_config, system_prompt=judge_prompt))
+        suite.append(scenario)
+    return suite

@@ -10,7 +10,7 @@ build-backend = "setuptools.build_meta"
 name = "ai-optimizer"
 dynamic = ["version"]
 description = "Oracle AI Optimizer and Toolkit"
-requires-python = ">=3.11,<3.13"
+requires-python = ">=3.12,<3.15,!=3.14.1"
 license =  "UPL-1.0"
 authors = [
     {name = "Oracle", email = "obaas_ww@oracle.com"}
@@ -28,29 +28,26 @@ dependencies = [
 # Server component dependencies
 # - server: server side only
 server = [
-    "bokeh==3.9.2",
-    "datasets>=5.0.1",
-    "docling==2.132.0",
-    "evaluate>=0.4.6",
+    "docling==2.133.0",
     "faiss-cpu==1.15.1",
+    "fastapi==0.142.2",
     "fastmcp==3.4.7",
-    "giskard==2.19.2",
+    "giskard==3.0.1",
     "langchain-litellm==0.11.0",
     "langchain-mcp-adapters==0.3.2",
     "langchain-oracledb==1.6.0",
-    "litellm==1.103.2",
+    "litellm==1.104.0",
     "llama-index-core==0.14.25",
     "oci~=2.0",
     "pyagentspec==26.3.1",
     "pypdf==6.19.0",
-    "umap-learn==0.5.12",
     "torch", # Direct requirement to select the CPU-only PyTorch distribution for Docling.
     "torchvision", # Direct requirement to select the CPU-only PyTorch distribution for Docling.
 ]
 
 # - client: client side only
 client = [
-    "streamlit==1.64.0",
+    "streamlit==1.65.0",
 ]
 
 # - otel: opentelemetry collector for server-side observability
@@ -115,9 +112,6 @@ py-modules = ["_version", "entrypoint", "logging_config", "logging_redaction", "
 
 [tool.setuptools.package-dir]
 "" = "src"
-
-[tool.setuptools.package-data]
-"server.patches" = ["LICENSE.giskard", "README.md"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

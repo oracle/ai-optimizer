@@ -20,6 +20,7 @@ set (typically via ``.env.pytest`` at the repo root).
 """
 
 import os
+from typing import cast
 from unittest.mock import patch
 
 import litellm
@@ -38,13 +39,15 @@ def cohere_embed_models(live_oci_genai_models) -> list[str]:
     embedding calls are routed; same ``model_name`` may appear across regions.
     """
     region = os.environ["AIO_GENAI_REGION"]
-    models = sorted({
-        m["model_name"]
-        for m in live_oci_genai_models
-        if (m.get("vendor") or "").lower() == "cohere"
-        and "TEXT_EMBEDDINGS" in (m.get("capabilities") or [])
-        and m.get("region") == region
-    })
+    models = sorted(
+        {
+            m["model_name"]
+            for m in live_oci_genai_models
+            if (m.get("vendor") or "").lower() == "cohere"
+            and "TEXT_EMBEDDINGS" in (m.get("capabilities") or [])
+            and m.get("region") == region
+        }
+    )
     if not models:
         pytest.skip(
             f"no Cohere TEXT_EMBEDDINGS models in region {region} "
@@ -68,10 +71,13 @@ async def test_litellm_embedding_accepts(cohere_embed_models, live_oci_litellm_k
     failures: list[str] = []
     for model_id in cohere_embed_models:
         try:
-            response = litellm.embedding(
-                model=_litellm_id(model_id),
-                input=["Embed this sentence."],
-                **live_oci_litellm_kwargs,
+            response = cast(
+                litellm.EmbeddingResponse,
+                litellm.embedding(
+                    model=_litellm_id(model_id),
+                    input=["Embed this sentence."],
+                    **live_oci_litellm_kwargs,
+                ),
             )
             if not response.data:
                 raise AssertionError("empty data in response")
@@ -105,9 +111,7 @@ async def test_litellm_embeddings_wrapper_embeds_documents_and_query(cohere_embe
     assert len(query_vector) == len(doc_vectors[0])
 
 
-async def test_litellm_embeddings_wrapper_chunks_inputs_against_oci(
-    cohere_embed_models, live_oci_litellm_kwargs
-):
+async def test_litellm_embeddings_wrapper_chunks_inputs_against_oci(cohere_embed_models, live_oci_litellm_kwargs):
     """End-to-end: 100 inputs through the wrapper chunk to ≤96 per OCI call.
 
     Pins the chunking guarantee preserved from the prior OCIGenAIEmbeddings

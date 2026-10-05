@@ -6,12 +6,12 @@ sidebar_position: 10
 {/* Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl. */}
 
-The **Oracle AI Optimizer and Toolkit** (the **AI Optimizer**) integrates with [Giskard](https://www.giskard.ai/) to generate and evaluate Q&A test sets. You can create a test set from PDFs or upload an existing [JSON/JSONL](#upload-an-existing-test-set) test set.
+The **Oracle AI Optimizer and Toolkit** (the **AI Optimizer**) uses [Giskard v3](https://www.giskard.ai/) checks to evaluate Q&A test sets. Generate a test set from PDFs or upload an existing [JSON/JSONL](#upload-an-existing-test-set) test set.
 
 During evaluation, the configured agent route answers each question and an LLM judge compares the response with the reference answer.
 
 ## Generate Q&A Test Set
-From the **Testbed** page, enable **Generate Q&A Test Set**, upload one or more PDF files, select the Q&A language/embedding models, and specify the number of Q&A pairs to generate:
+From the **Testbed** page, enable **Generate Q&A Test Set**, upload one or more PDF files, select the question-generation language model and embedding model, and specify the number of Q&A pairs to generate:
 
 ![GenerateNew](../_assets/images/testbed-generate.png)
 
@@ -21,7 +21,7 @@ Use a model that suits the quality and cost requirements of your evaluation.
 Use a higher-capability model to generate Q&A pairs, even if you plan to use a more cost-effective model in production. A higher-quality test set provides a more reliable evaluation of the production configuration.
 :::
 
-The generation process creates the requested number of Q&A pairs and identifies topics that help classify the generated questions.
+The generation process creates the requested number of grounded Q&A pairs and assigns topics to help classify the questions. The embedding model helps choose passages from different parts of each PDF.
 
 Once complete, the generated test set is displayed in a table. You can edit or delete Q&A pairs and download the test set for offline use:
 

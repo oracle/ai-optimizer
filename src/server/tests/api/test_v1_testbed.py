@@ -9,9 +9,9 @@ Tests for testbed API endpoints.
 import io
 import json
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
 
-import pandas as pd
 import pytest
 
 from server.tests.api.conftest import _create_mock_pool
@@ -467,7 +467,7 @@ async def test_upload_testset_rejects_wrong_field_type(app_client, auth_headers)
 @pytest.mark.unit
 @pytest.mark.anyio
 async def test_upload_testset_rejects_unknown_fields(app_client, auth_headers):
-    """Unknown extras are refused — Giskard's QATestset.load fails on extras at evaluate time."""
+    """Unknown extras are refused by the Testbed QA record schema."""
     rec = _qa_record(future_giskard_field=42)
 
     with patch("server.app.api.v1.endpoints.testbed.upsert_qa", new_callable=AsyncMock) as mock_upsert:
@@ -558,8 +558,29 @@ async def test_evaluate_rejects_invalid_tid(app_client, auth_headers):
 
 
 # ---------------------------------------------------------------------------
-# _serialise_report — JSON-safety of the persisted Giskard report payload
+# _serialise_report — JSON-safety of the persisted Giskard suite payload
 # ---------------------------------------------------------------------------
+
+
+def _scenario_result(question, answer, topic, correctness, reason=None, reference_context: str | float = "Context"):
+    interaction = SimpleNamespace(
+        inputs={"question": question},
+        outputs={"answer": answer},
+        metadata={
+            "id": question,
+            "reference_answer": "Paris",
+            "reference_context": reference_context,
+            "conversation_history": [],
+            "metadata": {"topic": topic},
+        },
+    )
+    check_result = SimpleNamespace(passed=correctness, message=reason)
+    step = SimpleNamespace(results=[check_result])
+    return SimpleNamespace(
+        scenario_name=question,
+        final_trace=SimpleNamespace(last=interaction),
+        steps=[step],
+    )
 
 
 @pytest.mark.unit
@@ -567,29 +588,22 @@ def test_serialise_report_coerces_nan_to_null():
     """NaN/Inf cells must coerce to None — strict JSON encoding rejects them."""
     from server.app.api.v1.endpoints.testbed import _serialise_report
 
-    mixed_df = pd.DataFrame(
-        {
-            "question": ["Q1", "Q2"],
-            "correct": [True, False],
-            "correctness_reason": [float("nan"), "Wrong answer"],
-        }
+    report = SimpleNamespace(
+        results=[
+            _scenario_result("Q1", "Paris", "Geography", True, reference_context=float("nan")),
+            _scenario_result("Q2", "London", "Geography", False, "Wrong answer"),
+        ]
     )
-    by_topic_df = pd.DataFrame({"score": [0.5, float("inf")]}, index=["topic_a", "topic_b"])
-    failures_df = pd.DataFrame({"reason": [float("nan")]}, index=[0])
-
-    report = MagicMock()
-    report.to_pandas.return_value = mixed_df
-    report.correctness_by_topic.return_value = by_topic_df
-    report.failures = failures_df
 
     payload = _serialise_report(report)
 
     json.dumps(payload, allow_nan=False)
 
-    assert payload["report"]["correctness_reason"]["0"] is None
-    assert payload["report"]["correctness_reason"]["1"] == "Wrong answer"
-    assert payload["correct_by_topic"]["score"]["topic_b"] is None
-    assert payload["failures"]["reason"]["0"] is None
+    assert payload["report"]["reference_context"]["Q1"] is None
+    assert payload["report"]["correctness_reason"]["Q2"] == "Wrong answer"
+    assert payload["correct_by_topic"]["correctness"]["Geography"] == 0.5
+    assert payload["failures"]["agent_answer"]["Q2"] == "London"
+    assert payload["correctness"] == 0.5
 
 
 @pytest.mark.unit
@@ -597,38 +611,14 @@ def test_serialise_report_preserves_shape_for_clean_dataframes():
     """When DataFrames have no NaN, serialisation matches the legacy to_dict shape."""
     from server.app.api.v1.endpoints.testbed import _serialise_report
 
-    report = MagicMock()
-    report.to_pandas.return_value = pd.DataFrame({"q": ["Q1"], "ok": [True]})
-    report.correctness_by_topic.return_value = pd.DataFrame({"score": [0.9]}, index=["t"])
-    report.failures = pd.DataFrame()
+    report = SimpleNamespace(results=[_scenario_result("Q1", "Paris", "Geography", True)])
 
     payload = _serialise_report(report)
 
-    assert payload["report"] == {"q": {"0": "Q1"}, "ok": {"0": True}}
-    assert payload["correct_by_topic"] == {"score": {"t": 0.9}}
+    assert payload["report"]["question"] == {"Q1": "Q1"}
+    assert payload["report"]["agent_answer"] == {"Q1": "Paris"}
+    assert payload["correct_by_topic"] == {"correctness": {"Geography": 1.0}}
     assert payload["failures"] == {}
-
-
-# ---------------------------------------------------------------------------
-# QA serialisation (evaluate_testset builds JSONL from DB rows)
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-def test_qa_rows_not_double_encoded():
-    """QA items already stored as JSON strings must not be re-encoded."""
-    # Simulates what evaluate_testset does on line 292
-    str_item = '{"question": "Q?", "reference_answer": "A."}'
-    dict_item = {"question": "Q2?", "reference_answer": "A2."}
-    qa_data = [str_item, dict_item]
-
-    lines = [item if isinstance(item, str) else json.dumps(item) for item in qa_data]
-
-    # String item must pass through unchanged (no extra quoting)
-    assert lines[0] == str_item
-    assert json.loads(lines[0])["question"] == "Q?"
-    # Dict item must be serialised once
-    assert json.loads(lines[1])["question"] == "Q2?"
 
 
 # ---------------------------------------------------------------------------
@@ -718,7 +708,7 @@ async def test_generate_testset_distributes_questions(app_client, auth_headers):
 
     with (
         patch("server.app.api.v1.endpoints.testbed.get_oci_profile", return_value=None),
-        patch("server.app.api.v1.endpoints.testbed.get_giskard_config", return_value={}),
+        patch("server.app.api.v1.endpoints.testbed._get_litellm_config", return_value={}),
         patch("server.app.api.v1.endpoints.testbed.LiteLlmModelSpec"),
         patch("server.app.api.v1.endpoints.testbed.ModelIdentity"),
         patch("server.app.api.v1.endpoints.testbed.get_temp_directory"),
@@ -746,8 +736,8 @@ async def test_generate_testset_distributes_questions(app_client, auth_headers):
         )
     assert resp.status_code == 200
     assert mock_process.await_count == 3
-    # 7 questions across 3 files: 3, 2, 2 — `questions` is positional arg index 5
-    q_per_file = [call.args[5] for call in mock_process.call_args_list]
+    # 7 questions across 3 files: 3, 2, 2 — `questions` is positional arg index 3
+    q_per_file = [call.args[3] for call in mock_process.call_args_list]
     assert q_per_file == [3, 2, 2]
     assert sum(q_per_file) == 7
     assert [call.args[0] for call in mock_process.call_args_list] == [
@@ -774,7 +764,7 @@ async def test_generate_testset_enforces_min_one_per_file(app_client, auth_heade
 
     with (
         patch("server.app.api.v1.endpoints.testbed.get_oci_profile", return_value=None),
-        patch("server.app.api.v1.endpoints.testbed.get_giskard_config", return_value={}),
+        patch("server.app.api.v1.endpoints.testbed._get_litellm_config", return_value={}),
         patch("server.app.api.v1.endpoints.testbed.LiteLlmModelSpec"),
         patch("server.app.api.v1.endpoints.testbed.ModelIdentity"),
         patch("server.app.api.v1.endpoints.testbed.get_temp_directory"),
@@ -802,7 +792,7 @@ async def test_generate_testset_enforces_min_one_per_file(app_client, auth_heade
         )
     assert resp.status_code == 200
     assert mock_process.await_count == 3
-    q_per_file = [call.args[5] for call in mock_process.call_args_list]
+    q_per_file = [call.args[3] for call in mock_process.call_args_list]
     assert q_per_file == [1, 1, 1]
 
 
@@ -825,7 +815,7 @@ async def test_generate_testset_rejects_small_file_and_proceeds(app_client, auth
 
     with (
         patch("server.app.api.v1.endpoints.testbed.get_oci_profile", return_value=None),
-        patch("server.app.api.v1.endpoints.testbed.get_giskard_config", return_value={}),
+        patch("server.app.api.v1.endpoints.testbed._get_litellm_config", return_value={}),
         patch("server.app.api.v1.endpoints.testbed.LiteLlmModelSpec"),
         patch("server.app.api.v1.endpoints.testbed.ModelIdentity"),
         patch("server.app.api.v1.endpoints.testbed.get_temp_directory"),
@@ -854,7 +844,7 @@ async def test_generate_testset_rejects_small_file_and_proceeds(app_client, auth
     # Only the accepted file was processed; its question count is the full ask.
     assert mock_process.await_count == 1
     assert mock_process.call_args_list[0].args[0] == Path("/tmp/big.pdf")
-    assert mock_process.call_args_list[0].args[5] == 4
+    assert mock_process.call_args_list[0].args[3] == 4
     payload = resp.json()
     assert len(payload["rejected_files"]) == 1
     assert payload["rejected_files"][0]["filename"] == "small.pdf"
@@ -912,7 +902,7 @@ async def test_generate_testset_all_rejected_returns_400(app_client, auth_header
 
     with (
         patch("server.app.api.v1.endpoints.testbed.get_oci_profile", return_value=None),
-        patch("server.app.api.v1.endpoints.testbed.get_giskard_config", return_value={}),
+        patch("server.app.api.v1.endpoints.testbed._get_litellm_config", return_value={}),
         patch("server.app.api.v1.endpoints.testbed.LiteLlmModelSpec"),
         patch("server.app.api.v1.endpoints.testbed.ModelIdentity"),
         patch("server.app.api.v1.endpoints.testbed.get_temp_directory"),
@@ -1040,7 +1030,7 @@ async def test_generate_testset_api_error_returns_fallback_detail(app_client, au
     mock_load = _mock_load_chunks_factory([("a.pdf", Path("/tmp/a.pdf"), None)])
     with (
         patch("server.app.api.v1.endpoints.testbed.get_oci_profile", return_value=None),
-        patch("server.app.api.v1.endpoints.testbed.get_giskard_config", return_value={}),
+        patch("server.app.api.v1.endpoints.testbed._get_litellm_config", return_value={}),
         patch("server.app.api.v1.endpoints.testbed.LiteLlmModelSpec"),
         patch("server.app.api.v1.endpoints.testbed.ModelIdentity"),
         patch("server.app.api.v1.endpoints.testbed.get_temp_directory"),
@@ -1073,7 +1063,7 @@ async def test_generate_testset_value_error_returns_fallback_detail(app_client, 
     mock_load = _mock_load_chunks_factory([("a.pdf", Path("/tmp/a.pdf"), None)])
     with (
         patch("server.app.api.v1.endpoints.testbed.get_oci_profile", return_value=None),
-        patch("server.app.api.v1.endpoints.testbed.get_giskard_config", return_value={}),
+        patch("server.app.api.v1.endpoints.testbed._get_litellm_config", return_value={}),
         patch("server.app.api.v1.endpoints.testbed.LiteLlmModelSpec"),
         patch("server.app.api.v1.endpoints.testbed.ModelIdentity"),
         patch("server.app.api.v1.endpoints.testbed.get_temp_directory"),
