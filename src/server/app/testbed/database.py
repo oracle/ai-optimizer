@@ -189,5 +189,6 @@ async def process_report(conn: oracledb.AsyncConnection, eid: str) -> Optional[d
         "report": payload.report,
         "correct_by_topic": payload.correct_by_topic,
         "failures": payload.failures,
+        "quality_metrics": payload.quality_metrics,
         "html_report": "<html><body></body></html>",
     }

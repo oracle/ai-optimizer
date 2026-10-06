@@ -10,7 +10,9 @@ import json
 from typing import Any, cast
 
 import litellm
-from giskard.checks import Check, CheckResult, Scenario, Suite
+from giskard.checks import AnswerRelevance, Check, CheckResult, Groundedness, LLMChatJudge, Scenario, Suite
+
+from server.app.testbed.giskard_models import giskard_generator
 
 CORRECTNESS_INPUT_TEMPLATE = """
 ### AGENT DESCRIPTION
@@ -110,8 +112,9 @@ def build_evaluation_suite(
     judge_config: dict,
     judge_prompt: str,
 ) -> Suite:
-    """Create a Giskard v3 suite with one correctness check per Q&A record."""
+    """Create correctness, groundedness, and relevance checks for each Q&A record."""
     suite = Suite(name="Testbed evaluation", target=target)
+    judge = LLMChatJudge(generator=giskard_generator(judge_config))
     for index, record in enumerate(qa_records):
         question = _record_value(record, "question", "")
         history = _record_value(record, "conversation_history", []) or []
@@ -128,6 +131,26 @@ def build_evaluation_suite(
                 "metadata": metadata,
             },
         )
-        scenario.check(CustomCorrectnessCheck(judge_config=judge_config, system_prompt=judge_prompt))
+        scenario.check(
+            CustomCorrectnessCheck(name="correctness", judge_config=judge_config, system_prompt=judge_prompt)
+        )
+        if reference_context := _record_value(record, "reference_context", ""):
+            scenario.check(
+                Groundedness(
+                    name="groundedness",
+                    target_key="trace.last.outputs.answer",
+                    context=reference_context,
+                    judge=judge,
+                )
+            )
+        scenario.check(
+            AnswerRelevance(
+                name="answer_relevance",
+                question_key="trace.last.inputs.question",
+                target_key="trace.last.outputs.answer",
+                include_history=False,
+                judge=judge,
+            )
+        )
         suite.append(scenario)
     return suite

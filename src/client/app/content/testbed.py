@@ -278,6 +278,18 @@ def _evaluation_report(eid: Optional[str] = None, report: Optional[dict] = None)
     _, gauge_column, _ = st.columns([1, 2, 1])
     gauge_column.image(_create_gauge_svg(float(report["correctness"]) * 100), width="stretch")
 
+    quality_metrics = report.get("quality_metrics") or {}
+    if quality_metrics:
+        st.subheader("Additional Checks")
+        metric_columns = st.columns(2)
+        for column, (key, label) in zip(
+            metric_columns,
+            (("groundedness", "Groundedness"), ("answer_relevance", "Answer Relevance")),
+            strict=True,
+        ):
+            value = quality_metrics.get(key)
+            column.metric(label, f"{value:.0%}" if value is not None else "N/A")
+
     # Correctness by Topic
     st.subheader("Correctness By Topic")
     by_topic = pd.DataFrame(report["correct_by_topic"])

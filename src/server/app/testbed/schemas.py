@@ -58,3 +58,4 @@ class RAGReportPayload(BaseModel):
     report: dict[str, Any] = Field(default_factory=dict)
     correct_by_topic: dict[str, Any] = Field(default_factory=dict)
     failures: dict[str, Any] = Field(default_factory=dict)
+    quality_metrics: dict[str, float | None] = Field(default_factory=dict)

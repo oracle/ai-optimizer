@@ -621,6 +621,25 @@ def test_serialise_report_preserves_shape_for_clean_dataframes():
     assert payload["failures"] == {}
 
 
+@pytest.mark.unit
+def test_serialise_report_keeps_check_scores_separate_from_correctness():
+    from server.app.api.v1.endpoints.testbed import _serialise_report
+
+    scenario = _scenario_result("Q1", "Paris and London", "Geography", True)
+    scenario.steps[0].results = [
+        SimpleNamespace(passed=True, message=None, details={"check_name": "correctness"}),
+        SimpleNamespace(passed=False, message="London is unsupported", details={"check_name": "groundedness"}),
+        SimpleNamespace(passed=True, message=None, details={"check_name": "answer_relevance"}),
+    ]
+
+    payload = _serialise_report(SimpleNamespace(results=[scenario]))
+
+    assert payload["correctness"] == 1.0
+    assert payload["quality_metrics"] == {"groundedness": 0.0, "answer_relevance": 1.0}
+    assert payload["report"]["groundedness"]["Q1"] is False
+    assert payload["failures"]["groundedness_reason"]["Q1"] == "London is unsupported"
+
+
 # ---------------------------------------------------------------------------
 # POST /testbed/testset_generate — multi-file question distribution
 # ---------------------------------------------------------------------------

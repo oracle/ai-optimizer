@@ -11,6 +11,7 @@ import logging
 from enum import Enum
 from typing import Any, Dict, Iterable, List, Optional
 
+from litellm.exceptions import AuthenticationError
 from pydantic import BaseModel
 
 from server.app.agentspec.adapters.mcp import fetch_mcp_prompt
@@ -44,8 +45,32 @@ def clean_llm_error(exc: BaseException) -> str:
     return msg or "An unexpected LLM error occurred."
 
 
-def llm_error_detail(exc: BaseException) -> str:
-    """Preserve the exception type alongside the cleaned provider message."""
+def llm_error_detail(exc: BaseException, *, fallback: str | None = None) -> str:
+    """Return a safe provider detail or the caller's fallback for unrelated errors."""
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    messages = []
+    authentication_error = False
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        messages.append(str(current).lower())
+        authentication_error |= isinstance(current, AuthenticationError)
+        current = current.__cause__ or current.__context__
+    message = " ".join(messages)
+    if any(marker in message for marker in ("incorrect api key", "invalid api key", "invalid_api_key")):
+        return "AuthenticationError: Incorrect API key provided"
+    if authentication_error:
+        if any(marker in message for marker in ("no api key", "missing api key", "api key not provided")):
+            detail = "API key is missing"
+        elif "expired" in message:
+            detail = "Credentials have expired"
+        elif any(marker in message for marker in ("access denied", "permission denied", "does not have access")):
+            detail = "Access denied"
+        else:
+            detail = "Authentication failed"
+        return f"AuthenticationError: {detail}"
+    if fallback is not None:
+        return fallback
     message = clean_llm_error(exc)
     prefix = f"{type(exc).__name__}:"
     return message if message.startswith(prefix) else f"{prefix} {message}"

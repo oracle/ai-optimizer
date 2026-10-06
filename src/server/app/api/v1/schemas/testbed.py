@@ -52,4 +52,5 @@ class EvaluationReport(Evaluation):
     report: dict[str, Any] = Field(description="Full report")
     correct_by_topic: dict[str, Any] = Field(description="Correctness breakdown by topic")
     failures: dict[str, Any] = Field(description="Failure details")
+    quality_metrics: dict[str, float | None] = Field(default_factory=dict, description="Additional check pass rates")
     html_report: str = Field(description="HTML formatted report")

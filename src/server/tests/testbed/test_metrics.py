@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from giskard.checks import Interaction, Trace
 
-from server.app.testbed.metrics import CustomCorrectnessCheck, format_conversation
+from server.app.testbed.metrics import CustomCorrectnessCheck, build_evaluation_suite, format_conversation
 
 
 @pytest.mark.unit
@@ -113,3 +113,29 @@ async def test_correctness_check_propagates_provider_errors():
         pytest.raises(RuntimeError, match="provider unavailable"),
     ):
         await check.run(_trace())
+
+
+@pytest.mark.unit
+def test_evaluation_suite_adds_source_and_relevance_checks():
+    record = {
+        "question": "Where is the archive?",
+        "reference_answer": "In Paris.",
+        "reference_context": "The archive is in Paris.",
+        "conversation_history": [],
+        "metadata": {},
+    }
+    suite = build_evaluation_suite([record], lambda inputs: {"answer": "In Paris."}, {"model": "openai/test"}, "Judge")
+
+    assert [check.name for check in suite.scenarios[0].steps[0].checks] == [
+        "correctness",
+        "groundedness",
+        "answer_relevance",
+    ]
+
+
+@pytest.mark.unit
+def test_evaluation_suite_skips_groundedness_without_source():
+    record = {"question": "What?", "reference_answer": "Yes.", "reference_context": ""}
+    suite = build_evaluation_suite([record], lambda inputs: {"answer": "Yes."}, {"model": "openai/test"}, "Judge")
+
+    assert [check.name for check in suite.scenarios[0].steps[0].checks] == ["correctness", "answer_relevance"]
