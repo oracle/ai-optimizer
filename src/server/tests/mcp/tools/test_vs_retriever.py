@@ -353,8 +353,12 @@ async def test_vs_retrieve_collection_alias_only_searches_matching_store(
     question: str, monkeypatch: pytest.MonkeyPatch
 ):
     tables = [
-        _make_vector_table("OTHER_TABLE", ModelIdentity(provider="openai", id="other-embed"), alias="OTHER"),
-        _make_vector_table("CURRENT_DOCS_TABLE", ModelIdentity(provider="openai", id="docs-embed"), alias="DOCS"),
+        _make_vector_table(
+            "OTHER_TABLE", embedding_model=ModelIdentity(provider="openai", id="other-embed"), alias="OTHER"
+        ),
+        _make_vector_table(
+            "CURRENT_DOCS_TABLE", embedding_model=ModelIdentity(provider="openai", id="docs-embed"), alias="DOCS"
+        ),
     ]
     discovery = AsyncMock(return_value=tables)
     selector = AsyncMock(side_effect=AssertionError("Scoped retrieval must bypass automatic selection"))
@@ -428,8 +432,8 @@ async def test_vs_retrieve_invalid_collection_alias_does_not_search(
 
 async def test_vs_retrieve_without_collection_alias_keeps_automatic_selection(monkeypatch: pytest.MonkeyPatch):
     tables = [
-        _make_vector_table("DOCS_TABLE", ModelIdentity(provider="openai", id="embed"), alias="DOCS"),
-        _make_vector_table("OTHER_TABLE", ModelIdentity(provider="openai", id="embed"), alias="OTHER"),
+        _make_vector_table("DOCS_TABLE", embedding_model=ModelIdentity(provider="openai", id="embed"), alias="DOCS"),
+        _make_vector_table("OTHER_TABLE", embedding_model=ModelIdentity(provider="openai", id="embed"), alias="OTHER"),
     ]
     selector = AsyncMock(return_value=[table.table_name for table in tables])
     spec_factory = MagicMock(return_value=_DUMMY_SPEC)
@@ -455,8 +459,8 @@ async def test_vs_retrieve_without_collection_alias_keeps_automatic_selection(mo
 
 async def test_vs_retrieve_scoped_search_failure_does_not_fall_back(monkeypatch: pytest.MonkeyPatch):
     tables = [
-        _make_vector_table("OTHER_TABLE", ModelIdentity(provider="openai", id="embed"), alias="OTHER"),
-        _make_vector_table("DOCS_TABLE", ModelIdentity(provider="openai", id="embed"), alias="DOCS"),
+        _make_vector_table("OTHER_TABLE", embedding_model=ModelIdentity(provider="openai", id="embed"), alias="OTHER"),
+        _make_vector_table("DOCS_TABLE", embedding_model=ModelIdentity(provider="openai", id="embed"), alias="DOCS"),
     ]
     selector = AsyncMock()
     search = AsyncMock(side_effect=RuntimeError("search failed"))
