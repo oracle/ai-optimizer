@@ -348,6 +348,135 @@ async def test_vs_retrieve_no_tables(monkeypatch: pytest.MonkeyPatch):
     assert response.error == "No vector stores available with enabled embedding models"
 
 
+@pytest.mark.parametrize("question", ["How do I diagnose a failed build?", "Guidance from another collection"])
+async def test_vs_retrieve_collection_alias_only_searches_matching_store(
+    question: str, monkeypatch: pytest.MonkeyPatch
+):
+    tables = [
+        _make_vector_table("OTHER_TABLE", ModelIdentity(provider="openai", id="other-embed"), alias="OTHER"),
+        _make_vector_table("CURRENT_DOCS_TABLE", ModelIdentity(provider="openai", id="docs-embed"), alias="DOCS"),
+    ]
+    discovery = AsyncMock(return_value=tables)
+    selector = AsyncMock(side_effect=AssertionError("Scoped retrieval must bypass automatic selection"))
+    spec_factory = MagicMock(side_effect=AssertionError("Scoped retrieval must not require an LL model"))
+    embed = MagicMock(return_value=object())
+    search = AsyncMock(return_value=[_doc_dict("Scoped guidance", "CURRENT_DOCS_TABLE")])
+    monkeypatch.setattr(vs_retriever, "_get_available_vector_stores", discovery)
+    monkeypatch.setattr(vs_retriever, "_select_tables_with_llm", selector)
+    monkeypatch.setattr(vs_retriever, "LiteLlmModelSpec", SimpleNamespace(from_ll_model_settings=spec_factory))
+    monkeypatch.setattr(vs_retriever, "get_database_pool", lambda client="CONFIGURED": _make_pool())
+    monkeypatch.setattr(vs_retriever, "get_client_embed", embed)
+    monkeypatch.setattr(vs_retriever, "_search_table", search)
+
+    response = await vs_retriever._vs_retrieve_impl(question, collection_alias="DOCS")
+
+    assert response.status == "success"
+    assert response.searched_tables == ["CURRENT_DOCS_TABLE"]
+    assert response.failed_tables == []
+    assert response.num_documents == 1
+    assert response.documents[0]["metadata"]["searched_table"] == "CURRENT_DOCS_TABLE"
+    discovery.assert_awaited_once_with("CONFIGURED")
+    selector.assert_not_awaited()
+    spec_factory.assert_not_called()
+    embed.assert_called_once_with(tables[1].parsed.embedding_model, None)
+    search.assert_awaited_once()
+    assert search.await_args is not None
+    assert search.await_args.args[0:2] == ("CURRENT_DOCS_TABLE", question)
+
+
+@pytest.mark.parametrize(
+    ("collection_alias", "available_aliases", "error"),
+    [
+        ("", ["DOCS"], "non-empty exact alias"),
+        (" \t", ["DOCS"], "non-empty exact alias"),
+        ("MISSING", ["DOCS", "OTHER"], "found 0 matches"),
+        ("docs", ["DOCS"], "found 0 matches"),
+        (" DOCS", ["DOCS"], "found 0 matches"),
+        ("DOCS ", ["DOCS"], "found 0 matches"),
+        ("DOCS", ["OTHER"], "found 0 matches"),
+        ("DOCS", [], "found 0 matches"),
+        ("DOCS", ["DOCS", "DOCS"], "found 2 matches"),
+    ],
+)
+async def test_vs_retrieve_invalid_collection_alias_does_not_search(
+    collection_alias: str, available_aliases: list[str], error: str, monkeypatch: pytest.MonkeyPatch
+):
+    tables = [_make_vector_table(f"TABLE_{index}", alias=alias) for index, alias in enumerate(available_aliases)]
+    selector = AsyncMock()
+    pool = MagicMock()
+    embed = MagicMock()
+    search = AsyncMock()
+    monkeypatch.setattr(vs_retriever, "_get_available_vector_stores", AsyncMock(return_value=tables))
+    monkeypatch.setattr(vs_retriever, "_select_tables_with_llm", selector)
+    monkeypatch.setattr(vs_retriever, "get_database_pool", pool)
+    monkeypatch.setattr(vs_retriever, "get_client_embed", embed)
+    monkeypatch.setattr(vs_retriever, "_search_table", search)
+
+    response = await vs_retriever._vs_retrieve_impl("Q", collection_alias=collection_alias)
+
+    assert response.status == "error"
+    assert error in (response.error or "")
+    assert response.documents == []
+    assert response.num_documents == 0
+    assert response.searched_tables == []
+    assert response.failed_tables == []
+    selector.assert_not_awaited()
+    pool.assert_not_called()
+    embed.assert_not_called()
+    search.assert_not_awaited()
+
+
+async def test_vs_retrieve_without_collection_alias_keeps_automatic_selection(monkeypatch: pytest.MonkeyPatch):
+    tables = [
+        _make_vector_table("DOCS_TABLE", ModelIdentity(provider="openai", id="embed"), alias="DOCS"),
+        _make_vector_table("OTHER_TABLE", ModelIdentity(provider="openai", id="embed"), alias="OTHER"),
+    ]
+    selector = AsyncMock(return_value=[table.table_name for table in tables])
+    spec_factory = MagicMock(return_value=_DUMMY_SPEC)
+    search = AsyncMock(
+        side_effect=[[_doc_dict("Docs guidance", "DOCS_TABLE")], [_doc_dict("Other guidance", "OTHER_TABLE")]]
+    )
+    monkeypatch.setattr(vs_retriever, "_get_available_vector_stores", AsyncMock(return_value=tables))
+    monkeypatch.setattr(vs_retriever, "_select_tables_with_llm", selector)
+    monkeypatch.setattr(vs_retriever, "LiteLlmModelSpec", SimpleNamespace(from_ll_model_settings=spec_factory))
+    monkeypatch.setattr(vs_retriever, "get_database_pool", lambda client="CONFIGURED": _make_pool())
+    monkeypatch.setattr(vs_retriever, "get_client_embed", lambda *args, **kwargs: object())
+    monkeypatch.setattr(vs_retriever, "_search_table", search)
+
+    response = await vs_retriever._vs_retrieve_impl("Q")
+
+    assert response.status == "success"
+    assert set(response.searched_tables) == {"DOCS_TABLE", "OTHER_TABLE"}
+    assert response.num_documents == 2
+    assert response.failed_tables == []
+    selector.assert_awaited_once_with("Q", tables, _DUMMY_SPEC)
+    spec_factory.assert_called_once()
+
+
+async def test_vs_retrieve_scoped_search_failure_does_not_fall_back(monkeypatch: pytest.MonkeyPatch):
+    tables = [
+        _make_vector_table("OTHER_TABLE", ModelIdentity(provider="openai", id="embed"), alias="OTHER"),
+        _make_vector_table("DOCS_TABLE", ModelIdentity(provider="openai", id="embed"), alias="DOCS"),
+    ]
+    selector = AsyncMock()
+    search = AsyncMock(side_effect=RuntimeError("search failed"))
+    monkeypatch.setattr(vs_retriever, "_get_available_vector_stores", AsyncMock(return_value=tables))
+    monkeypatch.setattr(vs_retriever, "_select_tables_with_llm", selector)
+    monkeypatch.setattr(vs_retriever, "get_database_pool", lambda client="CONFIGURED": _make_pool())
+    monkeypatch.setattr(vs_retriever, "get_client_embed", lambda *args, **kwargs: object())
+    monkeypatch.setattr(vs_retriever, "_search_table", search)
+
+    response = await vs_retriever._vs_retrieve_impl("Q", collection_alias="DOCS")
+
+    assert response.documents == []
+    assert response.searched_tables == []
+    assert response.failed_tables == ["DOCS_TABLE"]
+    selector.assert_not_awaited()
+    search.assert_awaited_once()
+    assert search.await_args is not None
+    assert search.await_args.args[0] == "DOCS_TABLE"
+
+
 async def test_vs_retrieve_no_pool(model_config_factory, prompt_config_factory, monkeypatch: pytest.MonkeyPatch):
     settings.client_settings.ll_model.provider = "openai"
     settings.client_settings.ll_model.id = "gpt-retrieve"
@@ -511,8 +640,14 @@ async def test_vs_retrieve_success(
     assert ctx.progress == [(1, 4), (2, 4), (3, 4), (4, 4)]
 
 
-async def test_register_retriever_tool(monkeypatch: pytest.MonkeyPatch):
-    async def _fake_impl(question: str, ctx=None, client: str = "CONFIGURED") -> VectorSearchResponse:
+@pytest.mark.parametrize("collection_alias", [None, "DOCS"])
+async def test_register_retriever_tool(collection_alias: Optional[str], monkeypatch: pytest.MonkeyPatch):
+    calls = []
+
+    async def _fake_impl(
+        question: str, ctx=None, client: str = "CONFIGURED", collection_alias: Optional[str] = None
+    ) -> VectorSearchResponse:
+        calls.append((question, ctx, client, collection_alias))
         return VectorSearchResponse(
             context_input=question,
             documents=[],
@@ -536,10 +671,28 @@ async def test_register_retriever_tool(monkeypatch: pytest.MonkeyPatch):
             self.messages.append(message)
 
     ctx = _Ctx()
-    response = await tool.fn(thread_id="abc", question="Q", ctx=ctx)
+    response = await tool.fn(thread_id="abc", question="Q", ctx=ctx, collection_alias=collection_alias)
 
     assert response.status == "ok"
     assert ctx.messages == ["VS Retriever (Thread ID: abc)"]
+    assert calls == [("Q", ctx, "abc", collection_alias)]
+    assert "collection_alias" in tool.parameters["properties"]
+    assert "collection_alias" not in tool.parameters.get("required", [])
+
+
+async def test_register_retriever_collection_alias_is_separate_from_question(monkeypatch: pytest.MonkeyPatch):
+    implementation = AsyncMock()
+    monkeypatch.setattr(vs_retriever, "_vs_retrieve_impl", implementation)
+    vs_retriever.register_retriever_tool()
+    tool = cast(FunctionTool, await mcp.local_provider.get_tool("optimizer_vs_retriever"))
+
+    await tool.fn(
+        thread_id="abc",
+        question=json.dumps({"rephrased_prompt": "Q", "collection_alias": "OTHER"}),
+        collection_alias="DOCS",
+    )
+
+    implementation.assert_awaited_once_with("Q", None, client="abc", collection_alias="DOCS")
 
 
 # ---------------------------------------------------------------------------
