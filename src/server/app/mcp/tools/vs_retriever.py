@@ -36,6 +36,22 @@ RETRIEVER_TIMEOUT_SECONDS = 360.0
 _FENCED_JSON_RE = re.compile(r"^```(?:json)?\s*(.*?)\s*```$", re.DOTALL | re.IGNORECASE)
 
 
+class _CollectionAliasError(ValueError):
+    """A requested collection alias does not identify one available store."""
+
+
+def _filter_tables_by_alias(available_tables: list[VectorTable], collection_alias: str) -> list[VectorTable]:
+    """Resolve an exact alias without automatic selection or fallback."""
+    if not collection_alias.strip():
+        raise _CollectionAliasError("collection_alias must be a non-empty exact alias")
+    matching_tables = [table for table in available_tables if table.parsed.alias == collection_alias]
+    if len(matching_tables) != 1:
+        raise _CollectionAliasError(
+            f"collection_alias must match exactly one available vector store; found {len(matching_tables)} matches"
+        )
+    return matching_tables
+
+
 async def _get_available_vector_stores(client: str = "CONFIGURED") -> list[VectorTable]:
     """Get available vector stores with enabled embedding models."""
     try:
@@ -309,8 +325,9 @@ async def _vs_retrieve_impl(
     question: str,
     ctx: Optional[Context] = None,
     client: str = "CONFIGURED",
+    collection_alias: Optional[str] = None,
 ) -> VectorSearchResponse:
-    """Smart vector search retriever with automatic table selection."""
+    """Retrieve from an exact collection alias or automatically selected tables."""
     response = VectorSearchResponse(
         context_input=question,
         documents=[],
@@ -327,17 +344,22 @@ async def _vs_retrieve_impl(
 
         await _report_progress(ctx, 1, 4)
         available_tables = await _get_available_vector_stores(client)
+        if collection_alias is not None:
+            available_tables = _filter_tables_by_alias(available_tables, collection_alias)
         if not available_tables:
             response.status = "error"
             response.error = "No vector stores available with enabled embedding models"
             return response
 
         await _report_progress(ctx, 2, 4)
-        tables_to_search = await _select_tables_with_llm(
-            question,
-            available_tables,
-            LiteLlmModelSpec.from_ll_model_settings(cs.ll_model, oci_profile),
-        )
+        if collection_alias is not None:
+            tables_to_search = [available_tables[0].table_name]
+        else:
+            tables_to_search = await _select_tables_with_llm(
+                question,
+                available_tables,
+                LiteLlmModelSpec.from_ll_model_settings(cs.ll_model, oci_profile),
+            )
         LOGGER.info("Searching %d table(s): %s", len(tables_to_search), tables_to_search)
 
         await _report_progress(ctx, 3, 4)
@@ -367,6 +389,10 @@ async def _vs_retrieve_impl(
         response.num_documents = len(response.documents)
         response.status = "success"
 
+    except _CollectionAliasError as ex:
+        response.status = "error"
+        response.error = str(ex)
+        return response
     except DdsConnectionError as ex:
         LOGGER.error("Vector search DDS connection unavailable: %s", ex)
         response.status = "error"
@@ -399,8 +425,14 @@ def register_retriever_tool():
         thread_id: str,
         question: str,
         ctx: Optional[Context] = None,
+        collection_alias: Optional[str] = None,
     ) -> VectorSearchResponse:
-        """Search documentation using vector similarity. Returns relevant documents."""
+        """Search documentation using vector similarity. Returns relevant documents.
+
+        collection_alias: Optional exact, case-sensitive vector store alias. When supplied,
+        searches only the uniquely matching available store and does not use automatic
+        selection or fallback. Omit it to use automatic table selection.
+        """
         if ctx:
             await ctx.info(f"VS Retriever (Thread ID: {thread_id})")
         # Clients may pass the full RephrasePrompt JSON as the question string
@@ -410,4 +442,4 @@ def register_retriever_tool():
                 question = parsed["rephrased_prompt"]
         except (json.JSONDecodeError, TypeError):
             pass
-        return await _vs_retrieve_impl(question, ctx, client=thread_id)
+        return await _vs_retrieve_impl(question, ctx, client=thread_id, collection_alias=collection_alias)
