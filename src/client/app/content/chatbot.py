@@ -15,7 +15,7 @@ from streamlit import session_state as state
 
 from client.app.core import sidebar
 from client.app.core.api import _base_url, _headers
-from client.app.core.helpers import extract_error_detail, load_chat_history
+from client.app.core.helpers import format_error, load_chat_history
 from net_addressing import verify_for_url
 
 LOGGER = logging.getLogger("content.chatbot")
@@ -41,7 +41,7 @@ def escape_markdown_latex(text: str) -> str:
         # Display math: \[...\] → $$...$$ (skip if content is a numeric citation)
         segment = re.sub(
             r"\\\[(.*?)\\\]",
-            lambda m: (m.group(0) if re.fullmatch(r"[\d,;\s\-\u2013\u2014]+", m.group(1)) else f"$${m.group(1)}$$"),
+            lambda m: m.group(0) if re.fullmatch(r"[\d,;\s\-\u2013\u2014]+", m.group(1)) else f"$${m.group(1)}$$",
             segment,
             flags=re.DOTALL,
         )
@@ -160,7 +160,11 @@ async def _stream_chat(messages: list[dict], metadata: dict):
 
     async with httpx.AsyncClient(timeout=120, verify=verify_for_url(url)) as client:  # noqa: SIM117
         async with client.stream("POST", url, json=body, headers=headers) as resp:
-            resp.raise_for_status()
+            try:
+                resp.raise_for_status()
+            except httpx.HTTPStatusError:
+                await resp.aread()
+                raise
             buffer = ""
             async for chunk in resp.aiter_text():
                 buffer += chunk
@@ -236,14 +240,14 @@ async def _handle_chat(user_input: str) -> None:
             if resp_sql_meta:
                 show_sql_details(resp_sql_meta)
         except httpx.HTTPStatusError as exc:
-            st.error(extract_error_detail(exc))
+            st.error(format_error(exc), icon="🚨")
         except httpx.ReadTimeout:
             st.error("Response timed out. Please try again.")
         except httpx.HTTPError as exc:
             LOGGER.warning("Chat stream request failed: %s", exc)
             st.error("Unable to connect to the server. Please check that the server is running.")
         except RuntimeError as exc:
-            st.error(str(exc))
+            st.error(format_error(str(exc)), icon="🚨")
 
 
 #####################################################

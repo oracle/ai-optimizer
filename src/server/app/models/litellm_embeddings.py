@@ -6,7 +6,7 @@ LiteLLM-backed LangChain Embeddings implementation.
 """
 # spell-checker:ignore litellm aembedding ocigenai pydantic
 
-from typing import Any, Iterator, Optional
+from typing import Any, Iterator, Optional, cast
 
 import litellm
 from langchain_core.embeddings import Embeddings
@@ -79,12 +79,12 @@ class LiteLLMEmbeddings(BaseModel, Embeddings):
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
         out: list[list[float]] = []
         for chunk in self._chunks(texts):
-            resp = litellm.embedding(input=chunk, **self._call_kwargs())
+            resp = cast(litellm.EmbeddingResponse, litellm.embedding(input=chunk, **self._call_kwargs()))
             out.extend(item["embedding"] for item in resp.data)
         return out
 
     def embed_query(self, text: str) -> list[float]:
-        resp = litellm.embedding(input=[text], **self._call_kwargs())
+        resp = cast(litellm.EmbeddingResponse, litellm.embedding(input=[text], **self._call_kwargs()))
         return self._first_embedding(resp, self.model_key)
 
     async def aembed_documents(self, texts: list[str]) -> list[list[float]]:

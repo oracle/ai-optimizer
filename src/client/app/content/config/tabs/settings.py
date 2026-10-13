@@ -202,7 +202,7 @@ def _apply_uploaded_settings(uploaded_data: dict) -> None:
         api_post("settings/import", json=uploaded_data, toast="Settings imported.")
         helpers.refresh_settings()
     except httpx.HTTPStatusError as exc:
-        st.error(f"Failed to import settings: {helpers.extract_error_detail(exc)}")
+        st.error(helpers.format_error(exc, context="Failed to import settings"), icon="🚨")
 
 
 def _render_upload_settings_section() -> None:
@@ -242,7 +242,7 @@ def _reset_to_factory() -> None:
         api_post("settings/reset", toast="Settings reset to factory defaults.", timeout=30)
         helpers.refresh_settings()
     except httpx.HTTPStatusError as exc:
-        st.error(f"Factory reset failed: {helpers.extract_error_detail(exc)}")
+        st.error(helpers.format_error(exc, context="Factory reset failed"), icon="🚨")
 
 
 def _render_download_settings_section() -> None:

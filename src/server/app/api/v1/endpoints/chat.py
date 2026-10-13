@@ -31,7 +31,7 @@ from server.app.api.v1.schemas.common import ClientId
 from server.app.core.secrets import reveal
 from server.app.core.settings import resolve_client, settings
 from server.app.database.config import DdsConnectionError
-from server.app.runtime.common import LLMConfigurationError, clean_llm_error
+from server.app.runtime.common import LLMConfigurationError, llm_error_detail
 from server.app.runtime.langgraph.chat import ChatOrchestrator
 
 LOGGER = logging.getLogger(__name__)
@@ -94,7 +94,7 @@ async def chat_completions(
         ) from exc
     except Exception as exc:
         LOGGER.error("Chat completion failed: %s", exc)
-        raise HTTPException(status_code=502, detail=clean_llm_error(exc)) from exc
+        raise HTTPException(status_code=502, detail=llm_error_detail(exc)) from exc
 
     content = result.get("result", "") or ""
     if isinstance(content, dict):
@@ -161,7 +161,7 @@ async def chat_stream(
             return
         except Exception as exc:
             LOGGER.error("Streaming completion failed: %s", exc)
-            yield f"data: {json.dumps(StreamErrorEvent(content=clean_llm_error(exc)).model_dump())}\n\n"
+            yield f"data: {json.dumps(StreamErrorEvent(content=llm_error_detail(exc)).model_dump())}\n\n"
             yield "data: [DONE]\n\n"
             return
 

@@ -4,7 +4,9 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 """
 # spell-checker:ignore isin mult selectbox
 
+import json
 import logging
+import re
 import time
 from typing import Any, Optional
 
@@ -15,6 +17,9 @@ from streamlit import session_state as state
 from client.app.core.api import api_get, api_put, get_server_settings
 
 LOGGER = logging.getLogger("client.core.helpers")
+
+_ERROR_PREFIX = re.compile(r"^(?:\w+\.)*(?P<name>\w*(?:Error|Exception))\s*(?::|-)\s*")
+_MASKED_API_KEY = re.compile(r"\bsk-[\w-]*(?:\\?\*){3,}[\w*\\-]*\.?\s*")
 
 
 #############################################################################
@@ -112,14 +117,53 @@ def build_payload(form_data: dict) -> dict:
     return {k: v for k, v in form_data.items() if v is not None}
 
 
-def extract_error_detail(exc: httpx.HTTPStatusError) -> str:
-    """Extract detail message from an HTTP error response."""
-    if not exc.response.content:
-        return str(exc)
+def extract_error_detail(exc: httpx.HTTPStatusError) -> str | dict | list:
+    """Extract the server's error detail, preserving structured payloads."""
+    fallback = f"{exc.response.status_code} {exc.response.reason_phrase}"
     try:
-        return exc.response.json().get("detail", str(exc))
+        if not exc.response.content:
+            return fallback
+        payload = exc.response.json()
+    except httpx.ResponseNotRead:
+        return fallback
     except ValueError:
-        return str(exc)
+        text = exc.response.text.strip()
+        return fallback if text.startswith("<") else text
+    if isinstance(payload, dict):
+        return payload.get("detail", payload)
+    return payload if isinstance(payload, (str, list)) else fallback
+
+
+def format_error(error: object, *, context: str | None = None) -> str:
+    """Format an error heading and its message for client Markdown displays."""
+    detail = extract_error_detail(error) if isinstance(error, httpx.HTTPStatusError) else error
+    if isinstance(detail, dict):
+        detail = detail.get("message", detail)
+    if isinstance(detail, list) and all(isinstance(item, dict) and "msg" in item for item in detail):
+        detail = "\n".join(
+            f"{'.'.join(str(part) for part in item.get('loc', []))}: {item['msg']}".lstrip(": ") for item in detail
+        )
+    message = json.dumps(detail, indent=2, default=str) if isinstance(detail, (dict, list)) else str(detail)
+    message = message.split("\nTraceback", 1)[0].strip()
+    title = ""
+    while match := _ERROR_PREFIX.match(message):
+        name = match["name"]
+        if not title or (title.endswith("Exception") and name.endswith("Error")):
+            title = name
+        message = message[match.end() :]
+
+    # Chat streams can contain the provider message after its exception prefix was removed.
+    if (not title or title == "OpenAIException") and any(
+        marker in message.lower() for marker in ("incorrect api key", "invalid api key", "invalid_api_key")
+    ):
+        title = "AuthenticationError"
+    if not title and isinstance(error, BaseException) and not isinstance(error, httpx.HTTPStatusError):
+        title = type(error).__name__
+    message = _MASKED_API_KEY.sub("", message).strip().rstrip(":")
+    if title:
+        heading = f"{context}: {title}" if context else title
+        return f"**{heading}**\n\n{message}"
+    return f"{context}: {message}" if context else message
 
 
 def bool_to_emoji(value: bool) -> str:
@@ -142,7 +186,7 @@ def update_client_settings(payload: dict) -> dict | None:
         state["settings"]["client_settings"] = result
         return result
     except httpx.HTTPStatusError as exc:
-        st.toast(extract_error_detail(exc), icon="⚠️")
+        st.toast(format_error(exc), icon="⚠️")
         return None
 
 

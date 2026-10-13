@@ -90,6 +90,7 @@ from server.app.oci.bucket import (
     get_bucket_object_names,
     get_bucket_objects_with_metadata,
 )
+from server.app.runtime.common import llm_error_detail
 from url_safety import SafeAsyncClient, validate_structural
 
 LOGGER = logging.getLogger(__name__)
@@ -809,15 +810,20 @@ async def _run_split_embed_pipeline(
             processed_files=processing_results["processed_files"],
             skipped_files=processing_results["skipped_files"],
         )
-    except (ValueError, RuntimeError) as ex:
-        raise JobFailure(
-            detail=response_error_detail(ex, "Vector store operation failed."),
-        ) from ex
     except Exception as ex:
-        LOGGER.error("An exception occurred: %s", ex)
-        raise JobFailure(
-            detail="An unexpected error occurred during embedding.",
-        ) from ex
+        fallback = (
+            "Vector store operation failed."
+            if isinstance(ex, (ValueError, RuntimeError))
+            else "An unexpected error occurred during embedding."
+        )
+        detail = llm_error_detail(ex, fallback=fallback)
+        if detail != fallback:
+            LOGGER.warning("Embedding model authentication failed")
+        elif isinstance(ex, (ValueError, RuntimeError)):
+            response_error_detail(ex, fallback)
+        else:
+            LOGGER.error("An exception occurred: %s", ex)
+        raise JobFailure(detail=detail) from ex
     finally:
         shutil.rmtree(work_dir, ignore_errors=True)
 

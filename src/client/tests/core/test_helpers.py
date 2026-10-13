@@ -388,7 +388,55 @@ class TestExtractErrorDetail:
 
         exc = _http_error(500, content=b"")
         result = extract_error_detail(exc)
+        assert isinstance(result, str)
         assert "error" in result.lower() or "500" in result
+
+    def test_plain_text_body(self):
+        """Plain-text HTTP failures retain the response's explanation."""
+        from client.app.core.helpers import extract_error_detail
+
+        exc = _http_error(502, content=b"Model provider unavailable")
+        assert extract_error_detail(exc) == "Model provider unavailable"
+
+
+class TestFormatError:
+    """Shared formatting for API and streaming error messages."""
+
+    def test_authentication_error_from_http(self):
+        from client.app.core.helpers import format_error
+
+        key = "sk-proj-" + "*" * 152 + "AQEA"
+        detail = (
+            f"litellm.AuthenticationError: AuthenticationError: OpenAIException - "
+            f"Incorrect API key provided: {key}. "
+            "You can find your API key at https://platform.openai.com/account/api-keys."
+        )
+        error = _http_error(502, json_body={"detail": detail})
+
+        assert format_error(error) == (
+            "**AuthenticationError**\n\nIncorrect API key provided: "
+            "You can find your API key at https://platform.openai.com/account/api-keys."
+        )
+
+    def test_authentication_error_from_prefix_free_stream(self):
+        from client.app.core.helpers import format_error
+
+        error = RuntimeError("Incorrect API key provided: sk-proj-****AQEA. Check the API key.")
+        assert format_error(error) == "**AuthenticationError**\n\nIncorrect API key provided: Check the API key."
+
+    def test_unclassified_provider_error_keeps_message(self):
+        from client.app.core.helpers import format_error
+
+        error = _http_error(502, json_body={"detail": "RateLimitError: Provider rate limit exceeded."})
+        assert format_error(error, context="Evaluation failed") == (
+            "**Evaluation failed: RateLimitError**\n\nProvider rate limit exceeded."
+        )
+
+    def test_validation_details_remain_readable(self):
+        from client.app.core.helpers import format_error
+
+        error = _http_error(422, json_body={"detail": [{"loc": ["body", "name"], "msg": "Field required"}]})
+        assert format_error(error) == "body.name: Field required"
 
 
 # ---------------------------------------------------------------------------

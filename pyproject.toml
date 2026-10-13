@@ -10,7 +10,7 @@ build-backend = "setuptools.build_meta"
 name = "ai-optimizer"
 dynamic = ["version"]
 description = "Oracle AI Optimizer and Toolkit"
-requires-python = ">=3.11,<3.13"
+requires-python = ">=3.12,<3.15,!=3.14.1"
 license =  "UPL-1.0"
 authors = [
     {name = "Oracle", email = "obaas_ww@oracle.com"}
@@ -18,7 +18,7 @@ authors = [
 
 # - common dependencies that are always needed
 dependencies = [
-    "langchain==1.4.3",
+    "langchain==1.4.5",
     "httpx==0.28.1",
     "oracledb~=26.0",
     "pydantic-settings==2.15.0"
@@ -28,40 +28,37 @@ dependencies = [
 # Server component dependencies
 # - server: server side only
 server = [
-    "bokeh==3.9.2",
-    "datasets>=5.0.1",
-    "docling==2.132.0",
-    "evaluate>=0.4.6",
+    "docling==2.138.0",
     "faiss-cpu==1.15.1",
+    "fastapi==0.143.0",
     "fastmcp==3.4.7",
-    "giskard==2.19.2",
+    "giskard==3.0.1",
     "langchain-litellm==0.11.0",
     "langchain-mcp-adapters==0.3.2",
     "langchain-oracledb==1.6.0",
-    "litellm==1.103.2",
+    "litellm==1.105.0",
     "llama-index-core==0.14.25",
     "oci~=2.0",
     "pyagentspec==26.3.1",
-    "pypdf==6.19.0",
-    "umap-learn==0.5.12",
+    "pypdf==6.20.1",
     "torch", # Direct requirement to select the CPU-only PyTorch distribution for Docling.
     "torchvision", # Direct requirement to select the CPU-only PyTorch distribution for Docling.
 ]
 
 # - client: client side only
 client = [
-    "streamlit==1.64.0",
+    "streamlit==1.65.0",
 ]
 
 # - otel: opentelemetry collector for server-side observability
 otel = [
-    "opentelemetry-distro==0.66b0",
-    "opentelemetry-exporter-otlp==1.45.0",
-    "opentelemetry-instrumentation-fastapi==0.66b0",
-    "opentelemetry-instrumentation-httpx==0.66b0",
-    "opentelemetry-instrumentation-logging==0.66b0",
-    "opentelemetry-instrumentation-requests==0.66b0",
-    "openinference-instrumentation-langchain==0.1.78"
+    "opentelemetry-distro==0.66b1",
+    "opentelemetry-exporter-otlp==1.45.1",
+    "opentelemetry-instrumentation-fastapi==0.66b1",
+    "opentelemetry-instrumentation-httpx==0.66b1",
+    "opentelemetry-instrumentation-logging==0.66b1",
+    "opentelemetry-instrumentation-requests==0.66b1",
+    "openinference-instrumentation-langchain==0.1.79"
 ]
 
 # - all: all-in-one installation (server (langgraph) + client)
@@ -115,9 +112,6 @@ py-modules = ["_version", "entrypoint", "logging_config", "logging_redaction", "
 
 [tool.setuptools.package-dir]
 "" = "src"
-
-[tool.setuptools.package-data]
-"server.patches" = ["LICENSE.giskard", "README.md"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

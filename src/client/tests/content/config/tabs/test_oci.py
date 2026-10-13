@@ -1125,8 +1125,10 @@ class TestCreateOci:
             patch(f"{MODULE}.api_post", side_effect=error),
             patch(f"{MODULE}.helpers") as hlp,
         ):
+            from client.app.core.helpers import format_error
+
             hlp.build_payload.return_value = {"auth_profile": "DUP"}
-            hlp.extract_error_detail.return_value = "already exists"
+            hlp.format_error.side_effect = format_error
             _create_oci("DUP", {})
 
         error_messages = [call.args[0] for call in mock_st.error.call_args_list]
@@ -1242,7 +1244,9 @@ class TestRemoveOci:
             patch(f"{MODULE}.api_delete", side_effect=error),
             patch(f"{MODULE}.helpers") as hlp,
         ):
-            hlp.extract_error_detail.return_value = "not found"
+            from client.app.core.helpers import format_error
+
+            hlp.format_error.side_effect = format_error
             _remove_oci("MISSING")
 
         error_messages = [call.args[0] for call in mock_st.error.call_args_list]

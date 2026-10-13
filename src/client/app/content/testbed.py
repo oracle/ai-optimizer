@@ -23,6 +23,7 @@ from client.app.core.auth import is_authenticated, locked_notice
 from client.app.core.helpers import (
     available_models_lookup,
     extract_error_detail,
+    format_error,
     selectbox_index,
     state_configs_lookup,
     unique_file_payload,
@@ -96,7 +97,7 @@ def _qa_delete() -> None:
         )
         _reset_testset(True)
     except httpx.HTTPStatusError as exc:
-        st.error(f"Failed to delete test set: {extract_error_detail(exc)}")
+        st.error(format_error(exc, context="Failed to delete test set"), icon="🚨")
 
 
 def _qa_update_db() -> None:
@@ -536,16 +537,14 @@ def _process_testset_request(endpoint: Optional[str], api_params: dict, testset_
         if isinstance(detail, dict) and "rejected_files" in detail:
             rejected = detail.get("rejected_files") or []
             lines = "\n".join(f"- **{r.get('filename', '?')}**: {r.get('reason', '')}" for r in rejected)
-            st.error(
-                f"Error Generating TestSet: {detail.get('message', 'Rejected files')}\n\n{lines}",
-                icon="🚨",
-            )
+            message = f"{detail.get('message', 'Rejected files')}\n\n{lines}"
+            st.error(format_error(message, context="Error Generating TestSet"), icon="🚨")
         else:
-            st.error(f"Error Generating TestSet: {detail}", icon="🚨")
+            st.error(format_error(exc, context="Error Generating TestSet"), icon="🚨")
         st.stop()
     except (ValueError, KeyError, TypeError) as ex:
         LOGGER.error("Exception: %s", ex)
-        st.error(f"Unexpected error: {ex}", icon="🚨")
+        st.error(format_error(ex), icon="🚨")
         st.stop()
 
     try:
@@ -637,7 +636,7 @@ def _render_evaluation_ui(available_ll_models: list) -> None:
             if response:
                 _evaluation_report(report=response)
         except httpx.HTTPStatusError as exc:
-            st.error(extract_error_detail(exc), icon="🚨")
+            st.error(format_error(exc), icon="🚨")
 
 
 #############################################################################

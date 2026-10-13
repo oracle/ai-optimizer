@@ -29,10 +29,10 @@ from server.app.runtime.common import (
     HistoryStore,
     LLMConfigurationError,
     Route,
-    clean_llm_error,
     fetch_prompt_for_route,
     fetch_prompt_with_fallback,
     format_history_text,
+    llm_error_detail,
     resolve_route,
     validate_classifier_prompt,
     validate_synthesis_template,
@@ -617,12 +617,12 @@ class ChatOrchestrator:
                 exc = task.exception()
                 if exc is not None:
                     LOGGER.error("Streaming execution failed: %s", exc)
-                    yield {"type": "error", "content": clean_llm_error(exc)}
+                    yield {"type": "error", "content": llm_error_detail(exc)}
                     return
 
             except Exception as exc:
                 LOGGER.error("Stream consumer error: %s", exc)
-                yield {"type": "error", "content": clean_llm_error(exc)}
+                yield {"type": "error", "content": llm_error_detail(exc)}
                 if not task.done():
                     task.cancel()
                 return

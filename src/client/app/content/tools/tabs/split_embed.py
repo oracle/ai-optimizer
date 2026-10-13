@@ -319,7 +319,7 @@ def _render_embedding_config_section(embed_models_enabled: dict, embed_config: d
         st.write(f"Embedding Server: {embed_url}")
         is_accessible, err_msg = _is_url_accessible(embed_url)
         if not is_accessible:
-            st.warning(err_msg, icon="⚠️")
+            st.warning(helpers.format_error(err_msg), icon="⚠️")
             if st.button("Retry"):
                 st.rerun()
             st.stop()
@@ -821,7 +821,7 @@ def _poll_embed_job(job_id: str, client_header: dict) -> dict:
     time us out — the only ceiling is that the job itself eventually
     succeeds or fails. A failure raises ``httpx.HTTPStatusError`` shaped
     like the old synchronous error path so the calling render code can
-    keep using ``helpers.extract_error_detail``.
+    keep using the shared error formatter.
 
     Transient failures are absorbed up to ``_MAX_CONSECUTIVE_503S``
     consecutive blips; the pipeline is server-side and continues to
@@ -1079,7 +1079,7 @@ def _handle_vector_store_population(
             attached_id = getattr(ex, "job_id", None)
             if ex.response.status_code != HTTPStatus.SERVICE_UNAVAILABLE and attached_id is not None:
                 clear_embed_job_flag(attached_id)
-            st.error(helpers.extract_error_detail(ex), icon="🚨")
+            st.error(helpers.format_error(ex), icon="🚨")
     elif refresh_clicked:
         state.running = True
         try:
@@ -1087,7 +1087,7 @@ def _handle_vector_store_population(
                 response = _process_refresh_request(embed_config, source_data.oci_bucket or "", rate_limit)
             _handle_refresh_success(response)
         except httpx.HTTPStatusError as ex:
-            st.error(f"Refresh failed: {helpers.extract_error_detail(ex)}", icon="🚨")
+            st.error(helpers.format_error(ex, context="Refresh failed"), icon="🚨")
         finally:
             state.running = False
 

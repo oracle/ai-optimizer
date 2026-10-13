@@ -1344,6 +1344,26 @@ class TestRenderEvaluationUi:
             base.update(extra)
         return base
 
+    def test_model_authentication_error_uses_shared_format(self):
+        from client.app.content.testbed import _render_evaluation_ui
+
+        mock_st = MagicMock()
+        columns = [MagicMock(), MagicMock(), MagicMock()]
+        columns[1].button.return_value = True
+        mock_st.columns.return_value = columns
+        state = self._make_eval_state({"runtime_testbed_evaluations": [], "runtime_testbed_judge_model": "openai/m1"})
+        detail = "AuthenticationError: OpenAIException - Incorrect API key provided: sk-proj-****AQEA."
+        with (
+            patch(f"{MODULE}.st", mock_st),
+            patch(f"{MODULE}.state", state),
+            patch(f"{MODULE}.sidebar"),
+            patch(f"{MODULE}.api_post", side_effect=make_http_error(502, detail)),
+            patch(f"{MODULE}._qa_update_db"),
+        ):
+            _render_evaluation_ui(["openai/m1"])
+
+        mock_st.error.assert_called_once_with("**AuthenticationError**\n\nIncorrect API key provided", icon="🚨")
+
     def test_fetches_evaluations_on_first_render(self):
         """Fetches evaluations from API when not in state."""
         from client.app.content.testbed import _render_evaluation_ui

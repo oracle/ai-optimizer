@@ -647,7 +647,9 @@ class TestApplyUploadedSettings:
             patch(f"{MODULE}.api_post", mock_api_post),
             patch(f"{MODULE}.helpers") as mock_helpers,
         ):
-            mock_helpers.extract_error_detail.return_value = "bad"
+            from client.app.core.helpers import format_error
+
+            mock_helpers.format_error.side_effect = format_error
             from client.app.content.config.tabs.settings import _apply_uploaded_settings
 
             _apply_uploaded_settings(uploaded)

@@ -16,6 +16,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import HTTPException
 from langchain_oracledb.vectorstores.oraclevs import DistanceStrategy
+from litellm.exceptions import AuthenticationError
 from pydantic import SecretStr
 
 from server.app.embed.schemas import DoclingDocumentChunk, VectorStoreConfig
@@ -1025,6 +1026,70 @@ async def test_filename_grouped_pipeline_finalizes_completed_store_before_later_
     assert update_comment.await_count == 1
     assert update_comment.await_args is not None
     assert update_comment.await_args.args[1].alias == "A"
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("failure", "expected"),
+    [
+        (
+            RuntimeError("AuthenticationError: Incorrect API key provided: sk-proj-****AQEA; code: invalid_api_key"),
+            "AuthenticationError: Incorrect API key provided",
+        ),
+        (
+            ValueError("OpenAIException - {'code': 'invalid_api_key'}"),
+            "AuthenticationError: Incorrect API key provided",
+        ),
+        (
+            AuthenticationError(
+                message="Incorrect API key provided: sk-proj-****AQEA",
+                llm_provider="openai",
+                model="text-embedding-3-small",
+            ),
+            "AuthenticationError: Incorrect API key provided",
+        ),
+        (
+            AuthenticationError(
+                message="No API key provided: sk-proj-****AQEA",
+                llm_provider="openai",
+                model="text-embedding-3-small",
+            ),
+            "AuthenticationError: API key is missing",
+        ),
+        (RuntimeError("Database operation failed"), "Vector store operation failed."),
+    ],
+)
+async def test_embed_pipeline_reports_provider_authentication_without_key(mock_client_db, tmp_path, failure, expected):
+    from server.app.api.v1.endpoints import embed as embed_module
+    from server.app.embed.jobs import JobFailure
+
+    _conn, _pool, db_config = mock_client_db
+    handle = MagicMock()
+    handle.set_progress = AsyncMock()
+    request = VectorStoreConfig(
+        embedding_model=ModelIdentity(provider="openai", id=TEST_OPENAI_EMBED_ID),
+        chunk_size=1000,
+        chunk_overlap=100,
+        distance_strategy=DistanceStrategy.COSINE,
+    )
+    chunks = [DoclingDocumentChunk("content", {"source": "/work/source.pdf"}, "chunk-1")]
+
+    with (
+        patch.object(embed_module, "get_oci_profile", return_value=MagicMock()),
+        patch.object(embed_module, "get_client_embed", return_value=MagicMock()),
+        patch.object(
+            embed_module,
+            "load_and_split_documents",
+            return_value=(chunks, [], {"processed_files": [], "skipped_files": [], "total_chunks": 1}),
+        ),
+        patch.object(embed_module, "populate_vs", side_effect=failure),
+        pytest.raises(JobFailure) as caught,
+    ):
+        await embed_module._run_split_embed_pipeline(handle, request, 0, "client", tmp_path, [], None, db_config)
+
+    assert caught.value.detail == expected
+    assert "sk-proj" not in caught.value.detail
 
 
 # ---------------------------------------------------------------------------
