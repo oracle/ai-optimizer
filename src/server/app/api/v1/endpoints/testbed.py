@@ -329,8 +329,6 @@ def _serialise_report(report) -> dict:
     """Convert Giskard v3 check results to the persisted testbed report shape."""
     rows = []
     topic_rows = []
-    quality_outcomes: dict[str, list[bool]] = {"groundedness": [], "answer_relevance": []}
-    failure_ids = []
     for scenario_result in report.results:
         interaction = scenario_result.final_trace.last
         if interaction is None:
@@ -339,24 +337,13 @@ def _serialise_report(report) -> dict:
         outputs = interaction.outputs
         metadata = interaction.metadata
         check_results = [result for step in scenario_result.steps for result in step.results]
-        named_results = {getattr(result, "details", {}).get("check_name"): result for result in check_results}
-        check_result = named_results.get("correctness") or (check_results[0] if check_results else None)
+        check_result = check_results[-1] if check_results else None
         correctness = bool(check_result and check_result.passed)
         reason = None if correctness or check_result is None else check_result.message
-        quality = {}
-        for check_name, outcomes in quality_outcomes.items():
-            result = named_results.get(check_name)
-            quality[check_name] = result.passed if result else None
-            quality[f"{check_name}_reason"] = result.message if result and not result.passed else None
-            if result:
-                outcomes.append(result.passed)
         record_metadata = metadata.get("metadata", {})
-        record_id = metadata.get("id", scenario_result.scenario_name)
-        if not correctness or any(value is False for value in (quality["groundedness"], quality["answer_relevance"])):
-            failure_ids.append(record_id)
         rows.append(
             {
-                "id": record_id,
+                "id": metadata.get("id", scenario_result.scenario_name),
                 "question": inputs["question"],
                 "reference_answer": metadata.get("reference_answer", ""),
                 "reference_context": metadata.get("reference_context", ""),
@@ -365,7 +352,6 @@ def _serialise_report(report) -> dict:
                 "agent_answer": outputs["answer"],
                 "correctness": correctness,
                 "correctness_reason": reason,
-                **quality,
             }
         )
         topic_rows.append({"topic": record_metadata.get("topic", "General"), "correctness": correctness})
@@ -374,7 +360,7 @@ def _serialise_report(report) -> dict:
     if not frame.empty:
         frame.set_index("id", inplace=True)
         correct_by_topic = pd.DataFrame(topic_rows).groupby("topic", dropna=False)["correctness"].mean().to_frame()
-        failures = frame[frame.index.isin(failure_ids)]
+        failures = frame[~frame["correctness"]]
         correctness = float(frame["correctness"].mean())
     else:
         correct_by_topic = pd.DataFrame(columns=["correctness"])
@@ -385,9 +371,6 @@ def _serialise_report(report) -> dict:
         "correct_by_topic": _df_to_json_safe(correct_by_topic),
         "failures": _df_to_json_safe(failures) if not failures.empty else {},
         "correctness": correctness,
-        "quality_metrics": {
-            name: sum(outcomes) / len(outcomes) if outcomes else None for name, outcomes in quality_outcomes.items()
-        },
     }
 
 

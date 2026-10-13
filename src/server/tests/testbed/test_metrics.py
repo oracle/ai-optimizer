@@ -116,26 +116,33 @@ async def test_correctness_check_propagates_provider_errors():
 
 
 @pytest.mark.unit
-def test_evaluation_suite_adds_source_and_relevance_checks():
+@pytest.mark.parametrize("correctness", [True, False])
+async def test_evaluation_runs_one_correctness_judge_per_question(correctness):
+    from server.app.api.v1.endpoints.testbed import _serialise_report
+
+    questions = []
+
+    async def target(inputs):
+        questions.append(inputs["question"])
+        return {"answer": "Paris"}
+
     record = {
-        "question": "Where is the archive?",
-        "reference_answer": "In Paris.",
-        "reference_context": "The archive is in Paris.",
-        "conversation_history": [],
-        "metadata": {},
+        "id": "Q1",
+        "question": "Where is the Eiffel Tower?",
+        "reference_answer": "Paris",
+        "reference_context": "The Eiffel Tower is in Paris.",
+        "metadata": {"topic": "Geography"},
     }
-    suite = build_evaluation_suite([record], lambda inputs: {"answer": "In Paris."}, {"model": "openai/test"}, "Judge")
+    completion = AsyncMock(return_value=_response({"correctness": correctness, "correctness_reason": "Judged"}))
+    suite = build_evaluation_suite([record], target, {"model": "openai/test"}, "Judge carefully.")
 
-    assert [check.name for check in suite.scenarios[0].steps[0].checks] == [
-        "correctness",
-        "groundedness",
-        "answer_relevance",
-    ]
+    with patch("server.app.testbed.metrics.litellm.acompletion", completion):
+        result = await suite.run(parallel=False, return_exception=False, verbose=False)
 
-
-@pytest.mark.unit
-def test_evaluation_suite_skips_groundedness_without_source():
-    record = {"question": "What?", "reference_answer": "Yes.", "reference_context": ""}
-    suite = build_evaluation_suite([record], lambda inputs: {"answer": "Yes."}, {"model": "openai/test"}, "Judge")
-
-    assert [check.name for check in suite.scenarios[0].steps[0].checks] == ["correctness", "answer_relevance"]
+    completion.assert_awaited_once()
+    assert questions == [record["question"]]
+    payload = _serialise_report(result)
+    assert payload["correctness"] == float(correctness)
+    assert payload["report"]["correctness"] == {"Q1": correctness}
+    assert payload["correct_by_topic"]["correctness"] == {"Geography": float(correctness)}
+    assert bool(payload["failures"]) is not correctness

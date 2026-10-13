@@ -86,8 +86,6 @@ The evaluation also produces correctness metrics by topic, a detailed list of fa
 * **correctness**: true/false indicating whether the agent's answer is semantically equivalent to the reference answer, as determined by the judge;
 * **correctness_reason**: the reason why an answer has been evaluated wrong by the judge LLM.
 
-The report also shows **Groundedness** and **Answer Relevance** pass rates. Groundedness checks whether the answer is supported by the record's reference context; records with an empty reference context have no groundedness result. Answer Relevance checks whether the answer addresses the current question. These checks appear in the full report and failures table. The Overall Correctness Score continues to use the reference-answer correctness check.
-
 ### Previous Evaluations
 
 Evaluation reports are stored in the database. When you open a test set with earlier evaluations, use **Previous Evaluations** to select and review a past report. This supports comparison across configurations and repeated runs.
