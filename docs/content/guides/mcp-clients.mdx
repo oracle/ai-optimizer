@@ -12,6 +12,24 @@ The **Oracle AI Optimizer and Toolkit** (the **AI Optimizer**) exposes an [MCP](
 
 External clients use the resources configured on the AI Optimizer Server. To use Vector Search, split and embed content first. To use NL2SQL, configure a database and [SQLcl MCP Server](./sqlcl-mcp-server).
 
+## Select a Vector Store
+
+The `optimizer_vs_retriever` tool accepts an optional `collection_alias` argument to restrict a request to one vector store. Use `optimizer_vs_discovery` with the same `thread_id` to find the available aliases, then pass the exact alias as a separate tool argument:
+
+```json
+{
+  "thread_id": "example-session",
+  "question": "How do I diagnose a failed build?",
+  "collection_alias": "operations_docs"
+}
+```
+
+When `collection_alias` is supplied, the retriever resolves it against the stores available to that client and searches only the uniquely matching store. It bypasses automatic table selection, even when the question describes another collection. Matching is case-sensitive and preserves whitespace. Empty or whitespace-only aliases, unavailable aliases, and aliases shared by multiple available stores return an error without searching a vector store; there is no fallback to another collection. Discovery respects the client's Vector Search settings and enabled embedding models.
+
+Omit `collection_alias` (or pass `null`) to retain automatic table selection. Putting an alias in the question text does not apply this filter. Check `status`, `searched_tables`, and `failed_tables` in the response to confirm which store was successfully searched.
+
+The argument selects a search scope for one request. It does not change client defaults or provide an authorization boundary. See [Access Control](./access-control) for deployment isolation and tool authorization.
+
 ## Authority and Execution Location
 
 The `X-API-Key` authorizes the holder to invoke the tools published by the AI Optimizer Server. Provide it only to users and systems authorized to use those server-side operations.
