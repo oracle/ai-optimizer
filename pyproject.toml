@@ -31,7 +31,7 @@ server = [
     "docling==2.138.0",
     "faiss-cpu==1.15.1",
     "fastapi==0.143.0",
-    "fastmcp==3.4.7",
+    "fastmcp==3.4.10",
     "giskard==3.0.1",
     "langchain-litellm==0.11.0",
     "langchain-mcp-adapters==0.3.2",
