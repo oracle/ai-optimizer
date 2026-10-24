@@ -40,7 +40,7 @@ server = [
     "llama-index-core==0.14.25",
     "oci~=2.0",
     "pyagentspec==26.3.1",
-    "pypdf==6.20.1",
+    "pypdf==6.21.2",
     "torch", # Direct requirement to select the CPU-only PyTorch distribution for Docling.
     "torchvision", # Direct requirement to select the CPU-only PyTorch distribution for Docling.
 ]
