@@ -18,25 +18,25 @@ authors = [
 
 # - common dependencies that are always needed
 dependencies = [
-    "langchain==1.4.5",
+    "langchain==1.4.7",
     "httpx==0.28.1",
     "oracledb~=26.0",
-    "pydantic-settings==2.15.0"
+    "pydantic-settings==2.16.2"
 ]
 
 [project.optional-dependencies]
 # Server component dependencies
 # - server: server side only
 server = [
-    "docling==2.138.0",
+    "docling==2.145.0",
     "faiss-cpu==1.15.1",
-    "fastapi==0.143.0",
+    "fastapi==0.162.0",
     "fastmcp==3.4.10",
     "giskard==3.0.1",
-    "langchain-litellm==0.11.0",
+    "langchain-litellm==0.11.1",
     "langchain-mcp-adapters==0.3.2",
     "langchain-oracledb==1.6.0",
-    "litellm==1.105.0",
+    "litellm==1.106.6",
     "llama-index-core==0.14.25",
     "oci~=2.0",
     "pyagentspec==26.3.1",
@@ -47,18 +47,18 @@ server = [
 
 # - client: client side only
 client = [
-    "streamlit==1.65.0",
+    "streamlit==1.66.1",
 ]
 
 # - otel: opentelemetry collector for server-side observability
 otel = [
-    "opentelemetry-distro==0.66b1",
-    "opentelemetry-exporter-otlp==1.45.1",
-    "opentelemetry-instrumentation-fastapi==0.66b1",
-    "opentelemetry-instrumentation-httpx==0.66b1",
-    "opentelemetry-instrumentation-logging==0.66b1",
-    "opentelemetry-instrumentation-requests==0.66b1",
-    "openinference-instrumentation-langchain==0.1.79"
+    "opentelemetry-distro==0.66b2",
+    "opentelemetry-exporter-otlp==1.45.2",
+    "opentelemetry-instrumentation-fastapi==0.66b2",
+    "opentelemetry-instrumentation-httpx==0.66b2",
+    "opentelemetry-instrumentation-logging==0.66b2",
+    "opentelemetry-instrumentation-requests==0.66b2",
+    "openinference-instrumentation-langchain==0.1.81"
 ]
 
 # - all: all-in-one installation (server (langgraph) + client)
