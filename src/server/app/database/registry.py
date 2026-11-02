@@ -4,6 +4,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 Database initialization utilities for the server.
 """
+
 # spell-checker: ignore genai enquote oraclevs vectorstores
 import asyncio
 import json
@@ -145,7 +146,7 @@ async def test_connection(db_config: DatabaseConfig) -> None:
             db_config.vector_stores = await discover_vector_stores(conn)
         db_config.usable = True
         db_config.pool = pool
-    except (oracledb.Error, ValueError, TimeoutError):
+    except (oracledb.Error, ValueError, OSError):
         db_config.usable = False
         db_config.vector_stores = []
         await close_pool(pool)

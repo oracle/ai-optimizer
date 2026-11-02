@@ -116,24 +116,27 @@ async def test_test_connection_success():
 
 
 @pytest.mark.unit
-async def test_test_connection_failure():
+@pytest.mark.parametrize("error", [oracledb.Error("connection refused"), OSError("host not found")])
+async def test_test_connection_failure(error):
     """test_connection sets usable=False, closes pool, and re-raises on failure."""
     cfg = DatabaseConfig(alias="TEST", username="u", password=SecretStr("p"), dsn="d")
+    mock_pool = _make_mock_pool(AsyncMock())
+    mock_pool.acquire.return_value.__aenter__.side_effect = error
 
     with (
         patch(
             "server.app.database.registry.create_pool",
             new_callable=AsyncMock,
-            side_effect=oracledb.Error("connection refused"),
+            return_value=mock_pool,
         ),
         patch("server.app.database.registry.close_pool", new_callable=AsyncMock) as mock_close,
-        pytest.raises(oracledb.Error),
+        pytest.raises(type(error)),
     ):
         await registry_test_connection(cfg)
 
     assert cfg.usable is False
     assert not cfg.vector_stores
-    mock_close.assert_awaited_once()
+    mock_close.assert_awaited_once_with(mock_pool)
 
 
 @pytest.mark.unit

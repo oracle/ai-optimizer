@@ -28,6 +28,14 @@ from server.tests.conftest import make_core_db_config
 pytestmark = [pytest.mark.db, pytest.mark.integration]
 
 PATCH_PERSIST = "server.app.api.v1.endpoints.databases.persist_settings"
+PATCH_SQLCL_REFRESH = "server.app.api.v1.endpoints.databases.refresh_sqlcl_proxy"
+
+
+@pytest.fixture(autouse=True)
+def mock_sqlcl_refresh():
+    """Keep database update rules independent of the SQLcl daemon lifecycle."""
+    with patch(PATCH_SQLCL_REFRESH, new_callable=AsyncMock):
+        yield
 
 
 @pytest.fixture
@@ -62,7 +70,7 @@ async def test_rule1_working_to_broken_rejects(usable_config):
     original_dsn = cfg.dsn
     original_vs = cfg.vector_stores[:]
 
-    body = DatabaseUpdate(dsn="//bad-host:9999/NONEXIST")
+    body = DatabaseUpdate(dsn="//localhost:9999/NONEXIST")
     with patch(PATCH_PERSIST, new_callable=AsyncMock), pytest.raises(HTTPException) as exc_info:
         await update_database("INTEG", body)
 
@@ -108,13 +116,12 @@ async def test_rule4_broken_to_broken_accepts(unusable_config):
     """Rule 4: not working → doesn't work = accept (with error)."""
     cfg = unusable_config
     assert cfg.usable is False
-
-    body = DatabaseUpdate(dsn="//other-bad-host:9999/ALSO_NOPE")
+    body = DatabaseUpdate(dsn="//localhost:9999/ALSO_NOPE")
     with patch(PATCH_PERSIST, new_callable=AsyncMock):
         result = await update_database("INTEG", body)
 
     assert cfg.usable is False
-    assert cfg.dsn == "//other-bad-host:9999/ALSO_NOPE"
+    assert cfg.dsn == "//localhost:9999/ALSO_NOPE"
     assert "error" in result
 
 
@@ -123,7 +130,7 @@ async def test_rule1_preserves_vector_stores(usable_config):
     cfg = usable_config
     original_vs = cfg.vector_stores[:]
 
-    body = DatabaseUpdate(dsn="//bad-host:9999/NONEXIST")
+    body = DatabaseUpdate(dsn="//localhost:9999/NONEXIST")
     with patch(PATCH_PERSIST, new_callable=AsyncMock), pytest.raises(HTTPException):
         await update_database("INTEG", body)
 
