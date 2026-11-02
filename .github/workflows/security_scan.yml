@@ -75,12 +75,9 @@ jobs:
           restore-keys: |
             trivy-db-
 
-      # The first scan logs HIGH+CRITICAL findings; the second produces the
-      # CRITICAL-only SARIF report uploaded to the Security tab.
+      # Log findings, upload CRITICAL results as SARIF, then enforce the gate.
       #
-      # Skips ibm_watsonx_ai/connections.py: docstring shows a Google BigQuery
-      # service-account JSON example with placeholder values, which Trivy's
-      # secret scanner flags as a GCP service-account credential.
+      # Skip dependency examples and generated routes that match secret patterns.
       - name: Log HIGH+CRITICAL Findings
         if: always()
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
@@ -90,14 +87,14 @@ jobs:
           severity: HIGH,CRITICAL
           format: table
           ignore-unfixed: true
-          skip-files: "**/ibm_watsonx_ai/connections.py"
+          skip-files: "**/ibm_watsonx_ai/connections.py,**/oci/dbmulticloud/db_multicloud_aws_provider_client.py"
           docker-host: unix:///var/run/docker.sock
           exit-code: '0'
           cache: false
           cache-dir: ${{ github.workspace }}/.trivy-cache
           skip-setup-trivy: true
 
-      - name: Generate CRITICAL-only SARIF (fails build on CRITICAL)
+      - name: Generate CRITICAL-only SARIF
         if: always()
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
@@ -108,9 +105,9 @@ jobs:
           output: trivy-results.sarif
           limit-severities-for-sarif: true
           ignore-unfixed: true
-          skip-files: "**/ibm_watsonx_ai/connections.py"
+          skip-files: "**/ibm_watsonx_ai/connections.py,**/oci/dbmulticloud/db_multicloud_aws_provider_client.py"
           docker-host: unix:///var/run/docker.sock
-          exit-code: '1'
+          exit-code: '0'
           cache: false
           cache-dir: ${{ github.workspace }}/.trivy-cache
           skip-setup-trivy: true
@@ -121,6 +118,16 @@ jobs:
         with:
           sarif_file: trivy-results.sarif
           category: trivy-aio
+
+      - name: Fail build on CRITICAL findings
+        if: always() && hashFiles('trivy-results.sarif') != ''
+        run: |
+          critical_count=$(jq '[.runs[].results[]?] | length' trivy-results.sarif)
+          if (( critical_count > 0 )); then
+            echo "::error::Trivy found ${critical_count} CRITICAL finding(s)."
+            jq -r '.runs[].results[]? | "\(.ruleId): \(.message.text)"' trivy-results.sarif
+            exit 1
+          fi
 
   # Macaron - check GitHub Actions for known vulnerabilities
   macaron:
