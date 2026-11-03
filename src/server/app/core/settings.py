@@ -73,6 +73,7 @@ class Settings(SettingsBase, BaseSettings):
     db_pool_size: int = Field(default=5, exclude=True)
 
     max_clients: int = Field(default=64, ge=1, exclude=True)
+    mcp_cache_ttl_seconds: int = Field(default=5, ge=0, exclude=True)
 
     # OCI CLI — applied to DEFAULT profile at startup (excluded from serialization)
     oci_cli_auth: Optional[str] = Field(default=None, exclude=True)

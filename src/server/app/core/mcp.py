@@ -15,9 +15,22 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from server.app.core.secrets import reveal
 from server.app.core.settings import settings
+from server.app.mcp.transforms import DeterministicCatalogTransform
 
 fastmcp_settings.mcp_camelcase_compat = False
-mcp = FastMCP("Oracle AI Optimizer")
+
+
+def _create_mcp_server(cache_ttl_seconds: int) -> FastMCP:
+    """Create the shared MCP server with its catalog and cache policy."""
+    return FastMCP(
+        "Oracle AI Optimizer",
+        transforms=[DeterministicCatalogTransform()],
+        cache_ttl=cache_ttl_seconds or None,
+        cache_scope="private" if cache_ttl_seconds else None,
+    )
+
+
+mcp = _create_mcp_server(settings.mcp_cache_ttl_seconds)
 
 
 class MCPApiKeyMiddleware:
