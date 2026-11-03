@@ -11,6 +11,7 @@ import contextlib
 import importlib.util
 import logging
 import os
+from typing import Any
 from unittest import mock
 
 import pytest
@@ -245,6 +246,8 @@ class TestInitLogs:
             "requests.adapters",
             "httpx",
             "httpcore.connection",
+            "httpx2",
+            "httpcore2.connection",
             # gRPC OTLP exporter emits transport records under grpc.*.
             "grpc",
             "grpc._channel",
@@ -297,9 +300,7 @@ class TestInitLogs:
         original_handlers = list(root.handlers)
         try:
             setup._init_logs(resource)
-            handler = next(
-                h for h in root.handlers if isinstance(h, LoggingHandler) and h not in original_handlers
-            )
+            handler = next(h for h in root.handlers if isinstance(h, LoggingHandler) and h not in original_handlers)
 
             app_record = logging.LogRecord(
                 name="server.app.api.v1.chat",
@@ -371,9 +372,7 @@ class TestInitLogs:
 
         from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 
-        assert add_processor.call_count == 2, (
-            f"expected 2 processor registrations, got {add_processor.call_count}"
-        )
+        assert add_processor.call_count == 2, f"expected 2 processor registrations, got {add_processor.call_count}"
         first = add_processor.call_args_list[0].args[0]
         second = add_processor.call_args_list[1].args[0]
         assert isinstance(first, setup._RedactingLogProcessor)
@@ -452,9 +451,7 @@ class TestInstrumentLibraries:
             setup._init_logs(Resource.create({}))
             setup._instrument_libraries()
 
-            new_otel_handlers = [
-                h for h in root.handlers if _is_otel_handler(h) and h not in original_handlers
-            ]
+            new_otel_handlers = [h for h in root.handlers if _is_otel_handler(h) and h not in original_handlers]
             assert len(new_otel_handlers) == 1, (
                 f"expected exactly one OTel handler on root, got {len(new_otel_handlers)}: "
                 f"{[type(h).__module__ + '.' + type(h).__name__ for h in new_otel_handlers]}"
@@ -466,6 +463,83 @@ class TestInstrumentLibraries:
                 named.handlers = [h for h in named.handlers if not _is_otel_handler(h)]
             with contextlib.suppress(Exception):
                 LoggingInstrumentor().uninstrument()
+
+    async def test_modern_mcp_uses_native_spans_without_httpx_client_span(self, monkeypatch):
+        import httpx2
+        from fastmcp import Client, FastMCP
+        from fastmcp.client.transports import StreamableHttpTransport
+        from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+        from opentelemetry.sdk.trace import TracerProvider
+        from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+        from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+        from opentelemetry.trace import SpanKind
+
+        exporter = InMemorySpanExporter()
+        provider = TracerProvider()
+        provider.add_span_processor(SimpleSpanProcessor(exporter))
+        monkeypatch.setattr("fastmcp.telemetry.otel_get_tracer", provider.get_tracer)
+
+        server = FastMCP("trace-test")
+
+        @server.tool(name="echo")
+        def echo(value: str) -> str:
+            return value
+
+        http_app = server.http_app(path="/")
+
+        def asgi_client_factory(
+            headers: dict[str, str] | None = None,
+            timeout: httpx2.Timeout | None = None,
+            auth: httpx2.Auth | None = None,
+            **kwargs: Any,
+        ) -> httpx2.AsyncClient:
+            return httpx2.AsyncClient(
+                transport=httpx2.ASGITransport(app=http_app),
+                base_url="http://test",
+                headers=headers,
+                auth=auth,
+                **({"timeout": timeout} if timeout is not None else {}),
+                **kwargs,
+            )
+
+        transport = StreamableHttpTransport(
+            "http://test/",
+            httpx_client_factory=asgi_client_factory,
+        )
+        instrumentor = HTTPXClientInstrumentor()
+        instrumentor.instrument(tracer_provider=provider)
+        try:
+            async with http_app.router.lifespan_context(http_app), Client(transport, mode="auto") as client:
+                assert client.protocol_version == "2026-07-28"
+                await client.call_tool("echo", {"value": "traced"})
+        finally:
+            instrumentor.uninstrument()
+            provider.shutdown()
+
+        spans = exporter.get_finished_spans()
+        fastmcp_spans = [
+            span
+            for span in spans
+            if span.instrumentation_scope is not None and span.instrumentation_scope.name == "fastmcp"
+        ]
+        assert any(
+            span.kind is SpanKind.CLIENT
+            and (span.attributes or {}).get("mcp.method.name") == "tools/call"
+            and (span.attributes or {}).get("gen_ai.tool.name") == "echo"
+            for span in fastmcp_spans
+        )
+        assert any(
+            span.kind is SpanKind.SERVER
+            and (span.attributes or {}).get("mcp.method.name") == "tools/call"
+            and (span.attributes or {}).get("mcp.protocol.version") == "2026-07-28"
+            and (span.attributes or {}).get("gen_ai.tool.name") == "echo"
+            for span in fastmcp_spans
+        )
+        assert not any(
+            span.instrumentation_scope is not None
+            and span.instrumentation_scope.name == "opentelemetry.instrumentation.httpx"
+            for span in spans
+        )
 
 
 # ---------------------------------------------------------------------------

@@ -185,8 +185,9 @@ async def vector_db_config_fixture(oracle_db_container) -> AsyncIterator[Databas
 @pytest.fixture
 async def mcp_client():
     """In-process MCP protocol client connected to the real FastMCP server."""
-    client = Client(mcp)
-    async with client:
+    async with Client(mcp, mode="auto") as client:
+        assert client.protocol_version == "2026-07-28"
+        assert client.initialize_result is None
         yield client
 
 

@@ -12,12 +12,17 @@ avoided by using disabled code paths unless explicitly marked ``@pytest.mark.db`
 # spell-checker: disable
 
 import json
+from typing import Any
 from urllib.parse import urlparse
 
+import httpx2
 import pytest
+from fastmcp import Client
 from fastmcp import settings as fastmcp_settings
+from fastmcp.client.transports import StreamableHttpTransport
 
 from server.app.core.settings import settings
+from server.app.main import app, mcp_app
 from server.app.mcp.prompts.registry import register_mcp_prompt
 
 pytestmark = [pytest.mark.integration]
@@ -270,6 +275,66 @@ async def test_client_config_structure(app_client, auth_headers):
     assert server_entry["transport"] == "streamable-http"
     assert urlparse(server_entry["url"]).path.endswith("/mcp")
     assert "X-API-Key" in server_entry["headers"]
+
+
+async def test_mounted_http_modern_protocol_and_authentication(
+    _register_tools,
+    app_client,
+    auth_headers,
+    monkeypatch,
+):
+    """The mounted endpoint authenticates and serves the modern MCP protocol."""
+    missing = await app_client.post("/mcp/", json={})
+    wrong = await app_client.post("/mcp/", headers={"X-API-Key": "wrong"}, json={})
+    assert missing.status_code == 403
+    assert wrong.status_code == 403
+
+    rest_response = await app_client.get("/mcp/tools", headers=auth_headers)
+    assert rest_response.status_code == 200
+    assert EXPECTED_TOOL_NAMES.issubset({tool["name"] for tool in rest_response.json()})
+
+    prefix = "/optimizer"
+    monkeypatch.setattr(settings, "server_url_prefix", prefix)
+    monkeypatch.setattr(app, "root_path", prefix)
+    config_response = await app_client.get("/mcp/client-config", headers=auth_headers)
+    assert config_response.status_code == 200
+    server_config = config_response.json()["mcpServers"]["oracle-ai-optimizer"]
+    assert server_config["url"] == "http://test/optimizer/mcp"
+
+    def asgi_client_factory(
+        headers: dict[str, str] | None = None,
+        timeout: httpx2.Timeout | None = None,
+        auth: httpx2.Auth | None = None,
+        **kwargs: Any,
+    ) -> httpx2.AsyncClient:
+        return httpx2.AsyncClient(
+            transport=httpx2.ASGITransport(app=app),
+            base_url="http://test",
+            headers=headers,
+            auth=auth,
+            **({"timeout": timeout} if timeout is not None else {}),
+            **kwargs,
+        )
+
+    transport = StreamableHttpTransport(
+        server_config["url"],
+        headers=server_config["headers"],
+        httpx_client_factory=asgi_client_factory,
+    )
+    settings.client_settings.vector_search.rephrase = False
+
+    async with mcp_app.router.lifespan_context(mcp_app), Client(transport, mode="auto") as client:
+        assert client.protocol_version == "2026-07-28"
+        assert client.initialize_result is None
+        tools = await client.list_tools()
+        assert EXPECTED_TOOL_NAMES.issubset({tool.name for tool in tools})
+
+        result = await client.call_tool(
+            "optimizer_vs_rephrase",
+            {"thread_id": "mounted-http", "question": "What is Oracle?"},
+        )
+
+    assert _parse_tool_result(result)["rephrased_prompt"] == "What is Oracle?"
 
 
 # ---------------------------------------------------------------------------
