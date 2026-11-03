@@ -167,8 +167,8 @@ async def test_vs_discovery_exception_path(monkeypatch: pytest.MonkeyPatch):
     assert response.error == "explode"
 
 
-async def test_register_discovery_tool(monkeypatch: pytest.MonkeyPatch):
-    """Registered tool should invoke implementation and emit context info."""
+async def test_register_discovery_tool(monkeypatch: pytest.MonkeyPatch, caplog):
+    """Registered tool should invoke implementation and log the request."""
 
     async def _fake_impl(filter_enabled_models: bool = True, client: str = "CONFIGURED") -> VectorStoreListResponse:
         return VectorStoreListResponse(
@@ -188,17 +188,8 @@ async def test_register_discovery_tool(monkeypatch: pytest.MonkeyPatch):
 
     tool = cast(FunctionTool, await mcp.local_provider.get_tool("optimizer_vs_discovery"))
 
-    class _Ctx:
-        """Collects MCP context messages."""
-
-        def __init__(self):
-            self.messages: list[str] = []
-
-        async def info(self, message: str) -> None:
-            self.messages.append(message)
-
-    ctx = _Ctx()
-    response = await tool.fn(thread_id="abc", filter_enabled_models=False, ctx=ctx)
+    caplog.set_level("INFO", logger=vs_discovery.__name__)
+    response = await tool.fn(thread_id="abc", filter_enabled_models=False)
 
     assert response.status == "filters=False"
-    assert ctx.messages == ["VS Discovery (Thread ID: abc, Filter: False)"]
+    assert "VS Discovery (Thread ID: abc, Filter: False)" in caplog.messages

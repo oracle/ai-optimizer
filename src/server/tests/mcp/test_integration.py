@@ -15,6 +15,7 @@ import json
 from urllib.parse import urlparse
 
 import pytest
+from fastmcp import settings as fastmcp_settings
 
 from server.app.core.settings import settings
 from server.app.mcp.prompts.registry import register_mcp_prompt
@@ -53,7 +54,7 @@ async def test_list_tools_returns_all_four(_register_tools, mcp_client):
     for tool in tools:
         if tool.name in EXPECTED_TOOL_NAMES:
             assert tool.description
-            assert tool.inputSchema
+            assert tool.input_schema
 
 
 # ---------------------------------------------------------------------------
@@ -225,6 +226,38 @@ async def test_tools_endpoint_lists_registered_tools(_register_tools, app_client
     assert resp.status_code == 200
     tool_names = {t["name"] for t in resp.json()}
     assert EXPECTED_TOOL_NAMES.issubset(tool_names)
+
+
+async def test_sdk_v2_models_without_camelcase_bridge(
+    _register_tools,
+    mcp_client,
+    prompt_config_factory,
+    app_client,
+    auth_headers,
+):
+    """Python models use SDK v2 names while REST emits MCP wire aliases."""
+    assert fastmcp_settings.mcp_camelcase_compat is False
+
+    tools = await mcp_client.list_tools()
+    optimizer_tool = next(tool for tool in tools if tool.name == "optimizer_vs_discovery")
+    assert optimizer_tool.input_schema["type"] == "object"
+    assert optimizer_tool.annotations is not None
+    assert optimizer_tool.annotations.read_only_hint is True
+    with pytest.raises(AttributeError):
+        getattr(optimizer_tool, "inputSchema")
+
+    prompt = prompt_config_factory("sdk-v2-prompt", "SDK v2 prompt text")
+    register_mcp_prompt(prompt)
+    result = await mcp_client.get_prompt("sdk-v2-prompt")
+    assert result.messages[0].content.text == "SDK v2 prompt text"
+
+    response = await app_client.get("/mcp/tools", headers=auth_headers)
+    assert response.status_code == 200
+    rest_tool = next(tool for tool in response.json() if tool["name"] == "optimizer_vs_discovery")
+    assert "inputSchema" in rest_tool
+    assert "input_schema" not in rest_tool
+    assert rest_tool["annotations"]["readOnlyHint"] is True
+    assert "read_only_hint" not in rest_tool["annotations"]
 
 
 async def test_client_config_structure(app_client, auth_headers):

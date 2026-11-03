@@ -645,7 +645,7 @@ async def test_vs_retrieve_success(
 
 
 @pytest.mark.parametrize("collection_alias", [None, "DOCS"])
-async def test_register_retriever_tool(collection_alias: Optional[str], monkeypatch: pytest.MonkeyPatch):
+async def test_register_retriever_tool(collection_alias: Optional[str], monkeypatch: pytest.MonkeyPatch, caplog):
     calls = []
 
     async def _fake_impl(
@@ -668,17 +668,15 @@ async def test_register_retriever_tool(collection_alias: Optional[str], monkeypa
     tool = cast(FunctionTool, await mcp.local_provider.get_tool("optimizer_vs_retriever"))
 
     class _Ctx:
-        def __init__(self):
-            self.messages: list[str] = []
-
-        async def info(self, message: str) -> None:
-            self.messages.append(message)
+        async def report_progress(self, _step: int, _total: int) -> None:
+            pass
 
     ctx = _Ctx()
+    caplog.set_level("INFO", logger=vs_retriever.__name__)
     response = await tool.fn(thread_id="abc", question="Q", ctx=ctx, collection_alias=collection_alias)
 
     assert response.status == "ok"
-    assert ctx.messages == ["VS Retriever (Thread ID: abc)"]
+    assert "VS Retriever (Thread ID: abc)" in caplog.messages
     assert calls == [("Q", ctx, "abc", collection_alias)]
     assert "collection_alias" in tool.parameters["properties"]
     assert "collection_alias" not in tool.parameters.get("required", [])

@@ -9,7 +9,7 @@ Shared MCP utilities for transport construction and prompt fetching.
 import logging
 from typing import Any
 
-import httpx
+import httpx2
 from mcp.client.session import ClientSession
 from mcp.client.streamable_http import streamable_http_client
 from mcp.types import TextContent
@@ -72,9 +72,9 @@ async def connect_sqlcl_database(
 
     server_url = _normalize_server_url(server_url)
     LOGGER.debug("Connecting SQLcl database '%s' via %s", connection_name, server_url)
-    http_client = httpx.AsyncClient(headers={"X-API-Key": api_key}, verify=verify_for_url(server_url))
+    http_client = httpx2.AsyncClient(headers={"X-API-Key": api_key}, verify=verify_for_url(server_url))
     async with http_client:  # noqa: SIM117
-        async with streamable_http_client(server_url, http_client=http_client) as (read, write, _):
+        async with streamable_http_client(server_url, http_client=http_client) as (read, write):
             async with ClientSession(read, write) as session:
                 await session.initialize()
                 connect_args = {"connection_name": connection_name, "model": model}
@@ -84,20 +84,20 @@ async def connect_sqlcl_database(
                     "sqlcl_connect",
                     connect_args,
                 )
-                if getattr(result, "isError", False):
+                if getattr(result, "is_error", False):
                     message = _render_text_content(getattr(result, "content", None))
                     if not message:
-                        message = str(getattr(result, "structuredContent", "") or "")
+                        message = str(getattr(result, "structured_content", "") or "")
                     if "Connection not found:" in message and await ensure_sqlcl_saved_connection(connection_name):
                         result = await session.call_tool(
                             "sqlcl_connect",
                             connect_args,
                         )
-                        if not getattr(result, "isError", False):
+                        if not getattr(result, "is_error", False):
                             return
                         message = _render_text_content(getattr(result, "content", None))
                         if not message:
-                            message = str(getattr(result, "structuredContent", "") or "")
+                            message = str(getattr(result, "structured_content", "") or "")
                     raise RuntimeError(message or f"sqlcl_connect failed for {connection_name}")
 
 
@@ -111,9 +111,9 @@ async def fetch_mcp_prompt(
 
     server_url = _normalize_server_url(server_url)
     LOGGER.debug("Fetching MCP prompt '%s' from %s", prompt_name, server_url)
-    http_client = httpx.AsyncClient(headers={"X-API-Key": api_key}, verify=verify_for_url(server_url))
+    http_client = httpx2.AsyncClient(headers={"X-API-Key": api_key}, verify=verify_for_url(server_url))
     async with http_client:  # noqa: SIM117
-        async with streamable_http_client(server_url, http_client=http_client) as (read, write, _):
+        async with streamable_http_client(server_url, http_client=http_client) as (read, write):
             async with ClientSession(read, write) as session:
                 await session.initialize()
                 result = await session.get_prompt(prompt_name, arguments)

@@ -20,4 +20,4 @@ async def list_prompts():
     client = Client(mcp)
     async with client:
         prompts = await client.list_prompts()
-        return [p.model_dump() for p in prompts]
+        return [p.model_dump(by_alias=True) for p in prompts]

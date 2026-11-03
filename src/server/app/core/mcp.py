@@ -10,11 +10,13 @@ import hmac
 import json
 
 from fastmcp import FastMCP
+from fastmcp import settings as fastmcp_settings
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from server.app.core.secrets import reveal
 from server.app.core.settings import settings
 
+fastmcp_settings.mcp_camelcase_compat = False
 mcp = FastMCP("Oracle AI Optimizer")
 
 

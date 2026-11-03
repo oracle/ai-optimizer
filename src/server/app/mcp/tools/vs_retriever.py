@@ -418,7 +418,7 @@ def register_retriever_tool():
         name="optimizer_vs_retriever",
         title="Vector Search Retriever",
         tags={"vector-search", "optimizer"},
-        annotations={"readOnlyHint": True, "openWorldHint": True},
+        annotations={"read_only_hint": True, "open_world_hint": True},
         timeout=RETRIEVER_TIMEOUT_SECONDS,
     )
     async def retriever(
@@ -433,8 +433,7 @@ def register_retriever_tool():
         searches only the uniquely matching available store and does not use automatic
         selection or fallback. Omit it to use automatic table selection.
         """
-        if ctx:
-            await ctx.info(f"VS Retriever (Thread ID: {thread_id})")
+        LOGGER.info("VS Retriever (Thread ID: %s)", thread_id)
         # Clients may pass the full RephrasePrompt JSON as the question string
         try:
             parsed = json.loads(question)

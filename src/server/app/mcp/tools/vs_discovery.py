@@ -10,7 +10,6 @@ import contextlib
 import logging
 from typing import Optional
 
-from fastmcp import Context
 from langchain_oracledb.vectorstores.oraclevs import DistanceStrategy
 
 from server.app.core.mcp import mcp
@@ -142,16 +141,14 @@ def register_discovery_tool():
         name="optimizer_vs_discovery",
         title="Vector Store Discovery",
         tags={"vector-search", "optimizer"},
-        annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False},
+        annotations={"read_only_hint": True, "idempotent_hint": True, "open_world_hint": False},
     )
     async def vector_storage_discovery(
         thread_id: str,
         filter_enabled_models: bool = True,
-        ctx: Optional[Context] = None,
     ) -> VectorStoreListResponse:
         """List available vector storage tables in the database."""
-        if ctx:
-            await ctx.info(f"VS Discovery (Thread ID: {thread_id}, Filter: {filter_enabled_models})")
+        LOGGER.info("VS Discovery (Thread ID: %s, Filter: %s)", thread_id, filter_enabled_models)
         try:
             return await _vs_discovery_impl(filter_enabled_models, client=thread_id)
         except DdsConnectionError as ex:

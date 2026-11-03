@@ -10,8 +10,10 @@ from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
+import httpx2
 import pytest
-from mcp.types import GetPromptResult, ImageContent, PromptMessage, TextContent
+from fastmcp import settings as fastmcp_settings
+from mcp.types import CallToolResult, GetPromptResult, ImageContent, PromptMessage, TextContent
 from pyagentspec.mcp import StreamableHTTPTransport
 
 from server.app.agentspec.adapters.mcp import build_mcp_transport, connect_sqlcl_database, fetch_mcp_prompt
@@ -59,16 +61,16 @@ def _mock_mcp_session(prompt_result: GetPromptResult) -> AsyncMock:
 def _patch_mcp_context(mock_session):
     """Return mocks for streamable_http_client and ClientSession.
 
-    streamable_http_client is an async context manager yielding (read, write, _).
+    streamable_http_client is an async context manager yielding (read, write).
     ClientSession is an async context manager wrapping the session object.
     """
 
     @asynccontextmanager
     async def fake_streamable_http_client(_url, *, http_client=None):
-        del http_client
+        assert isinstance(http_client, httpx2.AsyncClient)
         read_stream = MagicMock()
         write_stream = MagicMock()
-        yield read_stream, write_stream, None
+        yield read_stream, write_stream
 
     @asynccontextmanager
     async def fake_client_session(_read, _write):
@@ -137,7 +139,7 @@ class TestFetchMcpPrompt:
                 PromptMessage(role="assistant", content=TextContent(type="text", text="kept")),
                 PromptMessage(
                     role="assistant",
-                    content=ImageContent(type="image", data="base64data", mimeType="image/png"),
+                    content=ImageContent(type="image", data="base64data", mime_type="image/png"),
                 ),
                 PromptMessage(role="assistant", content=TextContent(type="text", text="also kept")),
             ]
@@ -175,8 +177,9 @@ class TestFetchMcpPrompt:
             del http_client
             return FailingClient()
 
-        with patch("server.app.agentspec.adapters.mcp.streamable_http_client", failing_client), pytest.raises(
-            ConnectionError, match="refused"
+        with (
+            patch("server.app.agentspec.adapters.mcp.streamable_http_client", failing_client),
+            pytest.raises(ConnectionError, match="refused"),
         ):
             await fetch_mcp_prompt(self.server_url, self.api_key, "p")
 
@@ -197,7 +200,7 @@ class TestConnectSqlclDatabase:
         """A working saved connection calls sqlcl_connect once."""
         session = AsyncMock()
         session.initialize = AsyncMock()
-        session.call_tool = AsyncMock(return_value=SimpleNamespace(isError=False, content=[]))
+        session.call_tool = AsyncMock(return_value=SimpleNamespace(is_error=False, content=[]))
         p1, p2 = _patch_mcp_context(session)
 
         with p1, p2:
@@ -213,7 +216,7 @@ class TestConnectSqlclDatabase:
         """thread_id should be forwarded to SQLcl connect when provided."""
         session = AsyncMock()
         session.initialize = AsyncMock()
-        session.call_tool = AsyncMock(return_value=SimpleNamespace(isError=False, content=[]))
+        session.call_tool = AsyncMock(return_value=SimpleNamespace(is_error=False, content=[]))
         p1, p2 = _patch_mcp_context(session)
 
         with p1, p2:
@@ -234,11 +237,11 @@ class TestConnectSqlclDatabase:
     async def test_rehydrates_missing_saved_connection_then_retries(self):
         """A missing SQLcl saved connection is rebuilt once, then retried."""
         missing = SimpleNamespace(
-            isError=True,
+            is_error=True,
             content=[{"text": "Error calling tool 'connect': Connection not found: CORE"}],
-            structuredContent=None,
+            structured_content=None,
         )
-        success = SimpleNamespace(isError=False, content=[])
+        success = SimpleNamespace(is_error=False, content=[])
         session = AsyncMock()
         session.initialize = AsyncMock()
         session.call_tool = AsyncMock(side_effect=[missing, success])
@@ -261,11 +264,11 @@ class TestConnectSqlclDatabase:
     async def test_retry_preserves_thread_id_when_rehydrating(self):
         """The retry path should use the same thread_id-scoped SQLcl connection."""
         missing = SimpleNamespace(
-            isError=True,
+            is_error=True,
             content=[{"text": "Error calling tool 'connect': Connection not found: CORE"}],
-            structuredContent=None,
+            structured_content=None,
         )
-        success = SimpleNamespace(isError=False, content=[])
+        success = SimpleNamespace(is_error=False, content=[])
         session = AsyncMock()
         session.initialize = AsyncMock()
         session.call_tool = AsyncMock(side_effect=[missing, success])
@@ -301,10 +304,10 @@ class TestConnectSqlclDatabase:
     @pytest.mark.anyio
     async def test_raises_original_error_when_rehydrate_fails(self):
         """If the app cannot recreate the saved connection, the connect error propagates."""
-        missing = SimpleNamespace(
-            isError=True,
-            content=[{"text": "Error calling tool 'connect': Connection not found: CORE"}],
-            structuredContent=None,
+        assert fastmcp_settings.mcp_camelcase_compat is False
+        missing = CallToolResult(
+            is_error=True,
+            content=[TextContent(type="text", text="Error calling tool 'connect': Connection not found: CORE")],
         )
         session = AsyncMock()
         session.initialize = AsyncMock()

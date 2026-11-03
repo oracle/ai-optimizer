@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 from fastmcp import Client
 from fastmcp.client.transports import StdioTransport
-from mcp.shared.exceptions import McpError
+from mcp.shared.exceptions import MCPError
 
 pytestmark = pytest.mark.integration
 
@@ -39,7 +39,7 @@ async def _sqlcl_client(tmp_path) -> AsyncIterator[Client]:
     try:
         try:
             await client.__aenter__()
-        except McpError as exc:
+        except MCPError as exc:
             pytest.skip(f"Oracle SQLcl MCP is unavailable: {exc}")
         try:
             yield client
