@@ -55,6 +55,7 @@ _DEFAULT_HEARTBEAT_SECONDS = 30
 _DEFAULT_REAP_THRESHOLD_SECONDS = 180
 _DEFAULT_REAP_INTERVAL_SECONDS = 60
 _DEFAULT_TTL_SECONDS = 3600
+_LOCAL_SHUTDOWN_GRACE_SECONDS = 1.0
 
 
 # ---------------------------------------------------------------------------
@@ -216,8 +217,7 @@ _COUNT_ACTIVE_SQL = f"SELECT COUNT(*) FROM aio_embed_jobs WHERE {_UNEXPIRED_ROW_
 # TTL. (Terminal status reads come from CORE, not from the target
 # database — those are protected by the CORE-side guard above.)
 _COUNT_ACTIVE_BY_TARGET_SQL = (
-    "SELECT COUNT(*) FROM aio_embed_jobs"
-    " WHERE target_db = :target_db AND status IN ('queued', 'running')"
+    "SELECT COUNT(*) FROM aio_embed_jobs WHERE target_db = :target_db AND status IN ('queued', 'running')"
 )
 
 _SELECT_BY_ID_SQL = """
@@ -432,8 +432,7 @@ class OracleJobStore:
                 await cursor.execute(_INSERT_SQL, binds)
                 if (cursor.rowcount or 0) != 1:
                     raise EmbedJobStoreUnavailable(
-                        f"INSERT into aio_embed_jobs affected "
-                        f"{cursor.rowcount} rows; expected 1 for {row.job_id}"
+                        f"INSERT into aio_embed_jobs affected {cursor.rowcount} rows; expected 1 for {row.job_id}"
                     )
             await conn.commit()
 
@@ -566,9 +565,7 @@ async def _store_get(job_id: str) -> Optional[_JobRow]:
     if pool is None:
         # Reporting a persisted job as 404 would make polling clients
         # (which only retry on 503) stop polling a still-running job.
-        raise EmbedJobStoreUnavailable(
-            f"Job state store is unavailable for this operation (job {job_id})."
-        )
+        raise EmbedJobStoreUnavailable(f"Job state store is unavailable for this operation (job {job_id}).")
     return await OracleJobStore(pool).get(job_id)
 
 
@@ -577,9 +574,7 @@ async def _store_list_for_client(client: str, active_only: bool = False) -> list
     if pool is None:
         # An empty list would imply "this client has no jobs" even though
         # jobs may exist in CORE we just can't reach.
-        raise EmbedJobStoreUnavailable(
-            f"Job state store is unavailable for this operation (client {client})."
-        )
+        raise EmbedJobStoreUnavailable(f"Job state store is unavailable for this operation (client {client}).")
     return await OracleJobStore(pool).list_for_client(client, active_only)
 
 
@@ -599,9 +594,7 @@ async def _store_set_status(job_id: str, status: EmbedJobStatus, error: Optional
     # waits for CORE to return rather than dropping the terminal state.
     pool = _resolve_pool_for_job(job_id)
     if pool is None:
-        raise EmbedJobStoreUnavailable(
-            f"CORE pool unavailable while updating status for embed job {job_id}"
-        )
+        raise EmbedJobStoreUnavailable(f"CORE pool unavailable while updating status for embed job {job_id}")
     await OracleJobStore(pool).set_status(job_id, status, error)
     # Drop the per-job pin once the row reaches a terminal state so a
     # long-lived pod does not accumulate references to replaced pools.
@@ -614,9 +607,7 @@ async def _store_set_result(job_id: str, result: EmbedProcessingResult) -> None:
     # rationale. Always transitions to SUCCEEDED, so always drop the pin.
     pool = _resolve_pool_for_job(job_id)
     if pool is None:
-        raise EmbedJobStoreUnavailable(
-            f"CORE pool unavailable while writing result for embed job {job_id}"
-        )
+        raise EmbedJobStoreUnavailable(f"CORE pool unavailable while writing result for embed job {job_id}")
     await OracleJobStore(pool).set_result(job_id, result)
     _PINNED_POOLS.pop(job_id, None)
 
@@ -900,9 +891,7 @@ class EmbedJobManager:
                 await _terminal_write_with_retry(
                     "fail",
                     handle.job_id,
-                    lambda: _store_set_status(
-                        handle.job_id, EmbedJobStatus.FAILED, error="Job cancelled."
-                    ),
+                    lambda: _store_set_status(handle.job_id, EmbedJobStatus.FAILED, error="Job cancelled."),
                 )
                 raise
             except JobFailure as ex:
@@ -914,9 +903,7 @@ class EmbedJobManager:
                 await _terminal_write_with_retry(
                     "fail",
                     handle.job_id,
-                    lambda detail=detail: _store_set_status(
-                        handle.job_id, EmbedJobStatus.FAILED, error=detail
-                    ),
+                    lambda detail=detail: _store_set_status(handle.job_id, EmbedJobStatus.FAILED, error=detail),
                 )
             except Exception as ex:  # terminal-state recorder
                 LOGGER.exception("Embed job %s failed", handle.job_id)
@@ -1053,8 +1040,7 @@ class EmbedJobManager:
         """
         if not self._is_heartbeat_warm():
             LOGGER.debug(
-                "Skipping reap on pod %s: heartbeat warmup gate not satisfied "
-                "(last=%s, previous=%s)",
+                "Skipping reap on pod %s: heartbeat warmup gate not satisfied (last=%s, previous=%s)",
                 self.pod_id,
                 self._last_heartbeat_at,
                 self._previous_heartbeat_at,
@@ -1076,6 +1062,18 @@ class EmbedJobManager:
         with contextlib.suppress(BaseException):
             await task
         return True
+
+    async def shutdown_local(self) -> None:
+        """Join local jobs before resources used by their pipelines are closed."""
+        async with self._tasks_lock:
+            tasks = list(self._tasks.values())
+        if not tasks:
+            return
+
+        _, pending = await asyncio.wait(tasks, timeout=_LOCAL_SHUTDOWN_GRACE_SECONDS)
+        for task in pending:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 # ---------------------------------------------------------------------------

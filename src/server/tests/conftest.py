@@ -359,6 +359,7 @@ async def embed_core_pool(oracle_db_container, monkeypatch):
     try:
         yield pool
     finally:
+        await jobs_mod.get_embed_job_manager().shutdown_local()
         jobs_mod.reset_embed_job_manager()
         jobs_mod._PINNED_POOLS.clear()
         await close_pool(pool)
