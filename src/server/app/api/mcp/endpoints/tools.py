@@ -20,4 +20,4 @@ async def list_tools():
     client = Client(mcp)
     async with client:
         tools = await client.list_tools()
-        return [t.model_dump() for t in tools]
+        return [t.model_dump(by_alias=True) for t in tools]

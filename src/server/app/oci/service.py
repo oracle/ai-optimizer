@@ -79,12 +79,10 @@ def get_genai_models(profile: OciProfileConfig, regional: bool = False) -> list[
                 if model.time_deprecated or model.time_dedicated_retired or model.time_on_demand_retired
             }
 
-            # Build list of models (excluding deprecated, non-ready, and duplicates)
+            # Build list of models (excluding deprecated models and duplicates)
             for model in models_data:
                 model_key = (region["region_name"], model.display_name)
                 if model.display_name in excluded_display_names or model_key in seen_models:
-                    continue
-                if getattr(model, "lifecycle_details", None) == "Creating Base Model":
                     continue
 
                 seen_models.add(model_key)

@@ -181,8 +181,8 @@ async def test_perform_rephrase_caps_output_and_disables_reasoning(monkeypatch: 
     assert captured["disable_reasoning"] is True
 
 
-async def test_register_rephrase_tool(monkeypatch: pytest.MonkeyPatch):
-    """Registered rephrase tool should call implementation and log info."""
+async def test_register_rephrase_tool(monkeypatch: pytest.MonkeyPatch, caplog):
+    """Registered rephrase tool should call implementation and log the request."""
 
     async def _fake_impl(
         question: str, chat_history: Optional[List[str]], client: str = "CONFIGURED"
@@ -200,17 +200,8 @@ async def test_register_rephrase_tool(monkeypatch: pytest.MonkeyPatch):
 
     tool = cast(FunctionTool, await mcp.local_provider.get_tool("optimizer_vs_rephrase"))
 
-    class _Ctx:
-        """Collects MCP context messages."""
-
-        def __init__(self):
-            self.messages: list[str] = []
-
-        async def info(self, message: str) -> None:
-            self.messages.append(message)
-
-    ctx = _Ctx()
-    response = await tool.fn(thread_id="abc", question="Q", chat_history=["a", "b"], ctx=ctx)
+    caplog.set_level("INFO", logger=vs_rephrase.__name__)
+    response = await tool.fn(thread_id="abc", question="Q", chat_history=["a", "b"])
 
     assert response.status == "ok"
-    assert ctx.messages == ["VS Rephrase (Thread ID: abc)"]
+    assert "VS Rephrase (Thread ID: abc)" in caplog.messages

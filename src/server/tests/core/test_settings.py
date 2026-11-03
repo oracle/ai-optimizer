@@ -9,10 +9,12 @@ Tests for server.app.core.settings — resolve_client, _apply_default_ll_model, 
 from typing import Literal
 
 import pytest
+from pydantic import ValidationError
 
 from server.app.core.schemas import ClientSettings
 from server.app.core.settings import (
     _PROTECTED_CLIENTS,
+    Settings,
     SettingsBase,
     _apply_default_ll_model,
     _client_store,
@@ -87,6 +89,22 @@ class TestSettingsBaseValidators:
         """Already-correct prefix is unchanged."""
         sb = SettingsBase(server_url_prefix="/v1")
         assert sb.server_url_prefix == "/v1"
+
+
+class TestSettingsValidators:
+    """Test application-only settings validation."""
+
+    def test_mcp_cache_ttl_defaults_to_five_seconds(self):
+        assert Settings.model_validate({}).mcp_cache_ttl_seconds == 5
+
+    def test_mcp_cache_ttl_accepts_zero_from_environment(self, monkeypatch):
+        monkeypatch.setenv("AIO_MCP_CACHE_TTL_SECONDS", "0")
+
+        assert Settings().mcp_cache_ttl_seconds == 0
+
+    def test_mcp_cache_ttl_rejects_negative_values(self):
+        with pytest.raises(ValidationError):
+            Settings.model_validate({"mcp_cache_ttl_seconds": -1})
 
 
 # ---------------------------------------------------------------------------

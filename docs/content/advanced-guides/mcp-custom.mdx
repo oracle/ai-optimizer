@@ -30,6 +30,7 @@ def register_add_tool():
         name="optimizer_add",
         title="Add Two Numbers",
         tags={"math", "optimizer"},
+        annotations={"read_only_hint": True, "idempotent_hint": True, "open_world_hint": False},
     )
     def add(a: int, b: int) -> int:
         """Add two numbers."""
@@ -73,10 +74,12 @@ The `@mcp.tool()` decorator accepts the following parameters:
 | `name`        | Unique tool identifier. Prefix with `optimizer_` by convention.    |
 | `title`       | Human-readable display name.                                       |
 | `tags`        | Set of strings for categorization (e.g. `{"math", "optimizer"}`).  |
-| `annotations` | Optional hints: `readOnlyHint`, `idempotentHint`, `openWorldHint`. |
+| `annotations` | Optional Python hints: `read_only_hint`, `destructive_hint`, `idempotent_hint`, `open_world_hint`. |
 | `timeout`     | Execution timeout in seconds (default varies by FastMCP).          |
 
 The decorated function's **docstring** is sent to the LLM as the tool description, so make it clear and concise. Function **parameters** with type hints become the tool's input schema automatically.
+
+Python code uses snake_case MCP model fields. MCP and REST JSON use the standard camelCase aliases, such as `readOnlyHint` and `inputSchema`.
 
 ### 3. Define a Response Model (Optional)
 
@@ -170,6 +173,6 @@ See the [Agents and Flows](./agents/intro) documentation for the full define →
 ## Tips
 
 - **Async tools**: Use `async def` when your tool performs I/O (database queries, HTTP calls, etc.).
-- **Context**: Add an optional `ctx: Context` parameter (from `fastmcp`) to emit progress messages back to the MCP client via `await ctx.info(...)`.
+- **Diagnostics**: Use Python's standard `logging` module for application diagnostics. Reserve an optional FastMCP `Context` parameter for MCP request features such as progress reporting.
 - **Naming**: Prefix tool names with `optimizer_` to avoid collisions with tools from other MCP servers.
 - **Testing**: See `src/server/tests/mcp/tools/` for examples of how the built-in tools are tested.

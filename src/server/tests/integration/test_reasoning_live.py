@@ -2,8 +2,8 @@
 Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 
-Live OCI GenAI completion tests, parametrized over the models discovered
-through the ``/v1/oci/genai/{profile}`` endpoint.
+Live OCI GenAI completion tests, parametrized over the models discovered in
+the configured region.
 
 OCI's documented OpenAI offerings are ``openai.gpt-oss-120b`` and
 ``openai.gpt-oss-20b`` (open-weight reasoning models). Tests parametrize

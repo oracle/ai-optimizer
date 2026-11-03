@@ -2,8 +2,8 @@
 Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 
-Live OCI GenAI embedding tests, parametrized over EMBED-capable Cohere
-models discovered through ``/v1/oci/genai/{profile}``.
+Live OCI GenAI embedding tests, parametrized over TEXT_EMBEDDINGS models
+discovered in the configured region.
 
 Validates the embedding path end-to-end against the real OCI endpoint:
 
@@ -32,8 +32,8 @@ pytestmark = [pytest.mark.live_oci, pytest.mark.integration]
 
 
 @pytest.fixture
-def cohere_embed_models(live_oci_genai_models) -> list[str]:
-    """Cohere-vendor TEXT_EMBEDDINGS models discovered in the configured region.
+def embed_models(live_oci_genai_models) -> list[str]:
+    """TEXT_EMBEDDINGS models discovered in the configured region.
 
     Restricting to ``AIO_GENAI_REGION`` because that's where the LiteLLM
     embedding calls are routed; same ``model_name`` may appear across regions.
@@ -43,15 +43,13 @@ def cohere_embed_models(live_oci_genai_models) -> list[str]:
         {
             m["model_name"]
             for m in live_oci_genai_models
-            if (m.get("vendor") or "").lower() == "cohere"
-            and "TEXT_EMBEDDINGS" in (m.get("capabilities") or [])
-            and m.get("region") == region
+            if "TEXT_EMBEDDINGS" in (m.get("capabilities") or []) and m.get("region") == region
         }
     )
     if not models:
         pytest.skip(
-            f"no Cohere TEXT_EMBEDDINGS models in region {region} "
-            "(OCI's lineup in this region exposes none, or the vendor/capabilities shape changed)"
+            f"no TEXT_EMBEDDINGS models in region {region} "
+            "(OCI's lineup in this region exposes none, or the capabilities shape changed)"
         )
     return models
 
@@ -61,15 +59,15 @@ def _litellm_id(model_id: str) -> str:
     return f"oci/{model_id}"
 
 
-async def test_litellm_embedding_accepts(cohere_embed_models, live_oci_litellm_kwargs):
-    """OCI accepts an embedding request for each discovered Cohere model.
+async def test_litellm_embedding_accepts(embed_models, live_oci_litellm_kwargs):
+    """OCI accepts an embedding request for each discovered embedding model.
 
     Per-model outcome is accumulated into a single ``pytest.fail`` so one
     rejecting model doesn't mask the others — same pattern as the chat
     completion tests.
     """
     failures: list[str] = []
-    for model_id in cohere_embed_models:
+    for model_id in embed_models:
         try:
             response = cast(
                 litellm.EmbeddingResponse,
@@ -90,13 +88,13 @@ async def test_litellm_embedding_accepts(cohere_embed_models, live_oci_litellm_k
         pytest.fail("litellm.embedding rejected for: " + "; ".join(failures))
 
 
-async def test_litellm_embeddings_wrapper_embeds_documents_and_query(cohere_embed_models, live_oci_litellm_kwargs):
+async def test_litellm_embeddings_wrapper_embeds_documents_and_query(embed_models, live_oci_litellm_kwargs):
     """The server-side LiteLLMEmbeddings wrapper drives OCI end-to-end.
 
-    Uses the first discovered Cohere model; the per-model acceptance matrix
+    Uses the first discovered embedding model; the per-model acceptance matrix
     is covered by ``test_litellm_embedding_accepts``.
     """
-    model_id = cohere_embed_models[0]
+    model_id = embed_models[0]
     emb = LiteLLMEmbeddings(
         model_key=_litellm_id(model_id),
         extra_params=live_oci_litellm_kwargs,
@@ -111,7 +109,7 @@ async def test_litellm_embeddings_wrapper_embeds_documents_and_query(cohere_embe
     assert len(query_vector) == len(doc_vectors[0])
 
 
-async def test_litellm_embeddings_wrapper_chunks_inputs_against_oci(cohere_embed_models, live_oci_litellm_kwargs):
+async def test_litellm_embeddings_wrapper_chunks_inputs_against_oci(embed_models, live_oci_litellm_kwargs):
     """End-to-end: 100 inputs through the wrapper chunk to ≤96 per OCI call.
 
     Pins the chunking guarantee preserved from the prior OCIGenAIEmbeddings
@@ -120,7 +118,7 @@ async def test_litellm_embeddings_wrapper_chunks_inputs_against_oci(cohere_embed
     in the spy. 100 inputs is the smallest count that forces a second batch
     at the default ``batch_size=96`` while keeping the per-run cost bounded.
     """
-    model_id = cohere_embed_models[0]
+    model_id = embed_models[0]
     emb = LiteLLMEmbeddings(
         model_key=_litellm_id(model_id),
         extra_params=live_oci_litellm_kwargs,

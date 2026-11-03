@@ -233,12 +233,7 @@ def _init_logs(resource: "ResourceType") -> None:
         LOGGER.info("OTLP log export skipped: no logs/generic endpoint configured")
         return
 
-    if (
-        _otel_logs is None
-        or LoggerProvider is None
-        or LoggingHandler is None
-        or BatchLogRecordProcessor is None
-    ):
+    if _otel_logs is None or LoggerProvider is None or LoggingHandler is None or BatchLogRecordProcessor is None:
         return
 
     protocol = _otlp_protocol("LOGS")
@@ -280,10 +275,19 @@ def _init_logs(resource: "ResourceType") -> None:
 class _NotExporterDependency(logging.Filter):
     """Drop records from exporter-related libraries handled elsewhere."""
 
-    _PREFIXES = ("opentelemetry", "urllib3", "requests", "httpx", "httpcore", "grpc")
+    _PREFIXES = (
+        "opentelemetry",
+        "urllib3",
+        "requests",
+        "httpx",
+        "httpx2",
+        "httpcore",
+        "httpcore2",
+        "grpc",
+    )
 
     def filter(self, record: logging.LogRecord) -> bool:
-        return not record.name.startswith(self._PREFIXES)
+        return not any(record.name == prefix or record.name.startswith(f"{prefix}.") for prefix in self._PREFIXES)
 
 
 class _RedactingLogProcessor:
@@ -422,7 +426,9 @@ def _otlp_protocol(signal: str) -> str:
     if normalized not in _OTLP_PROTOCOLS:
         LOGGER.warning(
             "Unrecognized OTLP %s protocol %r; falling back to %s",
-            signal, raw, _OTLP_DEFAULT_PROTOCOL,
+            signal,
+            raw,
+            _OTLP_DEFAULT_PROTOCOL,
         )
         return _OTLP_DEFAULT_PROTOCOL
     return normalized

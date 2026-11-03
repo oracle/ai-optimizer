@@ -9,16 +9,16 @@ Shared MCP utilities for transport construction and prompt fetching.
 import logging
 from typing import Any
 
-import httpx
-from mcp.client.session import ClientSession
-from mcp.client.streamable_http import streamable_http_client
-from mcp.types import TextContent
+from fastmcp import Client
+from fastmcp.client.transports import StreamableHttpTransport
+from mcp.types import CallToolResult, TextContent
 from pyagentspec.mcp import StreamableHTTPTransport
 
 from net_addressing import verify_for_url
 from server.app.mcp.proxies.sqlcl import ensure_sqlcl_saved_connection
 
 LOGGER = logging.getLogger(__name__)
+_MCP_PROTOCOL_VERSION = "2026-07-28"
 
 
 def _normalize_server_url(server_url: str) -> str:
@@ -34,6 +34,17 @@ def build_mcp_transport(server_url: str, api_key: str) -> StreamableHTTPTranspor
         url=_normalize_server_url(server_url),
         sensitive_headers={"X-API-Key": api_key},
     )
+
+
+def _mcp_client(server_url: str, api_key: str) -> Client:
+    """Create a client pinned to the application's MCP protocol version."""
+    server_url = _normalize_server_url(server_url)
+    transport = StreamableHttpTransport(
+        server_url,
+        headers={"X-API-Key": api_key},
+        verify=verify_for_url(server_url),
+    )
+    return Client(transport, mode=_MCP_PROTOCOL_VERSION)
 
 
 def _render_text_content(content: Any) -> str:
@@ -59,6 +70,10 @@ def _render_text_content(content: Any) -> str:
     return str(content)
 
 
+def _render_tool_error(result: CallToolResult) -> str:
+    return _render_text_content(result.content) or str(result.structured_content or "")
+
+
 async def connect_sqlcl_database(
     server_url: str,
     api_key: str,
@@ -70,35 +85,26 @@ async def connect_sqlcl_database(
     if not connection_name:
         return
 
-    server_url = _normalize_server_url(server_url)
     LOGGER.debug("Connecting SQLcl database '%s' via %s", connection_name, server_url)
-    http_client = httpx.AsyncClient(headers={"X-API-Key": api_key}, verify=verify_for_url(server_url))
-    async with http_client:  # noqa: SIM117
-        async with streamable_http_client(server_url, http_client=http_client) as (read, write, _):
-            async with ClientSession(read, write) as session:
-                await session.initialize()
-                connect_args = {"connection_name": connection_name, "model": model}
-                if thread_id:
-                    connect_args["thread_id"] = thread_id
-                result = await session.call_tool(
+    async with _mcp_client(server_url, api_key) as client:
+        connect_args = {"connection_name": connection_name, "model": model}
+        if thread_id:
+            connect_args["thread_id"] = thread_id
+        result = await client.call_tool_mcp(
+            "sqlcl_connect",
+            connect_args,
+        )
+        if result.is_error:
+            message = _render_tool_error(result)
+            if "Connection not found:" in message and await ensure_sqlcl_saved_connection(connection_name):
+                result = await client.call_tool_mcp(
                     "sqlcl_connect",
                     connect_args,
                 )
-                if getattr(result, "isError", False):
-                    message = _render_text_content(getattr(result, "content", None))
-                    if not message:
-                        message = str(getattr(result, "structuredContent", "") or "")
-                    if "Connection not found:" in message and await ensure_sqlcl_saved_connection(connection_name):
-                        result = await session.call_tool(
-                            "sqlcl_connect",
-                            connect_args,
-                        )
-                        if not getattr(result, "isError", False):
-                            return
-                        message = _render_text_content(getattr(result, "content", None))
-                        if not message:
-                            message = str(getattr(result, "structuredContent", "") or "")
-                    raise RuntimeError(message or f"sqlcl_connect failed for {connection_name}")
+                if not result.is_error:
+                    return
+                message = _render_tool_error(result)
+            raise RuntimeError(message or f"sqlcl_connect failed for {connection_name}")
 
 
 async def fetch_mcp_prompt(
@@ -109,12 +115,7 @@ async def fetch_mcp_prompt(
 ) -> str:
     """Fetch a prompt from the MCP server via prompts/get."""
 
-    server_url = _normalize_server_url(server_url)
     LOGGER.debug("Fetching MCP prompt '%s' from %s", prompt_name, server_url)
-    http_client = httpx.AsyncClient(headers={"X-API-Key": api_key}, verify=verify_for_url(server_url))
-    async with http_client:  # noqa: SIM117
-        async with streamable_http_client(server_url, http_client=http_client) as (read, write, _):
-            async with ClientSession(read, write) as session:
-                await session.initialize()
-                result = await session.get_prompt(prompt_name, arguments)
-                return "\n\n".join(msg.content.text for msg in result.messages if isinstance(msg.content, TextContent))
+    async with _mcp_client(server_url, api_key) as client:
+        result = await client.get_prompt(prompt_name, arguments)
+        return "\n\n".join(msg.content.text for msg in result.messages if isinstance(msg.content, TextContent))

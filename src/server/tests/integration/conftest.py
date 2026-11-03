@@ -9,10 +9,8 @@ Loads ``.env.pytest`` from the repo root (if it exists) and auto-skips
 Shell env wins over the file (``override=False``), so CI can pass creds
 via environment without editing.
 
-Provides fixtures that build a live OCI profile through the public
-``/v1/oci`` API (so the tests exercise the endpoint surface, not just
-LiteLLM directly) and discover the GenAI models OCI actually serves —
-the test model list comes from the endpoint, not a hardcoded constant.
+Provides fixtures for endpoint tests and a session-scoped model catalog for
+live inference tests. The catalog queries the configured GenAI region once.
 """
 
 import functools
@@ -26,6 +24,8 @@ import pytest
 from dotenv import load_dotenv
 
 from server.app.core.settings import settings
+from server.app.oci.schemas import OciProfileConfig
+from server.app.oci.service import get_genai_models
 
 _REPO_ROOT = Path(__file__).resolve().parents[4]
 _ENV_PYTEST = _REPO_ROOT / ".env.pytest"
@@ -124,8 +124,29 @@ async def live_oci_profile(app_client, auth_headers):
             await app_client.delete(f"/v1/oci/{profile_name}", headers=auth_headers)
 
 
+@pytest.fixture(scope="session")
+def live_oci_genai_models() -> list[dict]:
+    """Discover models in the configured GenAI region once per test session."""
+    try:
+        config = _oci_default_config()
+    except Exception as exc:
+        pytest.skip(f"OCI config not readable: {exc}")
+
+    profile = OciProfileConfig(
+        auth_profile=os.environ.get("OCI_CLI_PROFILE", "DEFAULT"),
+        tenancy=config["tenancy"],
+        user=config["user"],
+        fingerprint=config["fingerprint"],
+        key_file=config["key_file"],
+        region=config["region"],
+        genai_compartment_id=os.environ["AIO_GENAI_COMPARTMENT_ID"],
+        genai_region=os.environ["AIO_GENAI_REGION"],
+    )
+    return get_genai_models(profile, regional=True)
+
+
 @pytest.fixture
-async def live_oci_genai_models(app_client, auth_headers, live_oci_profile) -> list[dict]:
+async def live_oci_endpoint_genai_models(app_client, auth_headers, live_oci_profile) -> list[dict]:
     """Return the list of OCI GenAI models discovered via ``GET /v1/oci/genai/{profile}``.
 
     This is what OCI actually serves across the subscribed regions — no
@@ -138,7 +159,7 @@ async def live_oci_genai_models(app_client, auth_headers, live_oci_profile) -> l
     return response.json()
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def live_oci_litellm_kwargs() -> dict:
     """All OCI auth + region/compartment kwargs LiteLLM's OCI provider needs.
 

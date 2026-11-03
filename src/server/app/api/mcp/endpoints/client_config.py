@@ -24,6 +24,9 @@ def _mcp_url(request: Request) -> str:
         prefix = f"/{prefix}"
 
     prefix = prefix.rstrip("/")
+    root_path = request.scope.get("root_path", "").rstrip("/")
+    if prefix and root_path.endswith(prefix):
+        prefix = ""
 
     return f"{base}{prefix}/mcp"
 

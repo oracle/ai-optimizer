@@ -8,9 +8,8 @@ MCP tool: Document Grading for vector search results.
 
 import json
 import logging
-from typing import Optional, Union
+from typing import Union
 
-from fastmcp import Context
 from litellm.exceptions import APIConnectionError
 
 from server.app.core.mcp import mcp
@@ -106,18 +105,16 @@ def register_grade_tool():
         name="optimizer_vs_grade",
         title="Document Grading",
         tags={"vector-search", "optimizer"},
-        annotations={"readOnlyHint": True, "openWorldHint": True},
+        annotations={"read_only_hint": True, "open_world_hint": True},
         timeout=30.0,
     )
     async def grading(
         thread_id: str,
         question: str,
         documents: Union[list[dict], str],
-        ctx: Optional[Context] = None,
     ) -> VectorGradeResponse:
         """Grade relevance of retrieved documents to the user's question."""
-        if ctx:
-            await ctx.info(f"VS Grade (Thread ID: {thread_id}, Docs: {len(documents)})")
+        LOGGER.info("VS Grade (Thread ID: %s, Docs: %d)", thread_id, len(documents))
         parsed_docs = json.loads(documents) if isinstance(documents, str) else documents
         if isinstance(parsed_docs, dict) and "documents" in parsed_docs:
             parsed_docs = parsed_docs["documents"]

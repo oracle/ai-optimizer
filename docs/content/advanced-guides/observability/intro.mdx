@@ -115,8 +115,9 @@ Telemetry covers HTTP traffic, LangChain and LangGraph orchestration, LLM invoca
 | Source                | Signal | What's captured                                                                                                                                                                                                                                      |
 | --------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | FastAPI               | Trace  | One `SERVER` span per inbound HTTP request, including route, method, status code, and client network information                                                                                                                                     |
+| FastMCP               | Trace  | Native `CLIENT` and `SERVER` spans for MCP tool calls, with W3C parent context propagated in MCP request metadata and attributes for the method, negotiated protocol version, and tool name                                                         |
 | LangChain / LangGraph | Trace  | Spans for supported chains, agents, tools, retrievers, and graph-node invocations. LLM calls routed through supported integrations can include semantic attributes for the model and token counts. Prompt and response values are hidden by default. |
-| `httpx`               | Trace  | One `CLIENT` span per instrumented outbound request, including LLM provider APIs, MCP, and other HTTP services                                                                                                                                       |
+| `httpx`               | Trace  | One `CLIENT` span per instrumented outbound request, including LLM provider APIs and other application HTTP services                                                                                                                                |
 | `requests`            | Trace  | One `CLIENT` span per instrumented outbound request, including requests made by the OCI SDK                                                                                                                                                          |
 | Python `logging`      | Log    | Eligible records from application code, uvicorn, and non-exporter dependencies, correlated with the active trace and span                                                                                                                            |
 
@@ -136,6 +137,8 @@ POST /v1/chat/completions                            SERVER     5.4s
 ```
 
 The LangChain LLM span carries semantic model information when the integration supplies it. Its child `httpx` span carries transport-level information, such as URL, status, and duration. These spans describe different layers of the same call.
+
+For MCP tool calls, FastMCP injects W3C `traceparent` and, when present, `tracestate` into the request metadata. The server reconstructs that parent context, keeping its MCP `SERVER` span in the caller's trace across the transport boundary.
 
 Use the span IDs and kinds to interpret the tree:
 
@@ -313,6 +316,6 @@ Send the health or chat request from [Verify Telemetry](#verify-telemetry), then
 
 ### Coverage Gaps
 
-- FastMCP server-side dispatch is not wrapped in dedicated spans. Tool calls can appear through LangChain spans and outbound `httpx` spans, but not as separate MCP-handler spans.
+- MCP transports use HTTPX2, so the generic `httpx` instrumentor does not add transport-level `CLIENT` spans. FastMCP native spans provide method-level visibility for MCP tool calls.
 - Streamlit client-side activity is not instrumented. Client requests appear in the traces they trigger on the [**AI Optimizer Server**](../../server/intro.mdx).
 - The [**AI Optimizer Server**](../../server/intro.mdx) exports traces and optional logs; it does not emit an OpenTelemetry metrics signal. Compatible backends can derive request rate, latency, and error-rate views from trace data.

@@ -624,14 +624,10 @@ async def test_vs_retrieve_success(
 
     class _Ctx:
         def __init__(self):
-            self.progress: list[tuple[int, int]] = []
-            self.messages: list[str] = []
+            self.progress: list[tuple[int, int, str]] = []
 
-        async def report_progress(self, step: int, total: int) -> None:
-            self.progress.append((step, total))
-
-        async def info(self, message: str) -> None:
-            self.messages.append(message)
+        async def report_progress(self, step: int, total: int, message: str) -> None:
+            self.progress.append((step, total, message))
 
     ctx = _Ctx()
     response = await vs_retriever._vs_retrieve_impl("Question?", cast(Context, ctx))
@@ -641,11 +637,16 @@ async def test_vs_retrieve_success(
     assert response.failed_tables == []
     assert response.num_documents == 1
     assert response.documents[0]["page_content"] == "Doc1"
-    assert ctx.progress == [(1, 4), (2, 4), (3, 4), (4, 4)]
+    assert ctx.progress == [
+        (1, 4, "discovering vector stores"),
+        (2, 4, "selecting tables"),
+        (3, 4, "searching selected tables"),
+        (4, 4, "preparing results"),
+    ]
 
 
 @pytest.mark.parametrize("collection_alias", [None, "DOCS"])
-async def test_register_retriever_tool(collection_alias: Optional[str], monkeypatch: pytest.MonkeyPatch):
+async def test_register_retriever_tool(collection_alias: Optional[str], monkeypatch: pytest.MonkeyPatch, caplog):
     calls = []
 
     async def _fake_impl(
@@ -668,17 +669,15 @@ async def test_register_retriever_tool(collection_alias: Optional[str], monkeypa
     tool = cast(FunctionTool, await mcp.local_provider.get_tool("optimizer_vs_retriever"))
 
     class _Ctx:
-        def __init__(self):
-            self.messages: list[str] = []
-
-        async def info(self, message: str) -> None:
-            self.messages.append(message)
+        async def report_progress(self, _step: int, _total: int) -> None:
+            pass
 
     ctx = _Ctx()
+    caplog.set_level("INFO", logger=vs_retriever.__name__)
     response = await tool.fn(thread_id="abc", question="Q", ctx=ctx, collection_alias=collection_alias)
 
     assert response.status == "ok"
-    assert ctx.messages == ["VS Retriever (Thread ID: abc)"]
+    assert "VS Retriever (Thread ID: abc)" in caplog.messages
     assert calls == [("Q", ctx, "abc", collection_alias)]
     assert "collection_alias" in tool.parameters["properties"]
     assert "collection_alias" not in tool.parameters.get("required", [])

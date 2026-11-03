@@ -136,8 +136,8 @@ class TestGetGenaiModels:
         assert "cohere-chat" in model_names
         assert "old-model" not in model_names
 
-    def test_filters_non_ready_models(self):
-        """Models not yet ready for inference are excluded."""
+    def test_includes_active_models_with_lifecycle_details(self):
+        """Active models remain discoverable while OCI reports provisioning details."""
         profile = _make_profile()
         ready_model = _make_model_response("cohere-chat", ["CHAT"])
         creating_model = _make_model_response("meta.llama-4-scout", ["CHAT"], lifecycle_details="Creating Base Model")
@@ -152,7 +152,7 @@ class TestGetGenaiModels:
 
         model_names = [m["model_name"] for m in result]
         assert "cohere-chat" in model_names
-        assert "meta.llama-4-scout" not in model_names
+        assert "meta.llama-4-scout" in model_names
 
     def test_deduplicates_models(self):
         """Duplicate models in the same region are excluded."""

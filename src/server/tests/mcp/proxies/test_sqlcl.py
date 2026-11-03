@@ -12,7 +12,11 @@ from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from fastmcp import Client
+from fastmcp import Client, FastMCP
+from fastmcp.client.transports import StdioTransport
+from fastmcp.server.context import Context
+from fastmcp.server.providers.proxy import ProxyProvider, ProxyTool
+from mcp.types import TextContent
 from pydantic import SecretStr
 
 from server.app.core.mcp import mcp
@@ -285,7 +289,19 @@ async def test_create_connection_store_timeout(monkeypatch, caplog):
     assert "Timed out creating connection store" in caplog.text
 
 
-async def test_register_sqlcl_proxy_missing_binary(monkeypatch, caplog):
+@pytest.fixture
+async def reset_sqlcl_provider():
+    """Clear the delegate while preserving the process-lifetime provider."""
+    await sqlcl._close_transport(sqlcl._sqlcl_provider.clear())
+    settings.nl2sql_available = False
+    provider_count = len(mcp.providers)
+    yield provider_count
+    await sqlcl._close_transport(sqlcl._sqlcl_provider.clear())
+    settings.nl2sql_available = False
+    assert len(mcp.providers) == provider_count
+
+
+async def test_register_sqlcl_proxy_missing_binary(reset_sqlcl_provider, monkeypatch, caplog):
     """register_sqlcl_proxy logs warning when sqlcl is absent."""
     caplog.set_level("WARNING")
     monkeypatch.setattr(sqlcl.shutil, "which", lambda name: None)
@@ -296,7 +312,7 @@ async def test_register_sqlcl_proxy_missing_binary(monkeypatch, caplog):
 
 
 @pytest.mark.parametrize("level", ["-1", "5", "not-an-integer"])
-async def test_register_sqlcl_proxy_rejects_invalid_mcp_level(monkeypatch, level):
+async def test_register_sqlcl_proxy_rejects_invalid_mcp_level(reset_sqlcl_provider, monkeypatch, level):
     """An invalid SQLcl MCP level fails closed before SQLcl discovery."""
     monkeypatch.setenv("AIO_SQLCL_MCP_LEVEL", level)
     clear_mock = MagicMock()
@@ -312,7 +328,7 @@ async def test_register_sqlcl_proxy_rejects_invalid_mcp_level(monkeypatch, level
     clear_mock.assert_not_called()
 
 
-async def test_register_sqlcl_proxy_no_capabilities(monkeypatch, caplog):
+async def test_register_sqlcl_proxy_no_capabilities(reset_sqlcl_provider, monkeypatch, caplog):
     """register_sqlcl_proxy aborts proxy mount if backend exposes no capabilities."""
     caplog.set_level("WARNING")
     monkeypatch.setattr(sqlcl.shutil, "which", lambda name: "/usr/bin/sql")
@@ -328,10 +344,6 @@ async def test_register_sqlcl_proxy_no_capabilities(monkeypatch, caplog):
     monkeypatch.setattr(sqlcl, "_preflight_check", AsyncMock(return_value=True))
     monkeypatch.setattr(sqlcl, "StdioTransport", transport_mock)
     monkeypatch.setattr(sqlcl, "Client", client_mock)
-    monkeypatch.setattr(sqlcl, "_create_client_factory", MagicMock())
-    monkeypatch.setattr(sqlcl, "FastMCPServer", MagicMock())
-    monkeypatch.setattr(sqlcl, "FastMCPProvider", MagicMock())
-    monkeypatch.setattr(sqlcl, "Namespace", MagicMock())
 
     # No databases configured — so no store calls expected
     settings.database_configs = []
@@ -343,39 +355,23 @@ async def test_register_sqlcl_proxy_no_capabilities(monkeypatch, caplog):
     store_mock.assert_not_called()
 
 
-async def test_register_sqlcl_proxy_success(monkeypatch):
+async def test_register_sqlcl_proxy_success(reset_sqlcl_provider, monkeypatch):
     """register_sqlcl_proxy clears store, creates connections, then mounts proxy."""
     monkeypatch.setattr(sqlcl.shutil, "which", lambda name: "/usr/bin/sql")
 
     transport_mock = MagicMock()
     client_mock = MagicMock()
-    factory_mock = MagicMock(return_value="fake_factory")
-    fastmcp_mock = MagicMock()
     verify_mock = AsyncMock(return_value=True)
     clear_mock = MagicMock()
 
-    wrapped_provider = MagicMock()
-    provider_instance = MagicMock()
-    provider_instance.wrap_transform.return_value = wrapped_provider
-    fastmcp_provider_mock = MagicMock(return_value=provider_instance)
-    namespace_mock = MagicMock()
-
     monkeypatch.setattr(sqlcl, "StdioTransport", transport_mock)
     monkeypatch.setattr(sqlcl, "Client", client_mock)
-    monkeypatch.setattr(sqlcl, "_create_client_factory", factory_mock)
-    monkeypatch.setattr(sqlcl, "FastMCPServer", fastmcp_mock)
-    monkeypatch.setattr(sqlcl, "FastMCPProvider", fastmcp_provider_mock)
-    monkeypatch.setattr(sqlcl, "Namespace", namespace_mock)
     monkeypatch.setattr(sqlcl, "_verify_backend", verify_mock)
     monkeypatch.setattr(sqlcl, "_clear_connection_store", clear_mock)
     preflight_mock = AsyncMock(return_value=True)
     monkeypatch.setattr(sqlcl, "_preflight_check", preflight_mock)
 
-    # Reset module state and avoid touching the real MCP singleton's providers list
-    sqlcl._state.transport = None
-    sqlcl._state.provider = None
-    fake_providers: list = []
-    monkeypatch.setattr(mcp, "providers", fake_providers)
+    provider_count = reset_sqlcl_provider
 
     store_calls: list[dict] = []
 
@@ -392,11 +388,7 @@ async def test_register_sqlcl_proxy_success(monkeypatch):
 
     monkeypatch.setenv("TNS_ADMIN", "/env/tns")
 
-    try:
-        result = await sqlcl.register_sqlcl_proxy()
-    finally:
-        sqlcl._state.transport = None
-        sqlcl._state.provider = None
+    result = await sqlcl.register_sqlcl_proxy()
 
     # Store cleared before anything else
     clear_mock.assert_called_once()
@@ -424,26 +416,16 @@ async def test_register_sqlcl_proxy_success(monkeypatch):
     assert preflight_env["AIO_SQLCL_MCP_LEVEL"] == "4"
 
     client_mock.assert_called_once_with(transport_mock.return_value)
-    factory_mock.assert_called_once_with(client_mock.return_value)
-    fastmcp_mock.assert_called_once_with(name="SQLclProxy")
-
-    # Wrapped provider appended to mcp.providers rather than mcp.mount(...)
-    fastmcp_provider_mock.assert_called_once()
-    namespace_mock.assert_called_once_with("sqlcl")
-    provider_instance.wrap_transform.assert_called_once_with(namespace_mock.return_value)
-    assert fake_providers == [wrapped_provider]
     assert result is transport_mock.return_value
+    assert isinstance(sqlcl._sqlcl_provider.delegate, ProxyProvider)
+    assert len(mcp.providers) == provider_count
 
 
-async def test_register_sqlcl_proxy_store_error(monkeypatch, caplog):
+async def test_register_sqlcl_proxy_store_error(reset_sqlcl_provider, monkeypatch, caplog):
     """register_sqlcl_proxy logs errors from connection store creation."""
     monkeypatch.setattr(sqlcl.shutil, "which", lambda name: "/usr/bin/sql")
     monkeypatch.setattr(sqlcl, "StdioTransport", MagicMock())
     monkeypatch.setattr(sqlcl, "Client", MagicMock())
-    monkeypatch.setattr(sqlcl, "_create_client_factory", MagicMock())
-    monkeypatch.setattr(sqlcl, "FastMCPServer", MagicMock())
-    monkeypatch.setattr(sqlcl, "FastMCPProvider", MagicMock())
-    monkeypatch.setattr(sqlcl, "Namespace", MagicMock())
     monkeypatch.setattr(sqlcl, "_verify_backend", AsyncMock(return_value=True))
     monkeypatch.setattr(sqlcl, "_clear_connection_store", MagicMock())
     monkeypatch.setattr(sqlcl, "_preflight_check", AsyncMock(return_value=True))
@@ -452,21 +434,13 @@ async def test_register_sqlcl_proxy_store_error(monkeypatch, caplog):
         raise RuntimeError("store failed")
 
     monkeypatch.setattr(sqlcl, "_create_connection_store", _raise_store)
-    monkeypatch.setattr(mcp, "providers", [])
-    sqlcl._state.transport = None
-    sqlcl._state.provider = None
-
     settings.database_configs = [
         DatabaseConfig(alias="CORE", username="scott", password=SecretStr("tiger"), dsn="db"),
     ]
 
     caplog.set_level("ERROR")
 
-    try:
-        await sqlcl.register_sqlcl_proxy()
-    finally:
-        sqlcl._state.transport = None
-        sqlcl._state.provider = None
+    await sqlcl.register_sqlcl_proxy()
 
     assert "store failed" in caplog.text
 
@@ -521,7 +495,7 @@ async def test_ensure_sqlcl_saved_connection_returns_false_when_alias_unknown(mo
     create_mock.assert_not_called()
 
 
-async def test_register_sqlcl_proxy_creation_failure(monkeypatch, caplog):
+async def test_register_sqlcl_proxy_creation_failure(reset_sqlcl_provider, monkeypatch, caplog):
     """register_sqlcl_proxy logs and exits on proxy creation failure."""
     caplog.set_level("ERROR")
     monkeypatch.setattr(sqlcl.shutil, "which", lambda name: "/usr/bin/sql")
@@ -730,7 +704,7 @@ async def test_preflight_check_clean_exit(monkeypatch):
     assert result is True
 
 
-async def test_register_sqlcl_proxy_preflight_fails(monkeypatch, caplog):
+async def test_register_sqlcl_proxy_preflight_fails(reset_sqlcl_provider, monkeypatch, caplog):
     """register_sqlcl_proxy returns None when preflight fails."""
     caplog.set_level("WARNING")
     monkeypatch.setattr(sqlcl.shutil, "which", lambda name: "/usr/bin/sql")
@@ -777,34 +751,45 @@ def test_coerce_schema_defaults_nested():
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture
-def reset_sqlcl_state(monkeypatch):
-    """Isolate tests from each other: clear module state and swap in a fake
-    providers list so the real MCP singleton isn't mutated."""
-    sqlcl._state.transport = None
-    sqlcl._state.provider = None
-    fake_providers: list = []
-    monkeypatch.setattr(mcp, "providers", fake_providers)
-    yield fake_providers
-    sqlcl._state.transport = None
-    sqlcl._state.provider = None
+async def test_sqlcl_provider_is_empty_without_delegate():
+    """The stable provider exposes no capabilities while SQLcl is unavailable."""
+    provider = sqlcl._SQLclProvider()
+
+    assert await provider.list_tools() == ()
+    assert await provider.get_tool("missing") is None
+    assert await provider.list_resources() == ()
+    assert await provider.get_resource("resource://missing") is None
+    assert await provider.list_resource_templates() == ()
+    assert await provider.get_resource_template("resource://{missing}") is None
+    assert await provider.list_prompts() == ()
+    assert await provider.get_prompt("missing") is None
 
 
-async def test_refresh_sqlcl_proxy_closes_old_and_mounts_new(reset_sqlcl_state, monkeypatch):
-    """Refresh tears down the previous transport+provider and stores the new pair."""
-    providers = reset_sqlcl_state
-    old_transport = MagicMock()
-    old_transport.close = AsyncMock()
-    old_provider = MagicMock()
-    new_transport = MagicMock()
-    new_provider = MagicMock()
+async def test_sqlcl_provider_sanitizes_delegated_tool_schemas():
+    """SQLcl schema defaults are normalized at the stable provider boundary."""
+    tool = MagicMock(parameters={"properties": {"limit": {"type": "integer", "default": "10"}}})
+    delegate = MagicMock(spec=ProxyProvider)
+    delegate.list_tools = AsyncMock(return_value=[tool])
+    provider = sqlcl._SQLclProvider()
+    provider.replace(MagicMock(), delegate)
 
-    sqlcl._state.transport = old_transport
-    sqlcl._state.provider = old_provider
-    providers.append(old_provider)
+    tools = await provider.list_tools()
+
+    assert tools == [tool]
+    assert tool.parameters["properties"]["limit"]["default"] == 10
+
+
+async def test_refresh_sqlcl_proxy_closes_old_and_mounts_new(reset_sqlcl_provider, monkeypatch):
+    """Refresh atomically replaces the delegate and closes the old transport."""
+    provider_count = reset_sqlcl_provider
+    old_transport = MagicMock(close=AsyncMock())
+    old_delegate = MagicMock(spec=ProxyProvider)
+    new_transport = MagicMock(close=AsyncMock())
+    new_delegate = MagicMock(spec=ProxyProvider)
+    sqlcl._sqlcl_provider.replace(old_transport, old_delegate)
 
     async def _fake_unlocked():
-        return (new_transport, new_provider)
+        return (new_transport, new_delegate)
 
     monkeypatch.setattr(sqlcl, "_register_sqlcl_proxy_unlocked", _fake_unlocked)
 
@@ -812,18 +797,17 @@ async def test_refresh_sqlcl_proxy_closes_old_and_mounts_new(reset_sqlcl_state, 
 
     assert ok is True
     old_transport.close.assert_awaited_once()
-    assert old_provider not in providers
-    assert sqlcl._state.transport is new_transport
-    assert sqlcl._state.provider is new_provider
+    assert sqlcl._sqlcl_provider.transport is new_transport
+    assert sqlcl._sqlcl_provider.delegate is new_delegate
+    assert len(mcp.providers) == provider_count
     assert settings.nl2sql_available is True
 
 
-async def test_refresh_sqlcl_proxy_handles_register_failure(reset_sqlcl_state, monkeypatch, caplog):
+async def test_refresh_sqlcl_proxy_handles_register_failure(reset_sqlcl_provider, monkeypatch, caplog):
     """A failed rebuild leaves state cleared and nl2sql_available False, but never raises."""
     caplog.set_level("ERROR")
-    old_transport = MagicMock()
-    old_transport.close = AsyncMock()
-    sqlcl._state.transport = old_transport
+    old_transport = MagicMock(close=AsyncMock())
+    sqlcl._sqlcl_provider.replace(old_transport, MagicMock(spec=ProxyProvider))
 
     async def _boom():
         raise RuntimeError("register boom")
@@ -833,15 +817,17 @@ async def test_refresh_sqlcl_proxy_handles_register_failure(reset_sqlcl_state, m
     ok = await sqlcl.refresh_sqlcl_proxy()
 
     assert ok is False
-    assert sqlcl._state.transport is None
-    assert sqlcl._state.provider is None
+    old_transport.close.assert_awaited_once()
+    assert sqlcl._sqlcl_provider.transport is None
+    assert sqlcl._sqlcl_provider.delegate is None
     assert settings.nl2sql_available is False
     assert "SQLcl proxy refresh failed" in caplog.text
 
 
-async def test_refresh_sqlcl_proxy_unlocked_returns_none(reset_sqlcl_state, monkeypatch):
+async def test_refresh_sqlcl_proxy_unlocked_returns_none(reset_sqlcl_provider, monkeypatch):
     """When the underlying register returns None (e.g. no sqlcl binary), state stays cleared."""
-    sqlcl._state.transport = MagicMock(close=AsyncMock())
+    old_transport = MagicMock(close=AsyncMock())
+    sqlcl._sqlcl_provider.replace(old_transport, MagicMock(spec=ProxyProvider))
 
     async def _none():
         return None
@@ -851,12 +837,13 @@ async def test_refresh_sqlcl_proxy_unlocked_returns_none(reset_sqlcl_state, monk
     ok = await sqlcl.refresh_sqlcl_proxy()
 
     assert ok is False
-    assert sqlcl._state.transport is None
-    assert sqlcl._state.provider is None
+    old_transport.close.assert_awaited_once()
+    assert sqlcl._sqlcl_provider.transport is None
+    assert sqlcl._sqlcl_provider.delegate is None
     assert settings.nl2sql_available is False
 
 
-async def test_refresh_sqlcl_proxy_serializes_concurrent_calls(reset_sqlcl_state, monkeypatch):
+async def test_refresh_sqlcl_proxy_serializes_concurrent_calls(reset_sqlcl_provider, monkeypatch):
     """Two concurrent refreshes execute sequentially under _refresh_lock."""
     overlap = {"max_inflight": 0, "inflight": 0}
     gate = asyncio.Event()
@@ -869,10 +856,38 @@ async def test_refresh_sqlcl_proxy_serializes_concurrent_calls(reset_sqlcl_state
             gate.set()
             await asyncio.sleep(0.05)
         overlap["inflight"] -= 1
-        return (MagicMock(), object())
+        return (MagicMock(close=AsyncMock()), MagicMock(spec=ProxyProvider))
 
     monkeypatch.setattr(sqlcl, "_register_sqlcl_proxy_unlocked", _slow_register)
 
     await asyncio.gather(sqlcl.refresh_sqlcl_proxy(), sqlcl.refresh_sqlcl_proxy())
 
     assert overlap["max_inflight"] == 1
+
+
+async def test_discovered_proxy_tool_routes_through_refreshed_transport():
+    """A cached proxy tool resolves the current SQLcl transport when called."""
+    old_backend = FastMCP("old-sqlcl")
+    new_backend = FastMCP("new-sqlcl")
+
+    @old_backend.tool(name="version")
+    def old_version() -> str:
+        return "old"
+
+    @new_backend.tool(name="version")
+    def new_version() -> str:
+        return "new"
+
+    provider = sqlcl._SQLclProvider()
+    provider.replace(cast(StdioTransport, old_backend), provider.create_delegate())
+    frontend = FastMCP("frontend")
+    frontend.add_provider(provider, namespace="sqlcl")
+    discovered = await frontend.get_tool("sqlcl_version")
+    assert discovered is not None
+
+    provider.replace(cast(StdioTransport, new_backend), provider.create_delegate())
+    result = await cast(ProxyTool, discovered).run({}, context=Context(frontend))
+
+    content = result.content[0]
+    assert isinstance(content, TextContent)
+    assert content.text == "new"

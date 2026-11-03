@@ -132,6 +132,7 @@ Values supplied through `AIO_*` variables are reapplied at startup. You can chan
 | `AIO_SERVER_SSL_KEY_FILE`  | Path to the TLS private key in PEM format                                                                                                                                              | _(none)_           |
 | `AIO_SERVER_READY_TIMEOUT` | Seconds the client waits for the [**AI Optimizer Server**](../server/intro.mdx) to become ready at startup                                                                             | `180`              |
 | `AIO_MAX_CLIENTS`          | Maximum number of distinct client sessions cached in memory                                                                                                                            | `64`               |
+| `AIO_MCP_CACHE_TTL_SECONDS` | Seconds modern MCP clients may retain cacheable responses in a private cache. Set to `0` for immediate refresh.                                                                        | `5`                |
 
 ### Database
 

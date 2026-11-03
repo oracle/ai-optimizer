@@ -17,12 +17,12 @@ from pathlib import Path
 
 from fastmcp import Client
 from fastmcp.client.transports import StdioTransport
+from fastmcp.prompts import Prompt
+from fastmcp.resources import Resource, ResourceTemplate
 from fastmcp.server.providers import Provider
-from fastmcp.server.providers.fastmcp_provider import FastMCPProvider
-from fastmcp.server.providers.proxy import ProxyProvider, _create_client_factory
-from fastmcp.server.server import FastMCP as FastMCPServer
-from fastmcp.server.transforms.namespace import Namespace
+from fastmcp.server.providers.proxy import ProxyClient, ProxyProvider
 from fastmcp.tools import Tool
+from fastmcp.utilities.versions import VersionSpec
 
 from server.app.core.mcp import mcp
 from server.app.core.paths import PROJECT_ROOT
@@ -96,15 +96,88 @@ def _coerce_schema_defaults(schema: dict) -> None:
         prop_schema["default"] = coerced
 
 
-class _SanitizingProxyProvider(ProxyProvider):
-    """ProxyProvider that coerces mistyped defaults in MCP tool schemas."""
+class _SQLclProvider(Provider):
+    """Stable provider whose delegate and transport can be replaced."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._delegate: ProxyProvider | None = None
+        self._transport: StdioTransport | None = None
+
+    @property
+    def delegate(self) -> ProxyProvider | None:
+        return self._delegate
+
+    @property
+    def transport(self) -> StdioTransport | None:
+        return self._transport
+
+    def create_delegate(self) -> ProxyProvider:
+        """Create a proxy delegate that resolves the active transport per call."""
+        return ProxyProvider(self._create_client)
+
+    def replace(self, transport: StdioTransport, delegate: ProxyProvider) -> StdioTransport | None:
+        """Install a verified delegate and return the superseded transport."""
+        previous = self._transport
+        self._transport = transport
+        self._delegate = delegate
+        return previous
+
+    def clear(self) -> StdioTransport | None:
+        """Remove SQLcl capabilities and return the superseded transport."""
+        previous = self._transport
+        self._transport = None
+        self._delegate = None
+        return previous
+
+    def _create_client(self) -> ProxyClient:
+        transport = self._transport
+        if transport is None:
+            raise RuntimeError("SQLcl MCP proxy is unavailable")
+        return ProxyClient(transport, mode="auto")
+
+    @staticmethod
+    def _sanitize_tool(tool: Tool | None) -> Tool | None:
+        if tool is not None and tool.parameters:
+            _coerce_schema_defaults(tool.parameters)
+        return tool
 
     async def _list_tools(self) -> Sequence[Tool]:
-        tools = await super()._list_tools()
+        delegate = self._delegate
+        if delegate is None:
+            return ()
+        tools = await delegate.list_tools()
         for tool in tools:
-            if tool.parameters:
-                _coerce_schema_defaults(tool.parameters)
+            self._sanitize_tool(tool)
         return tools
+
+    async def _get_tool(self, name: str, version: VersionSpec | None = None) -> Tool | None:
+        delegate = self._delegate
+        if delegate is None:
+            return None
+        return self._sanitize_tool(await delegate.get_tool(name, version))
+
+    async def _list_resources(self) -> Sequence[Resource]:
+        return () if self._delegate is None else await self._delegate.list_resources()
+
+    async def _get_resource(self, uri: str, version: VersionSpec | None = None) -> Resource | None:
+        return None if self._delegate is None else await self._delegate.get_resource(uri, version)
+
+    async def _list_resource_templates(self) -> Sequence[ResourceTemplate]:
+        return () if self._delegate is None else await self._delegate.list_resource_templates()
+
+    async def _get_resource_template(
+        self,
+        uri: str,
+        version: VersionSpec | None = None,
+    ) -> ResourceTemplate | None:
+        return None if self._delegate is None else await self._delegate.get_resource_template(uri, version)
+
+    async def _list_prompts(self) -> Sequence[Prompt]:
+        return () if self._delegate is None else await self._delegate.list_prompts()
+
+    async def _get_prompt(self, name: str, version: VersionSpec | None = None) -> Prompt | None:
+        return None if self._delegate is None else await self._delegate.get_prompt(name, version)
 
 
 def _resolve_dbtools_home() -> Path:
@@ -131,16 +204,8 @@ def _sqlcl_mcp_level() -> str:
 _DBTOOLS_HOME = _resolve_dbtools_home()
 
 
-# Live state for the mounted SQLcl proxy. register_sqlcl_proxy() populates this
-# at startup; refresh_sqlcl_proxy() tears it down and rebuilds it when the
-# database configuration changes so the SQLcl daemon re-reads the connection store.
-# State is wrapped in a class so attribute mutations don't need `global`.
-class _ProxyState:
-    transport: StdioTransport | None = None
-    provider: Provider | None = None
-
-
-_state = _ProxyState()
+_sqlcl_provider = _SQLclProvider()
+mcp.add_provider(_sqlcl_provider, namespace="sqlcl")
 _refresh_lock = asyncio.Lock()
 
 
@@ -362,13 +427,8 @@ async def ensure_sqlcl_saved_connection(alias: str) -> bool:
 
 async def _mount_sqlcl_proxy(
     sqlcl_binary: str, mcp_args: list[str], env_vars: dict[str, str]
-) -> tuple[StdioTransport, Provider] | None:
-    """Create an MCP transport, verify the backend, and mount the SQLcl proxy.
-
-    Returns ``(transport, mounted_provider)`` on success so callers can later
-    tear the proxy down by removing the provider from ``mcp.providers`` and
-    closing the transport.
-    """
+) -> tuple[StdioTransport, ProxyProvider] | None:
+    """Create and verify a SQLcl transport and its proxy delegate."""
     transport: StdioTransport | None = None
     try:
         LOGGER.debug("SQLcl proxy: creating StdioTransport")
@@ -385,16 +445,9 @@ async def _mount_sqlcl_proxy(
             await transport.close()
             return None
 
-        client_factory = _create_client_factory(client)
-        proxy = FastMCPServer(name="SQLclProxy")
-        proxy.add_provider(_SanitizingProxyProvider(client_factory))
-        # Equivalent to mcp.mount(proxy, namespace="sqlcl"), but we keep a
-        # reference to the wrapped provider so refresh_sqlcl_proxy() can
-        # remove it from mcp.providers on teardown.
-        mounted_provider = FastMCPProvider(proxy).wrap_transform(Namespace("sqlcl"))
-        mcp.providers.append(mounted_provider)
-        LOGGER.info("Mounted SQLcl MCP proxy")
-        return transport, mounted_provider
+        delegate = _sqlcl_provider.create_delegate()
+        LOGGER.info("Prepared SQLcl MCP proxy")
+        return transport, delegate
     except Exception as ex:
         LOGGER.error("Failed to create SQLcl MCP proxy: %s", ex)
         if transport is not None:
@@ -402,10 +455,10 @@ async def _mount_sqlcl_proxy(
         return None
 
 
-async def _register_sqlcl_proxy_unlocked() -> tuple[StdioTransport, Provider] | None:
-    """Discover SQLcl, set up connection stores, and mount the MCP proxy.
+async def _register_sqlcl_proxy_unlocked() -> tuple[StdioTransport, ProxyProvider] | None:
+    """Discover SQLcl, set up connection stores, and prepare the MCP proxy.
 
-    Caller must hold ``_refresh_lock``.  Returns ``(transport, mounted_provider)``
+    Caller must hold ``_refresh_lock``. Returns ``(transport, delegate)``
     on success.
     """
     sqlcl_mcp_level = _sqlcl_mcp_level()
@@ -472,31 +525,35 @@ async def _register_sqlcl_proxy_unlocked() -> tuple[StdioTransport, Provider] | 
         return None
     LOGGER.debug("SQLcl proxy: preflight passed")
 
-    # 3. Mount the SQLcl MCP proxy (reads the same -home store)
+    # 3. Prepare the SQLcl MCP proxy (reads the same -home store)
     return await _mount_sqlcl_proxy(sqlcl_binary, mcp_args, env_vars)
 
 
-async def _teardown_active_unlocked() -> None:
-    """Unmount the current provider and close the current transport. Caller holds ``_refresh_lock``."""
-    if _state.provider is not None and _state.provider in mcp.providers:
-        mcp.providers.remove(_state.provider)
-    await _close_transport(_state.transport)
-    _state.transport = None
-    _state.provider = None
+async def _replace_active_unlocked(result: tuple[StdioTransport, ProxyProvider] | None) -> None:
+    """Swap the active delegate, then close the superseded transport."""
+    if result is None:
+        old_transport = _sqlcl_provider.clear()
+    else:
+        transport, delegate = result
+        old_transport = _sqlcl_provider.replace(transport, delegate)
+    if old_transport is not _sqlcl_provider.transport:
+        await _close_transport(old_transport)
 
 
 async def register_sqlcl_proxy() -> StdioTransport | None:
     """Startup entrypoint: register the SQLcl proxy and cache the transport."""
     async with _refresh_lock:
-        await _teardown_active_unlocked()  # defensive — startup should see no prior state
-        result = await _register_sqlcl_proxy_unlocked()
-        if result is not None:
-            _state.transport, _state.provider = result
-        return _state.transport
+        try:
+            result = await _register_sqlcl_proxy_unlocked()
+        except Exception:
+            await _replace_active_unlocked(None)
+            raise
+        await _replace_active_unlocked(result)
+        return _sqlcl_provider.transport
 
 
 async def refresh_sqlcl_proxy() -> bool:
-    """Tear down and rebuild the SQLcl MCP proxy.
+    """Rebuild and replace the SQLcl MCP proxy.
 
     Called after ``settings.database_configs`` mutates so the SQLcl daemon sees
     the updated connection store.  Best-effort: failures are logged, and
@@ -508,17 +565,15 @@ async def refresh_sqlcl_proxy() -> bool:
 
 async def _refresh_sqlcl_proxy_unlocked() -> bool:
     """Refresh the SQLcl MCP proxy while the caller holds ``_refresh_lock``."""
-    await _teardown_active_unlocked()
     try:
         result = await _register_sqlcl_proxy_unlocked()
     except Exception as ex:
         LOGGER.error("SQLcl proxy refresh failed: %s", ex)
         result = None
 
-    if result is not None:
-        _state.transport, _state.provider = result
-    settings.nl2sql_available = _state.transport is not None
-    return _state.transport is not None
+    await _replace_active_unlocked(result)
+    settings.nl2sql_available = _sqlcl_provider.transport is not None
+    return _sqlcl_provider.transport is not None
 
 
 async def _close_transport(transport: StdioTransport | None) -> None:
@@ -532,11 +587,7 @@ async def _close_transport(transport: StdioTransport | None) -> None:
 
 
 async def close_sqlcl_proxy() -> None:
-    """Close the currently-mounted SQLcl proxy, terminating the SQLcl daemon.
-
-    Reads the active transport from module state so callers don't have to track
-    handles themselves — this keeps shutdown correct even after a refresh has
-    swapped in a new transport.
-    """
+    """Close the active SQLcl proxy transport and clear its capabilities."""
     async with _refresh_lock:
-        await _teardown_active_unlocked()
+        await _replace_active_unlocked(None)
+        settings.nl2sql_available = False

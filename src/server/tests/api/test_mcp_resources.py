@@ -6,10 +6,10 @@ Tests for MCP resources endpoint.
 """
 # spell-checker: disable
 
-from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
+from mcp.types import Resource
 
 pytestmark = pytest.mark.anyio
 
@@ -37,11 +37,11 @@ async def test_list_resources_returns_registered_resource_payload(app_client, au
 
         async def list_resources(self):
             return [
-                SimpleNamespace(
-                    model_dump=lambda: {
-                        "uri": "optimizer://settings",
-                        "name": "settings",
-                    }
+                Resource(
+                    uri="optimizer://settings",
+                    name="settings",
+                    mime_type="application/json",
+                    _meta={"owner": "optimizer"},
                 )
             ]
 
@@ -49,9 +49,10 @@ async def test_list_resources_returns_registered_resource_payload(app_client, au
         resp = await app_client.get("/mcp/resources", headers=auth_headers)
 
     assert resp.status_code == 200
-    assert resp.json() == [
-        {
-            "uri": "optimizer://settings",
-            "name": "settings",
-        }
-    ]
+    resource = resp.json()[0]
+    assert resource["uri"] == "optimizer://settings"
+    assert resource["name"] == "settings"
+    assert resource["mimeType"] == "application/json"
+    assert resource["_meta"] == {"owner": "optimizer"}
+    assert "mime_type" not in resource
+    assert "meta" not in resource

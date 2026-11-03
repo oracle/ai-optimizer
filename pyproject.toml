@@ -18,7 +18,7 @@ authors = [
 
 # - common dependencies that are always needed
 dependencies = [
-    "langchain==1.4.7",
+    "langchain[mcp]==1.4.8",
     "httpx==0.28.1",
     "oracledb~=26.0",
     "pydantic-settings==2.16.2"
@@ -28,17 +28,17 @@ dependencies = [
 # Server component dependencies
 # - server: server side only
 server = [
-    "docling==2.145.0",
+    "docling==2.146.0",
     "faiss-cpu==1.15.1",
     "fastapi==0.162.0",
-    "fastmcp==3.4.10",
+    "fastmcp==4.1.6",
     "giskard==3.0.1",
-    "langchain-litellm==0.11.1",
-    "langchain-mcp-adapters==0.3.2",
+    "langchain-litellm==0.11.2",
     "langchain-oracledb==1.6.0",
     "litellm==1.106.6",
     "llama-index-core==0.14.25",
     "oci~=2.0",
+    #"oracleagentmemory==26.8.0",
     "pyagentspec==26.3.1",
     "pypdf==6.21.4",
     "torch", # Direct requirement to select the CPU-only PyTorch distribution for Docling.

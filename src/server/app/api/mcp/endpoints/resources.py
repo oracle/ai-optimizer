@@ -20,4 +20,4 @@ async def list_resources():
     client = Client(mcp)
     async with client:
         resources = await client.list_resources()
-        return [r.model_dump() for r in resources]
+        return [r.model_dump(by_alias=True) for r in resources]

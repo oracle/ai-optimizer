@@ -136,8 +136,8 @@ async def test_grade_documents_with_llm_invalid_response(prompt_config_factory, 
     assert "LLM did not return binary relevant" in caplog.text
 
 
-async def test_register_grade_tool(monkeypatch):
-    """Registered grade tool should call implementation and emit info."""
+async def test_register_grade_tool(monkeypatch, caplog):
+    """Registered grade tool should call implementation and log the request."""
 
     async def _fake_impl(question: str, documents: List[dict], client: str = "CONFIGURED") -> VectorGradeResponse:
         return VectorGradeResponse(
@@ -154,22 +154,12 @@ async def test_register_grade_tool(monkeypatch):
 
     tool = cast(FunctionTool, await mcp.local_provider.get_tool("optimizer_vs_grade"))
 
-    class _Ctx:
-        """Collects MCP context messages."""
-
-        def __init__(self):
-            self.messages: list[str] = []
-
-        async def info(self, message: str) -> None:
-            self.messages.append(message)
-
-    ctx = _Ctx()
+    caplog.set_level("INFO", logger=vs_grade.__name__)
     response = await tool.fn(
         thread_id="abc",
         question="test",
         documents=[{"page_content": "Doc"}],
-        ctx=ctx,
     )
 
     assert response.status == "test"
-    assert ctx.messages == ["VS Grade (Thread ID: abc, Docs: 1)"]
+    assert "VS Grade (Thread ID: abc, Docs: 1)" in caplog.messages

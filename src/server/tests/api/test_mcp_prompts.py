@@ -33,3 +33,5 @@ async def test_list_prompts(app_client, auth_headers):
     names = [p["name"] for p in body]
     assert "test_prompt-one" in names
     assert "test_prompt-two" in names
+    assert all("_meta" in prompt for prompt in body)
+    assert all("meta" not in prompt for prompt in body)

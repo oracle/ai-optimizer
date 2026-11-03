@@ -8,9 +8,8 @@ MCP tool: Question Rephrase for vector search retrieval.
 
 import json
 import logging
-from typing import Optional, Union
+from typing import Union
 
-from fastmcp import Context
 from langchain_core.prompts import PromptTemplate
 from litellm.exceptions import APIConnectionError
 
@@ -161,16 +160,14 @@ def register_rephrase_tool():
         name="optimizer_vs_rephrase",
         title="Question Rephrase",
         tags={"vector-search", "optimizer"},
-        annotations={"readOnlyHint": True, "openWorldHint": True},
+        annotations={"read_only_hint": True, "open_world_hint": True},
         timeout=60.0,
     )
     async def rephrase(
         thread_id: str,
         question: str,
         chat_history: Union[list[str], str, None] = None,
-        ctx: Optional[Context] = None,
     ) -> RephrasePrompt:
         """Rephrase user question using conversation history for better vector search retrieval."""
-        if ctx:
-            await ctx.info(f"VS Rephrase (Thread ID: {thread_id})")
+        LOGGER.info("VS Rephrase (Thread ID: %s)", thread_id)
         return await _vs_rephrase_impl(question, chat_history, client=thread_id)

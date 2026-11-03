@@ -46,6 +46,8 @@ The runtime loader converts an AgentSpec definition into engine-specific objects
 
 For agents and flows that use MCP tools, the loader ensures the MCP transport is configured for API-key-based authentication.
 
+The loader converts supported AgentSpec MCP transports to FastMCP transports and discovers LangChain tools through `langchain.mcp.MCPAdapter`. Extend this conversion boundary when adding a new AgentSpec MCP transport so exported definitions remain portable AgentSpec data.
+
 ### 3. Execute — Session Layer
 
 Once loaded, agents and flows are executed through session objects that manage conversation state, chat history, and error handling.
