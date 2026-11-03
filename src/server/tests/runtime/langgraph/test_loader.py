@@ -8,13 +8,40 @@ our _llm_convert_to_langgraph override so LiteLlmConfig is handled.
 # spell-checker: disable
 
 import contextlib
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
+import httpx2
+import pytest
+from fastmcp import FastMCP
+from fastmcp.client.transports import SSETransport as FastMCPSSETransport
+from fastmcp.client.transports import StdioTransport as FastMCPStdioTransport
+from fastmcp.client.transports import StreamableHttpTransport
+from pyagentspec.adapters.langgraph.tracing import AgentSpecToolCallbackHandler
 from pyagentspec.agent import Agent as AgentSpecAgent
+from pyagentspec.auth import OAuthClientConfig, OAuthConfig
+from pyagentspec.mcp import MCPTool, MCPToolBox, MCPToolSpec
+from pyagentspec.mcp.clienttransport import (
+    ClientTransport,
+    SessionParameters,
+    StreamableHTTPmTLSTransport,
+    StreamableHTTPTransport,
+)
+from pyagentspec.mcp.clienttransport import SSETransport as AgentSpecSSETransport
+from pyagentspec.mcp.clienttransport import StdioTransport as AgentSpecStdioTransport
+from pyagentspec.serialization import AgentSpecSerializer
 
 from server.app.agentspec.adapters.litellm import LiteLlmConfig
+from server.app.agentspec.agent_nl2sql import NL2SQL_SQLCL_TOOLS, build_nl2sql_agentspec
+from server.app.agentspec.flow_vecsearch import build_vecsearch_flow
+from server.app.runtime.langgraph import loader as loader_module
 from server.app.runtime.langgraph.adapters.litellm import OracleChatLiteLLM
-from server.app.runtime.langgraph.loader import LiteLlmAgentSpecLoader
+from server.app.runtime.langgraph.loader import (
+    LiteLlmAgentSpecLoader,
+    _agentspec_transport_to_fastmcp,
+    _mcp_httpx2_client_factory,
+)
+from server.tests.conftest import MOCK_API_KEY, MOCK_SERVER_URL, MOCK_SYSTEM_PROMPT, SAMPLE_CLIENT_SETTINGS_OBJ
 from server.tests.constants import (
     TEST_OLLAMA_CHAT_KEY,
     TEST_OLLAMA_MODEL_ID,
@@ -162,6 +189,262 @@ class TestLiteLlmAgentSpecLoader:
             assert bridge is not None
             assert bridge.model_kwargs["oci_compartment_id"] == "ocid1.compartment.oc1..b"
             assert bridge.model_kwargs["oci_region"] == "us-chicago-1"
+
+
+class TestMcpTransportConversion:
+    """AgentSpec MCP transports convert through FastMCP 4 public transports."""
+
+    async def test_streamable_http_merges_headers_without_mutating_source(self):
+        source = StreamableHTTPTransport(
+            name="remote",
+            url="https://mcp.example.test/",
+            headers={"Accept": "application/json"},
+            sensitive_headers={"X-API-Key": "secret"},
+            session_parameters=SessionParameters(read_timeout_seconds=12.5),
+        )
+
+        converted = _agentspec_transport_to_fastmcp(source)
+
+        assert isinstance(converted, StreamableHttpTransport)
+        assert converted.headers == {"Accept": "application/json", "X-API-Key": "secret"}
+        assert source.headers == {"Accept": "application/json"}
+        assert source.sensitive_headers == {"X-API-Key": "secret"}
+        assert "secret" not in AgentSpecSerializer().to_json(source)
+        assert converted.httpx_client_factory is not None
+        client = converted.httpx_client_factory(headers=converted.headers)
+        assert isinstance(client, httpx2.AsyncClient)
+        assert client.timeout.read == 12.5
+        await client.aclose()
+
+    def test_stdio_uses_fastmcp_transport(self):
+        source = AgentSpecStdioTransport(
+            name="stdio",
+            command="example-mcp",
+            args=["--stdio"],
+            env={"MODE": "test"},
+            cwd="/tmp",
+        )
+
+        converted = _agentspec_transport_to_fastmcp(source)
+
+        assert isinstance(converted, FastMCPStdioTransport)
+        assert converted.command == "example-mcp"
+        assert converted.args == ["--stdio"]
+        assert converted.env == {"MODE": "test"}
+        assert str(converted.cwd) == "/tmp"
+
+    def test_sse_uses_fastmcp_transport_and_read_timeout(self):
+        source = AgentSpecSSETransport(
+            name="sse",
+            url="https://mcp.example.test/sse",
+            headers={"Accept": "text/event-stream"},
+            session_parameters=SessionParameters(read_timeout_seconds=45),
+        )
+
+        converted = _agentspec_transport_to_fastmcp(source)
+
+        assert isinstance(converted, FastMCPSSETransport)
+        assert converted.headers == {"Accept": "text/event-stream"}
+        assert converted.sse_read_timeout is not None
+        assert converted.sse_read_timeout.total_seconds() == 45
+
+    def test_mtls_uses_configured_ca_and_client_certificate(self):
+        ssl_context = MagicMock(check_hostname=True)
+        source = StreamableHTTPmTLSTransport(
+            name="mtls",
+            url="https://mcp.example.test/",
+            ca_file="/certs/ca.pem",
+            cert_file="/certs/client.pem",
+            key_file="/certs/client.key",
+        )
+
+        with patch(
+            "server.app.runtime.langgraph.loader.ssl.create_default_context", return_value=ssl_context
+        ) as create:
+            converted = _agentspec_transport_to_fastmcp(source)
+
+        assert isinstance(converted, StreamableHttpTransport)
+        create.assert_called_once_with(cafile="/certs/ca.pem")
+        ssl_context.load_cert_chain.assert_called_once_with(
+            certfile="/certs/client.pem",
+            keyfile="/certs/client.key",
+        )
+        assert ssl_context.check_hostname is True
+
+    def test_partial_mtls_configuration_is_rejected(self):
+        with pytest.raises(ValueError, match="requires both cert_file and key_file"):
+            _mcp_httpx2_client_factory(read_timeout_seconds=60, cert_file="client.pem")
+
+    def test_agent_spec_auth_mode_is_rejected(self):
+        auth = OAuthConfig(
+            name="oauth",
+            client=OAuthClientConfig(name="client", type="pre_registered", client_id="client-id"),
+            redirect_uri="https://app.example.test/callback",
+        )
+        source = StreamableHTTPTransport(
+            name="remote",
+            url="https://mcp.example.test/",
+            auth=auth,
+        )
+
+        with pytest.raises(ValueError, match="Unsupported AgentSpec MCP auth mode: OAuthConfig"):
+            _agentspec_transport_to_fastmcp(source)
+
+    def test_unknown_transport_is_rejected(self):
+        class UnsupportedTransport(ClientTransport):
+            pass
+
+        source = UnsupportedTransport(name="unknown")
+
+        with pytest.raises(ValueError, match="Unsupported AgentSpec MCP transport: UnsupportedTransport"):
+            _agentspec_transport_to_fastmcp(source)
+
+
+class TestMcpAdapterConversion:
+    """AgentSpec MCP components use LangChain's first-party MCP adapter."""
+
+    @staticmethod
+    def _source_transport() -> StreamableHTTPTransport:
+        return StreamableHTTPTransport(
+            name="in-process",
+            url="https://unused.example.test/mcp",
+            sensitive_headers={"X-API-Key": "secret"},
+        )
+
+    @staticmethod
+    def _use_in_process_server(monkeypatch: pytest.MonkeyPatch, server: FastMCP) -> None:
+        monkeypatch.setattr(
+            loader_module,
+            "_agentspec_transport_to_fastmcp",
+            lambda _transport: cast(Any, server),
+        )
+
+    async def test_mcp_tool_discovery_and_call(self, monkeypatch: pytest.MonkeyPatch):
+        server = FastMCP("loader-test")
+
+        @server.tool
+        async def echo(value: str) -> str:
+            """Echo one value."""
+            return f"echo:{value}"
+
+        @server.tool
+        async def other() -> str:
+            return "other"
+
+        self._use_in_process_server(monkeypatch, server)
+        source = self._source_transport()
+        tool_registry: dict[str, Any] = {}
+        loader = LiteLlmAgentSpecLoader()
+
+        tool = loader.convert(MCPTool(name="echo", client_transport=source), tool_registry=tool_registry)
+        content, artifact = await tool.coroutine(value="hello")
+
+        assert tool.name == "echo"
+        assert tool.description == "Echo one value."
+        assert tool.args["value"]["type"] == "string"
+        assert content == "echo:hello"
+        assert artifact == {"structured_content": {"result": "echo:hello"}}
+        assert isinstance(tool.callbacks, list)
+        assert any(isinstance(callback, AgentSpecToolCallbackHandler) for callback in tool.callbacks)
+        assert f"{source.id}::echo" in tool_registry
+        assert f"{source.id}::other" in tool_registry
+
+    async def test_mcp_toolbox_filters_nl2sql_allowlist(self, monkeypatch: pytest.MonkeyPatch):
+        server = FastMCP("toolbox-test")
+        allowlist: list[MCPToolSpec | str] = [
+            "sqlcl_connect",
+            "sqlcl_schema_information",
+            "sqlcl_sql_run",
+            "sqlcl_request_status",
+        ]
+
+        for name in [*allowlist, "sqlcl_disconnect"]:
+
+            async def tool_impl(value: str = "ok", _name: str = name) -> str:
+                return f"{_name}:{value}"
+
+            server.tool(tool_impl, name=name)
+
+        self._use_in_process_server(monkeypatch, server)
+        source = self._source_transport()
+        toolbox = MCPToolBox(name="sqlcl", client_transport=source, tool_filter=allowlist)
+
+        tools = LiteLlmAgentSpecLoader().convert(toolbox, tool_registry={})
+
+        assert [tool.name for tool in tools] == allowlist
+
+    def test_nl2sql_agent_loads_with_first_party_adapter(self, monkeypatch: pytest.MonkeyPatch):
+        server = FastMCP("nl2sql-loader-test")
+        for name in NL2SQL_SQLCL_TOOLS:
+
+            async def tool_impl(_name: str = name) -> str:
+                return _name
+
+            server.tool(tool_impl, name=name)
+
+        self._use_in_process_server(monkeypatch, server)
+        agent = build_nl2sql_agentspec(
+            SAMPLE_CLIENT_SETTINGS_OBJ,
+            MOCK_SERVER_URL,
+            MOCK_API_KEY,
+            MOCK_SYSTEM_PROMPT,
+        )
+        loader = LiteLlmAgentSpecLoader()
+
+        graph = loader.load_component(agent)
+
+        assert graph is not None
+        toolbox = agent.toolboxes[0]
+        assert isinstance(toolbox, MCPToolBox)
+        transport = toolbox.client_transport
+        assert {key.removeprefix(f"{transport.id}::") for key in loader.tool_registry} == set(NL2SQL_SQLCL_TOOLS)
+
+    def test_vecsearch_flow_loads_with_first_party_adapter(self, monkeypatch: pytest.MonkeyPatch):
+        server = FastMCP("vecsearch-loader-test")
+
+        @server.tool(name="optimizer_vs_rephrase")
+        async def rephrase(thread_id: str, question: str, chat_history: list[str] | None = None) -> str:
+            return question
+
+        @server.tool(name="optimizer_vs_discovery")
+        async def discovery(thread_id: str, filter_enabled_models: bool = True) -> str:
+            return thread_id
+
+        @server.tool(name="optimizer_vs_retriever")
+        async def retriever(thread_id: str, question: str, collection_alias: str | None = None) -> str:
+            return question
+
+        @server.tool(name="optimizer_vs_grade")
+        async def grade(thread_id: str, question: str, documents: list[dict]) -> str:
+            return question
+
+        self._use_in_process_server(monkeypatch, server)
+        flow = build_vecsearch_flow(
+            SAMPLE_CLIENT_SETTINGS_OBJ,
+            MOCK_SERVER_URL,
+            MOCK_API_KEY,
+            MOCK_SYSTEM_PROMPT,
+        )
+        loader = LiteLlmAgentSpecLoader()
+
+        graph = loader.load_component(flow)
+
+        assert graph is not None
+        expected = {
+            "optimizer_vs_rephrase",
+            "optimizer_vs_discovery",
+            "optimizer_vs_retriever",
+            "optimizer_vs_grade",
+        }
+        assert {key.rsplit("::", 1)[1] for key in loader.tool_registry} == expected
+
+    def test_requires_confirmation_still_requires_checkpointer(self, monkeypatch: pytest.MonkeyPatch):
+        server = FastMCP("confirmation-test")
+        self._use_in_process_server(monkeypatch, server)
+        tool = MCPTool(name="confirm", client_transport=self._source_transport(), requires_confirmation=True)
+
+        with pytest.raises(ValueError, match="A Checkpointer is required"):
+            LiteLlmAgentSpecLoader().convert(tool, tool_registry={})
 
 
 class TestUnwrapToolContentBlocks:
