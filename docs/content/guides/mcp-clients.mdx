@@ -10,6 +10,8 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 The **Oracle AI Optimizer and Toolkit** (the **AI Optimizer**) exposes an [MCP](https://modelcontextprotocol.io/) endpoint at `/mcp`. MCP-compatible clients can use the tools, prompts, and resources registered by the server, including Vector Search tools and SQLcl tools when NL2SQL is configured.
 
+Clients must support the sessionless MCP `2026-07-28` protocol and Streamable HTTP transport. Generated JSON uses MCP and client wire casing, including fields such as `inputSchema`, `readOnlyHint`, and `streamableHttp`; preserve that casing when importing or adapting the configuration.
+
 External clients use the resources configured on the AI Optimizer Server. To use Vector Search, split and embed content first. To use NL2SQL, configure a database and [SQLcl MCP Server](./sqlcl-mcp-server).
 
 ## Select a Vector Store

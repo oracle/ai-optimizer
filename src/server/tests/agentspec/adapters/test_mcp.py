@@ -6,17 +6,21 @@ Tests for the MCP adapter: transport construction and prompt fetching.
 """
 # spell-checker: disable
 
-from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
-import httpx2
 import pytest
 from fastmcp import settings as fastmcp_settings
 from mcp.types import CallToolResult, GetPromptResult, ImageContent, PromptMessage, TextContent
 from pyagentspec.mcp import StreamableHTTPTransport
 
-from server.app.agentspec.adapters.mcp import build_mcp_transport, connect_sqlcl_database, fetch_mcp_prompt
+from server.app.agentspec.adapters.mcp import (
+    _MCP_PROTOCOL_VERSION,
+    _mcp_client,
+    build_mcp_transport,
+    connect_sqlcl_database,
+    fetch_mcp_prompt,
+)
 
 
 class TestBuildMcpTransport:
@@ -50,36 +54,37 @@ class TestBuildMcpTransport:
         assert headers["X-API-Key"] == "my-secret"
 
 
-def _mock_mcp_session(prompt_result: GetPromptResult) -> AsyncMock:
-    """Create a mock MCP ClientSession that returns the given prompt result."""
-    session = AsyncMock()
-    session.initialize = AsyncMock()
-    session.get_prompt = AsyncMock(return_value=prompt_result)
-    return session
+def test_mcp_client_uses_sessionless_protocol():
+    """Application-owned MCP calls pin the sessionless protocol."""
+    with (
+        patch("server.app.agentspec.adapters.mcp.verify_for_url", return_value=False),
+        patch("server.app.agentspec.adapters.mcp.StreamableHttpTransport") as transport_class,
+        patch("server.app.agentspec.adapters.mcp.Client") as client_class,
+    ):
+        result = _mcp_client("https://mcp.example.com/endpoint", "secret")
 
-
-def _patch_mcp_context(mock_session):
-    """Return mocks for streamable_http_client and ClientSession.
-
-    streamable_http_client is an async context manager yielding (read, write).
-    ClientSession is an async context manager wrapping the session object.
-    """
-
-    @asynccontextmanager
-    async def fake_streamable_http_client(_url, *, http_client=None):
-        assert isinstance(http_client, httpx2.AsyncClient)
-        read_stream = MagicMock()
-        write_stream = MagicMock()
-        yield read_stream, write_stream
-
-    @asynccontextmanager
-    async def fake_client_session(_read, _write):
-        yield mock_session
-
-    return (
-        patch("server.app.agentspec.adapters.mcp.streamable_http_client", fake_streamable_http_client),
-        patch("server.app.agentspec.adapters.mcp.ClientSession", fake_client_session),
+    transport_class.assert_called_once_with(
+        "https://mcp.example.com/endpoint/",
+        headers={"X-API-Key": "secret"},
+        verify=False,
     )
+    client_class.assert_called_once_with(transport_class.return_value, mode=_MCP_PROTOCOL_VERSION)
+    assert result is client_class.return_value
+
+
+def _mock_mcp_client(prompt_result: GetPromptResult) -> AsyncMock:
+    """Create a mock FastMCP client that returns the given prompt result."""
+    client = AsyncMock()
+    client.get_prompt = AsyncMock(return_value=prompt_result)
+    return client
+
+
+def _patch_mcp_client(mock_client):
+    """Patch the application MCP client with an async context manager."""
+    client_context = MagicMock()
+    client_context.__aenter__ = AsyncMock(return_value=mock_client)
+    client_context.__aexit__ = AsyncMock(return_value=False)
+    return patch("server.app.agentspec.adapters.mcp._mcp_client", return_value=client_context)
 
 
 class TestFetchMcpPrompt:
@@ -99,22 +104,20 @@ class TestFetchMcpPrompt:
         result = GetPromptResult(
             messages=[PromptMessage(role="assistant", content=TextContent(type="text", text="Hello from MCP"))]
         )
-        session = _mock_mcp_session(result)
-        p1, p2 = _patch_mcp_context(session)
-        with p1, p2:
+        client = _mock_mcp_client(result)
+        with _patch_mcp_client(client):
             text = await fetch_mcp_prompt(self.server_url, self.api_key, "my-prompt")
         assert text == "Hello from MCP"
-        session.get_prompt.assert_awaited_once_with("my-prompt", None)
+        client.get_prompt.assert_awaited_once_with("my-prompt", None)
 
     @pytest.mark.anyio
     async def test_arguments_forwarded(self):
-        """Optional arguments dict is passed through to session.get_prompt."""
+        """Optional arguments are passed through to the MCP client."""
         result = GetPromptResult(messages=[])
-        session = _mock_mcp_session(result)
-        p1, p2 = _patch_mcp_context(session)
-        with p1, p2:
+        client = _mock_mcp_client(result)
+        with _patch_mcp_client(client):
             await fetch_mcp_prompt(self.server_url, self.api_key, "p", arguments={"k": "v"})
-        session.get_prompt.assert_awaited_once_with("p", {"k": "v"})
+        client.get_prompt.assert_awaited_once_with("p", {"k": "v"})
 
     @pytest.mark.anyio
     async def test_multiple_messages_joined_with_double_newline(self):
@@ -125,9 +128,8 @@ class TestFetchMcpPrompt:
                 PromptMessage(role="assistant", content=TextContent(type="text", text="Second")),
             ]
         )
-        session = _mock_mcp_session(result)
-        p1, p2 = _patch_mcp_context(session)
-        with p1, p2:
+        client = _mock_mcp_client(result)
+        with _patch_mcp_client(client):
             text = await fetch_mcp_prompt(self.server_url, self.api_key, "p")
         assert text == "First\n\nSecond"
 
@@ -144,9 +146,8 @@ class TestFetchMcpPrompt:
                 PromptMessage(role="assistant", content=TextContent(type="text", text="also kept")),
             ]
         )
-        session = _mock_mcp_session(result)
-        p1, p2 = _patch_mcp_context(session)
-        with p1, p2:
+        client = _mock_mcp_client(result)
+        with _patch_mcp_client(client):
             text = await fetch_mcp_prompt(self.server_url, self.api_key, "p")
         assert text == "kept\n\nalso kept"
 
@@ -154,15 +155,14 @@ class TestFetchMcpPrompt:
     async def test_empty_messages_returns_empty_string(self):
         """No messages in prompt result yields empty string."""
         result = GetPromptResult(messages=[])
-        session = _mock_mcp_session(result)
-        p1, p2 = _patch_mcp_context(session)
-        with p1, p2:
+        client = _mock_mcp_client(result)
+        with _patch_mcp_client(client):
             text = await fetch_mcp_prompt(self.server_url, self.api_key, "p")
         assert text == ""
 
     @pytest.mark.anyio
     async def test_connection_error_propagates(self):
-        """Network errors from streamable_http_client propagate to the caller."""
+        """MCP client connection errors propagate to the caller."""
 
         class FailingClient:
             """Async context manager that raises ConnectionError on entry."""
@@ -173,12 +173,8 @@ class TestFetchMcpPrompt:
             async def __aexit__(self, _exc_type, _exc, _tb):
                 return False
 
-        def failing_client(_url, *, http_client=None):
-            del http_client
-            return FailingClient()
-
         with (
-            patch("server.app.agentspec.adapters.mcp.streamable_http_client", failing_client),
+            patch("server.app.agentspec.adapters.mcp._mcp_client", return_value=FailingClient()),
             pytest.raises(ConnectionError, match="refused"),
         ):
             await fetch_mcp_prompt(self.server_url, self.api_key, "p")
@@ -198,15 +194,13 @@ class TestConnectSqlclDatabase:
     @pytest.mark.anyio
     async def test_connects_when_saved_connection_exists(self):
         """A working saved connection calls sqlcl_connect once."""
-        session = AsyncMock()
-        session.initialize = AsyncMock()
-        session.call_tool = AsyncMock(return_value=SimpleNamespace(is_error=False, content=[]))
-        p1, p2 = _patch_mcp_context(session)
+        client = AsyncMock()
+        client.call_tool_mcp = AsyncMock(return_value=SimpleNamespace(is_error=False, content=[]))
 
-        with p1, p2:
+        with _patch_mcp_client(client):
             await connect_sqlcl_database(self.server_url, self.api_key, "CORE", "ollama/granite4.1:8b")
 
-        session.call_tool.assert_awaited_once_with(
+        client.call_tool_mcp.assert_awaited_once_with(
             "sqlcl_connect",
             {"connection_name": "CORE", "model": "ollama/granite4.1:8b"},
         )
@@ -214,12 +208,10 @@ class TestConnectSqlclDatabase:
     @pytest.mark.anyio
     async def test_passes_thread_id_when_provided(self):
         """thread_id should be forwarded to SQLcl connect when provided."""
-        session = AsyncMock()
-        session.initialize = AsyncMock()
-        session.call_tool = AsyncMock(return_value=SimpleNamespace(is_error=False, content=[]))
-        p1, p2 = _patch_mcp_context(session)
+        client = AsyncMock()
+        client.call_tool_mcp = AsyncMock(return_value=SimpleNamespace(is_error=False, content=[]))
 
-        with p1, p2:
+        with _patch_mcp_client(client):
             await connect_sqlcl_database(
                 self.server_url,
                 self.api_key,
@@ -228,7 +220,7 @@ class TestConnectSqlclDatabase:
                 thread_id="client-1",
             )
 
-        session.call_tool.assert_awaited_once_with(
+        client.call_tool_mcp.assert_awaited_once_with(
             "sqlcl_connect",
             {"connection_name": "CORE", "model": "ollama/granite4.1:8b", "thread_id": "client-1"},
         )
@@ -242,14 +234,11 @@ class TestConnectSqlclDatabase:
             structured_content=None,
         )
         success = SimpleNamespace(is_error=False, content=[])
-        session = AsyncMock()
-        session.initialize = AsyncMock()
-        session.call_tool = AsyncMock(side_effect=[missing, success])
-        p1, p2 = _patch_mcp_context(session)
+        client = AsyncMock()
+        client.call_tool_mcp = AsyncMock(side_effect=[missing, success])
 
         with (
-            p1,
-            p2,
+            _patch_mcp_client(client),
             patch(
                 "server.app.agentspec.adapters.mcp.ensure_sqlcl_saved_connection",
                 AsyncMock(return_value=True),
@@ -257,7 +246,7 @@ class TestConnectSqlclDatabase:
         ):
             await connect_sqlcl_database(self.server_url, self.api_key, "CORE", "ollama/granite4.1:8b")
 
-        assert session.call_tool.await_count == 2
+        assert client.call_tool_mcp.await_count == 2
         ensure_patch.assert_awaited_once_with("CORE")
 
     @pytest.mark.anyio
@@ -269,14 +258,11 @@ class TestConnectSqlclDatabase:
             structured_content=None,
         )
         success = SimpleNamespace(is_error=False, content=[])
-        session = AsyncMock()
-        session.initialize = AsyncMock()
-        session.call_tool = AsyncMock(side_effect=[missing, success])
-        p1, p2 = _patch_mcp_context(session)
+        client = AsyncMock()
+        client.call_tool_mcp = AsyncMock(side_effect=[missing, success])
 
         with (
-            p1,
-            p2,
+            _patch_mcp_client(client),
             patch(
                 "server.app.agentspec.adapters.mcp.ensure_sqlcl_saved_connection",
                 AsyncMock(return_value=True),
@@ -290,7 +276,7 @@ class TestConnectSqlclDatabase:
                 thread_id="client-1",
             )
 
-        assert session.call_tool.await_args_list == [
+        assert client.call_tool_mcp.await_args_list == [
             call(
                 "sqlcl_connect",
                 {"connection_name": "CORE", "model": "ollama/granite4.1:8b", "thread_id": "client-1"},
@@ -309,14 +295,11 @@ class TestConnectSqlclDatabase:
             is_error=True,
             content=[TextContent(type="text", text="Error calling tool 'connect': Connection not found: CORE")],
         )
-        session = AsyncMock()
-        session.initialize = AsyncMock()
-        session.call_tool = AsyncMock(return_value=missing)
-        p1, p2 = _patch_mcp_context(session)
+        client = AsyncMock()
+        client.call_tool_mcp = AsyncMock(return_value=missing)
 
         with (
-            p1,
-            p2,
+            _patch_mcp_client(client),
             patch(
                 "server.app.agentspec.adapters.mcp.ensure_sqlcl_saved_connection",
                 AsyncMock(return_value=False),
@@ -325,5 +308,5 @@ class TestConnectSqlclDatabase:
         ):
             await connect_sqlcl_database(self.server_url, self.api_key, "CORE", "ollama/granite4.1:8b")
 
-        session.call_tool.assert_awaited_once()
+        client.call_tool_mcp.assert_awaited_once()
         ensure_patch.assert_awaited_once_with("CORE")
