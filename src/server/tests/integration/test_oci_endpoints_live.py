@@ -54,7 +54,7 @@ async def test_list_oci_compartments(app_client, auth_headers, live_oci_profile)
     assert compartments, "compartment listing returned an empty dict"
 
 
-async def test_list_genai_models_returns_real_models(app_client, auth_headers, live_oci_genai_models):
+async def test_list_genai_models_returns_real_models(live_oci_endpoint_genai_models):
     """``GET /v1/oci/genai/{profile}`` returns the raw OCI GenAI listing.
 
     Entries follow OCI's API shape: ``id`` (OCID), ``model_name``
@@ -63,18 +63,16 @@ async def test_list_genai_models_returns_real_models(app_client, auth_headers, l
     ``compartment_id``. The listing spans every subscribed region — so the
     same ``model_name`` typically appears multiple times.
     """
-    assert isinstance(live_oci_genai_models, list)
-    assert live_oci_genai_models, "OCI returned no GenAI models for this compartment/region"
-    for m in live_oci_genai_models:
+    assert isinstance(live_oci_endpoint_genai_models, list)
+    assert live_oci_endpoint_genai_models, "OCI returned no GenAI models for this compartment/region"
+    for m in live_oci_endpoint_genai_models:
         assert "id" in m, f"model entry missing id: {m}"
         assert "model_name" in m, f"model entry missing model_name: {m}"
         assert "capabilities" in m, f"model entry missing capabilities: {m}"
         assert "region" in m, f"model entry missing region: {m}"
 
 
-async def test_genai_listing_contains_openai_lineup_in_configured_region(
-    app_client, auth_headers, live_oci_genai_models
-):
+async def test_genai_listing_contains_openai_lineup_in_configured_region(live_oci_genai_models):
     """The configured region exposes at least one OpenAI-family CHAT model.
 
     OCI's documented OpenAI lineup per
@@ -85,11 +83,13 @@ async def test_genai_listing_contains_openai_lineup_in_configured_region(
     obvious instead of leaving it as an unexplained skip.
     """
     configured_region = os.environ["AIO_GENAI_REGION"]
-    openai_in_region = sorted({
-        m["model_name"]
-        for m in live_oci_genai_models
-        if (m.get("vendor") or "").lower() == "openai" and m.get("region") == configured_region
-    })
+    openai_in_region = sorted(
+        {
+            m["model_name"]
+            for m in live_oci_genai_models
+            if (m.get("vendor") or "").lower() == "openai" and m.get("region") == configured_region
+        }
+    )
     assert openai_in_region, (
         f"no OpenAI-family models in {configured_region} — check the AIO_GENAI_REGION "
         f"matches OCI's documented hosting regions"
@@ -102,9 +102,9 @@ async def test_genai_listing_contains_openai_lineup_in_configured_region(
             for m in live_oci_genai_models
             if m.get("model_name") == model_name and m.get("region") == configured_region
         ]
-        assert any(
-            "CHAT" in (caps or []) for caps in capabilities_seen
-        ), f"{model_name} is OpenAI-vendor in {configured_region} but has no CHAT capability"
+        assert any("CHAT" in (caps or []) for caps in capabilities_seen), (
+            f"{model_name} is OpenAI-vendor in {configured_region} but has no CHAT capability"
+        )
 
 
 async def test_enable_genai_models(app_client, auth_headers, live_oci_profile):
