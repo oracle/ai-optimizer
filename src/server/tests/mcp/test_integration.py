@@ -355,6 +355,20 @@ async def test_mounted_http_modern_protocol_and_authentication(
     assert _parse_tool_result(result)["rephrased_prompt"] == "What is Oracle?"
 
 
+@pytest.mark.parametrize("path", ["/mcp", "/mcp/"])
+@pytest.mark.parametrize("origin", ["http://test", "https://example.com", ""])
+async def test_mounted_http_rejects_every_origin(app_client, auth_headers, path, origin):
+    """The mounted MCP transport rejects every supplied Origin."""
+    response = await app_client.post(
+        path,
+        headers={**auth_headers, "Origin": origin},
+        json={},
+    )
+
+    assert response.status_code == 403
+    assert response.text == "Forbidden Origin"
+
+
 async def test_retriever_reports_ordered_phase_progress(_register_tools, mcp_client, monkeypatch):
     """The retriever emits request-scoped progress with phase messages."""
     table = _vector_table("DOCS_TABLE", "DOCS")

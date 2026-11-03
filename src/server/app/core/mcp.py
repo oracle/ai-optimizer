@@ -2,7 +2,7 @@
 Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 
-MCP server definition and authentication middleware.
+MCP server definition and transport middleware.
 """
 # spell-checker: ignore asgi fastmcp
 
@@ -11,6 +11,8 @@ import json
 
 from fastmcp import FastMCP
 from fastmcp import settings as fastmcp_settings
+from starlette.datastructures import Headers
+from starlette.responses import PlainTextResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from server.app.core.secrets import reveal
@@ -31,6 +33,27 @@ def _create_mcp_server(cache_ttl_seconds: int) -> FastMCP:
 
 
 mcp = _create_mcp_server(settings.mcp_cache_ttl_seconds)
+
+
+class MCPOriginMiddleware:
+    """Reject requests carrying an Origin header on the MCP transport."""
+
+    def __init__(self, app: ASGIApp, path: str) -> None:
+        self.app = app
+        self.path = path.rstrip("/")
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        request_path = scope.get("path", "").rstrip("/")
+        root_path = scope.get("root_path", "").rstrip("/")
+        if root_path and request_path.startswith(f"{root_path}/"):
+            request_path = request_path.removeprefix(root_path)
+
+        if scope["type"] == "http" and request_path == self.path and Headers(scope=scope).get("origin") is not None:
+            response = PlainTextResponse("Forbidden Origin", status_code=403)
+            await response(scope, receive, send)
+            return
+
+        await self.app(scope, receive, send)
 
 
 class MCPApiKeyMiddleware:
