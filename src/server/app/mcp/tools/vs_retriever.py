@@ -168,10 +168,10 @@ def _deduplicate_documents(documents: list) -> list:
     return deduplicated
 
 
-async def _report_progress(ctx: Optional[Context], step: int, total: int) -> None:
+async def _report_progress(ctx: Optional[Context], step: int, total: int, message: str) -> None:
     """Send progress updates when a context is available."""
     if ctx:
-        await ctx.report_progress(step, total)
+        await ctx.report_progress(step, total, message)
 
 
 async def _search_tables(
@@ -342,7 +342,7 @@ async def _vs_retrieve_impl(
         vector_search = cs.vector_search
         oci_profile = get_oci_profile(client)
 
-        await _report_progress(ctx, 1, 4)
+        await _report_progress(ctx, 1, 4, "discovering vector stores")
         available_tables = await _get_available_vector_stores(client)
         if collection_alias is not None:
             available_tables = _filter_tables_by_alias(available_tables, collection_alias)
@@ -351,7 +351,7 @@ async def _vs_retrieve_impl(
             response.error = "No vector stores available with enabled embedding models"
             return response
 
-        await _report_progress(ctx, 2, 4)
+        await _report_progress(ctx, 2, 4, "selecting tables")
         if collection_alias is not None:
             tables_to_search = [available_tables[0].table_name]
         else:
@@ -362,7 +362,7 @@ async def _vs_retrieve_impl(
             )
         LOGGER.info("Searching %d table(s): %s", len(tables_to_search), tables_to_search)
 
-        await _report_progress(ctx, 3, 4)
+        await _report_progress(ctx, 3, 4, "searching selected tables")
         pool = get_database_pool(client)
         if not pool:
             response.status = "error"
@@ -379,7 +379,7 @@ async def _vs_retrieve_impl(
             response,
         )
 
-        await _report_progress(ctx, 4, 4)
+        await _report_progress(ctx, 4, 4, "preparing results")
         response.documents = _deduplicate_documents(response.documents)
         response.documents.sort(
             key=lambda d: d.get("metadata", {}).get("similarity_score", 0),

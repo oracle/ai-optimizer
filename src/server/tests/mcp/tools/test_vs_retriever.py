@@ -624,14 +624,10 @@ async def test_vs_retrieve_success(
 
     class _Ctx:
         def __init__(self):
-            self.progress: list[tuple[int, int]] = []
-            self.messages: list[str] = []
+            self.progress: list[tuple[int, int, str]] = []
 
-        async def report_progress(self, step: int, total: int) -> None:
-            self.progress.append((step, total))
-
-        async def info(self, message: str) -> None:
-            self.messages.append(message)
+        async def report_progress(self, step: int, total: int, message: str) -> None:
+            self.progress.append((step, total, message))
 
     ctx = _Ctx()
     response = await vs_retriever._vs_retrieve_impl("Question?", cast(Context, ctx))
@@ -641,7 +637,12 @@ async def test_vs_retrieve_success(
     assert response.failed_tables == []
     assert response.num_documents == 1
     assert response.documents[0]["page_content"] == "Doc1"
-    assert ctx.progress == [(1, 4), (2, 4), (3, 4), (4, 4)]
+    assert ctx.progress == [
+        (1, 4, "discovering vector stores"),
+        (2, 4, "selecting tables"),
+        (3, 4, "searching selected tables"),
+        (4, 4, "preparing results"),
+    ]
 
 
 @pytest.mark.parametrize("collection_alias", [None, "DOCS"])
