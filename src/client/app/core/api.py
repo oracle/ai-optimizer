@@ -13,7 +13,7 @@ import secrets
 import subprocess
 import sys
 import time
-from collections.abc import Generator
+from collections.abc import Generator, Mapping
 from io import TextIOWrapper
 from pathlib import Path
 from typing import Any
@@ -139,23 +139,23 @@ def _wait_for_server_ready(proc: subprocess.Popen, timeout: float = _SERVER_READ
     return False
 
 
-def start_server() -> None:
-    """Start the server as a subprocess."""
+def start_server(core_environment: Mapping[str, str] | None = None) -> bool:
+    """Start the local server and return whether lifespan completed."""
     if not _server_module_available():
         LOGGER.info("Server source not present in this image; skipping local spawn.")
-        return
+        return False
     LOGGER.info("Starting the AI Optimizer All-In-One mode...")
     proc = _SERVER["process"]
     if proc is not None and proc.poll() is None:
         settings.server_url = _local_server_origin_url()
         LOGGER.info("Using local API Server URL for existing subprocess: %s", settings.server_url)
-        return
+        return True
 
     port = str(settings.server_port)
     src_dir = str(Path(__file__).resolve().parents[3])
     existing_pypath = os.environ.get("PYTHONPATH", "")
     pypath = f"{src_dir}{os.pathsep}{existing_pypath}" if existing_pypath else src_dir
-    env = {**os.environ, "PYTHONPATH": pypath}
+    env = {**os.environ, "PYTHONPATH": pypath, **(core_environment or {})}
 
     # When no API key is configured, generate one so both client and server
     # share the same key.  Without this the server would auto-generate its
@@ -189,12 +189,14 @@ def start_server() -> None:
             _SERVER["process"] = None
             log_fh.close()
             _SERVER["log_file"] = None
-            return
+            return False
         LOGGER.warning(
             "Server not ready after %.0fs; leaving it running (set AIO_SERVER_READY_TIMEOUT to extend). See %s",
             _SERVER_READY_TIMEOUT_SECONDS,
             log_path,
         )
+        return False
+    return True
 
 
 def _local_server_base_url(api_prefix: str = "/v1") -> str:
@@ -229,6 +231,11 @@ def _stop_server() -> None:
     if log_fh:
         log_fh.close()
     _SERVER["log_file"] = None
+
+
+def stop_server() -> None:
+    """Stop the locally managed server subprocess."""
+    _stop_server()
 
 
 def _base_url(api_prefix: str = "/v1") -> str:

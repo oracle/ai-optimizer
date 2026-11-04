@@ -911,7 +911,7 @@ class TestStartServer:
         ):
             from client.app.core.api import start_server
 
-            start_server()
+            assert start_server() is True
         mock_spawn.assert_not_called()
         assert settings.server_url == "http://127.0.0.1:8000"
 
@@ -930,7 +930,7 @@ class TestStartServer:
         ):
             from client.app.core.api import start_server
 
-            start_server()
+            assert start_server() is True
         assert settings.server_url == "http://127.0.0.1:8000"
 
     def test_startup_exit_points_to_server_log(self, caplog):
@@ -950,7 +950,7 @@ class TestStartServer:
         ):
             from client.app.core.api import start_server
 
-            start_server()
+            assert start_server() is False
 
         assert "Server process exited during startup (code 1)" in caplog.text
         assert "See server log:" in caplog.text
@@ -972,7 +972,7 @@ class TestStartServer:
         ):
             from client.app.core.api import start_server
 
-            start_server()
+            assert start_server() is False
         mock_spawn.assert_not_called()
         mock_wait.assert_not_called()
 
@@ -995,8 +995,32 @@ class TestStartServer:
         ):
             from client.app.core.api import start_server
 
-            start_server()
+            assert start_server() is True
         mock_spawn.assert_called_once()
+
+    def test_injects_local_core_environment_into_child(self):
+        mock_proc = MagicMock()
+        mock_proc.poll.return_value = None
+        mock_fh = MagicMock()
+        settings = _mock_settings()
+        core_environment = {
+            "AIO_DB_USERNAME": "AI_OPTIMIZER",
+            "AIO_DB_PASSWORD": "secret",
+            "AIO_DB_DSN": "localhost:1521/FREEPDB1",
+        }
+        with (
+            patch(f"{MODULE}._SERVER", {"process": None, "log_file": None}),
+            patch(f"{MODULE}.settings", settings),
+            patch(f"{MODULE}._spawn_server", return_value=(mock_proc, mock_fh)) as mock_spawn,
+            patch(f"{MODULE}._wait_for_server_ready", return_value=True),
+            patch(f"{MODULE}.atexit.register"),
+        ):
+            from client.app.core.api import start_server
+
+            assert start_server(core_environment) is True
+
+        child_environment = mock_spawn.call_args.args[1]
+        assert {key: child_environment[key] for key in core_environment} == core_environment
 
     def test_generates_api_key_when_none(self):
         """Verify start_server generates an API key when none is configured."""
@@ -1016,7 +1040,7 @@ class TestStartServer:
         ):
             from client.app.core.api import start_server
 
-            start_server()
+            assert start_server() is True
         # ``settings.api_key`` is a ``SecretStr`` after migration; reveal it
         # for the assertion.
         from client.app.core.secrets import reveal

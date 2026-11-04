@@ -42,6 +42,7 @@ ENV RUNUSER=oracleai \
     PATH=/app/.venv/bin:$PATH \
     TEMP=/app/tmp \
     AIO_CLIENT_ADDRESS=0.0.0.0 \
+    AIO_LOCAL_CONFIG_DIR=/app/data \
     TNS_ADMIN=/app/tns_admin \
     NUMBA_CACHE_DIR=/app/tmp \
     MPLCONFIGDIR=/app/tmp \
@@ -58,7 +59,7 @@ enabled=1' > /etc/yum.repos.d/oracle-software.repo && \
     useradd -u 10001 -g $RUNUSER -md /app $RUNUSER && \
     microdnf --nodocs -y install sqlcl java-21-openjdk-headless mesa-libGL && \
     microdnf clean all && \
-    for dir in $TEMP $TNS_ADMIN /app/runtime/.oci; do \
+    for dir in $TEMP $TNS_ADMIN /app/runtime/.oci /app/data; do \
         install -d -m 0700 -o $RUNUSER -g $RUNUSER $dir; \
     done
 
@@ -72,8 +73,8 @@ COPY --chown=$RUNUSER:$RUNUSER src /app/src
 # Mount points (supply via -v at runtime):
 # - /app/.oci      — OCI config (read-only); entrypoint copies to /app/runtime/.oci
 # - /app/tns_admin — Oracle TNS admin directory
-# Supply AIO_DB_USERNAME, AIO_DB_PASSWORD, and AIO_DB_DSN through container
-# environment variables or the mounted /app/src/.env.{AIO_ENV} file.
+# - /app/data      — protected local CORE configuration created by first-run setup
+VOLUME ["/app/data"]
 
 # Set user and working directory
 EXPOSE 8000 8501
