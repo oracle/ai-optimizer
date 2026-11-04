@@ -7,7 +7,6 @@ Endpoints for retrieving database configurations.
 
 import asyncio
 import logging
-from typing import Awaitable, Callable
 
 import oracledb
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -26,15 +25,10 @@ from server.app.database.config import (
     close_pool,
     get_core_pool,
 )
-from server.app.database.registry import (
-    drop_vector_store,
-    init_core_database,
-    refresh_db_vector_stores,
-    test_connection,
-)
+from server.app.database.registry import drop_vector_store, refresh_db_vector_stores, test_connection
 from server.app.database.schemas import DatabaseConfig, DatabaseSensitive, DatabaseUpdate
 from server.app.database.settings import persist_settings
-from server.app.embed.jobs import count_active_embed_jobs, count_active_embed_jobs_for_alias
+from server.app.embed.jobs import count_active_embed_jobs_for_alias
 from server.app.mcp.proxies.sqlcl import refresh_sqlcl_proxy
 
 LOGGER = logging.getLogger(__name__)
@@ -46,6 +40,10 @@ SENSITIVE_FIELDS = set(DatabaseSensitive.model_fields.keys())
 # ``SENSITIVE_FIELDS`` because non-credential response-masked fields (none
 # in this schema today) should not be preserved-on-blank.
 SECRET_UPDATE_FIELDS = frozenset({"password", "wallet_password"})
+_CORE_STARTUP_CONFIGURED = (
+    "CORE database settings cannot be changed while the server is running. "
+    "Update the server environment or deployment secret, then restart the server."
+)
 
 
 def _sqlcl_relevant(cfg: DatabaseConfig) -> bool:
@@ -53,59 +51,7 @@ def _sqlcl_relevant(cfg: DatabaseConfig) -> bool:
     return bool(cfg.username and cfg.password and cfg.dsn)
 
 
-async def _refuse_if_active_embed_jobs(
-    *,
-    counter: Callable[[], Awaitable[int]],
-    log_context: str,
-    refuse_detail: Callable[[int], str],
-) -> None:
-    """Shared shape for both rotation guards: count, fail-open on a
-    flaky check, raise 409 if any job is still live.
-
-    Fail-open posture is intentional — the rotation may itself be
-    the fix for a broken CORE, so failing closed would make a busted
-    pool unrepairable through this endpoint. ``TimeoutError`` is the
-    built-in raised by ``oracledb`` async pools on acquire / SELECT
-    deadlines and doesn't inherit from ``oracledb.Error``, so the
-    catch tuple lists both shapes.
-    """
-    try:
-        active = await counter()
-    except (oracledb.Error, TimeoutError) as ex:
-        LOGGER.warning(
-            "Could not count active embed jobs before %s; proceeding: %s",
-            log_context,
-            ex,
-        )
-        return
-    if active > 0:
-        raise HTTPException(status_code=409, detail=refuse_detail(active))
-
-
-async def _refuse_core_rotation_if_active_embed_jobs(cfg: DatabaseConfig) -> None:
-    """Refuse a CORE rotation while embed jobs are still in flight.
-
-    The pipeline pins the current CORE pool to each active job;
-    rotating closes that pool and strands the pin. Block until all
-    unexpired rows drain.
-    """
-    if cfg.pool is None:
-        return
-    pool = cfg.pool
-    await _refuse_if_active_embed_jobs(
-        counter=lambda: count_active_embed_jobs(pool),
-        log_context="CORE rotation",
-        refuse_detail=lambda n: (
-            f"Cannot update CORE while {n} embed job(s) "
-            f"are still queued / running. Wait for them to "
-            f"finish or cancel them, then retry."
-        ),
-    )
-
-
-async def _refuse_alias_change_if_targeted_by_active_embed_jobs(
-    alias: str, action: str
-) -> None:
+async def _refuse_alias_change_if_targeted_by_active_embed_jobs(alias: str, action: str) -> None:
     """Refuse PUT / DELETE on *alias* while embed jobs target it.
 
     Pipeline holds the alias's pool through the post-``populate_vs``
@@ -116,16 +62,24 @@ async def _refuse_alias_change_if_targeted_by_active_embed_jobs(
     core_pool = get_core_pool()
     if core_pool is None:
         return
-    await _refuse_if_active_embed_jobs(
-        counter=lambda: count_active_embed_jobs_for_alias(core_pool, alias),
-        log_context=f"{action} of database '{alias}'",
-        refuse_detail=lambda n: (
-            f"Cannot {action} database '{alias}' while "
-            f"{n} embed job(s) targeting it are still "
-            f"queued / running. Wait for them to finish or "
-            f"cancel them, then retry."
-        ),
-    )
+    try:
+        active = await count_active_embed_jobs_for_alias(core_pool, alias)
+    except (oracledb.Error, TimeoutError) as ex:
+        LOGGER.warning(
+            "Could not count active embed jobs before %s of database '%s'; proceeding: %s",
+            action,
+            alias,
+            ex,
+        )
+        return
+    if active > 0:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Cannot {action} database '{alias}' while {active} embed job(s) targeting it are still "
+                "queued / running. Wait for them to finish or cancel them, then retry."
+            ),
+        )
 
 
 async def _maybe_refresh_sqlcl(cfg: DatabaseConfig, originals: dict | None = None) -> None:
@@ -225,14 +179,11 @@ async def register_database(
     if managed_by is not None:
         cfg.managed_by = managed_by
 
-    # Test before append: test_connection / init_core_database populate cfg.pool / cfg.usable
-    # on the object itself and do not need it registered first.
+    # Test before append: test_connection populates cfg.pool / cfg.usable on
+    # the object itself and does not need it registered first.
     error = None
     try:
-        if cfg.alias == "CORE":
-            await init_core_database(cfg)
-        else:
-            await test_connection(cfg)
+        await test_connection(cfg)
     except Exception as exc:
         error = response_error_detail(exc, "Database connection failed.")
 
@@ -258,13 +209,9 @@ async def create_database(body: DatabaseConfig):
     # can't create an ordinary database that masquerades as managed (hidden + non-persisted).
     if body.managed_by is not None:
         raise HTTPException(status_code=422, detail="managed_by is server-owned and cannot be set")
+    if body.alias.upper() == "CORE":
+        raise HTTPException(status_code=403, detail=_CORE_STARTUP_CONFIGURED)
     async with _settings_lock:
-        # Normalise CORE alias to exact casing so downstream lookups match
-        if body.alias.upper() == "CORE":
-            body.alias = "CORE"
-        core_exists = any(cfg.alias.upper() == "CORE" for cfg in settings.database_configs)
-        if not core_exists and body.alias != "CORE":
-            raise HTTPException(status_code=422, detail="The first database must use the alias 'CORE'")
         for cfg in settings.database_configs:
             if cfg.alias.lower() == body.alias.lower():
                 raise HTTPException(status_code=409, detail=f"Database config already exists: {body.alias}")
@@ -279,7 +226,7 @@ async def create_database(body: DatabaseConfig):
 
 @auth.put("/{alias}", response_model_exclude_unset=True)
 async def update_database(alias: str, body: DatabaseUpdate):
-    """Update an existing database configuration by alias (case-insensitive).
+    """Update a non-CORE database configuration by alias (case-insensitive).
 
     After applying field changes the connection is re-tested.  The outcome
     depends on whether the *current* config was working:
@@ -296,9 +243,8 @@ async def update_database(alias: str, body: DatabaseUpdate):
             raise HTTPException(status_code=404, detail=f"Database config not found: {alias}")
 
         if cfg.alias.upper() == "CORE":
-            await _refuse_core_rotation_if_active_embed_jobs(cfg)
-        else:
-            await _refuse_alias_change_if_targeted_by_active_embed_jobs(cfg.alias, "update")
+            raise HTTPException(status_code=403, detail=_CORE_STARTUP_CONFIGURED)
+        await _refuse_alias_change_if_targeted_by_active_embed_jobs(cfg.alias, "update")
 
         updates = _build_updates(body, SECRET_UPDATE_FIELDS)
         new_username = (updates.get("username") if "username" in updates else cfg.username) or ""
@@ -314,10 +260,7 @@ async def update_database(alias: str, body: DatabaseUpdate):
 
         error = None
         try:
-            if cfg.alias == "CORE":
-                await init_core_database(cfg)
-            else:
-                await test_connection(cfg)
+            await test_connection(cfg)
         except Exception as exc:
             error = response_error_detail(exc, "Database connection failed.")
 
@@ -341,9 +284,7 @@ async def update_database(alias: str, body: DatabaseUpdate):
         # Only a change to a connection field the managed connection copied invalidates an active
         # DDS connect-as derived from this base; tear it down then (clear-and-disable, the user
         # re-designates). An unrelated edit (e.g. username) must not silently disable the override.
-        if any(
-            field in originals and originals[field] != getattr(cfg, field) for field in MANAGED_CONNECTION_FIELDS
-        ):
+        if any(field in originals and originals[field] != getattr(cfg, field) for field in MANAGED_CONNECTION_FIELDS):
             await clear_dds_for(base_alias=cfg.alias)
 
         result = cfg.model_dump(exclude=SENSITIVE_FIELDS)

@@ -197,9 +197,7 @@ async def test_update_database_rejects_managed(app_client, auth_headers):
     """A DDS-managed alias is not updatable via the database endpoint."""
     managed = make_test_database_config(alias="CORE::SCOUT1", username="SCOUT1", managed_by="dds:CORE")
     settings.database_configs.append(managed)
-    resp = await app_client.put(
-        "/v1/databases/CORE::SCOUT1", json={"username": "X"}, headers=auth_headers
-    )
+    resp = await app_client.put("/v1/databases/CORE::SCOUT1", json={"username": "X"}, headers=auth_headers)
     assert resp.status_code == 404
 
 
@@ -346,40 +344,35 @@ async def test_create_database_duplicate_case_insensitive(app_client, auth_heade
 
 @pytest.mark.unit
 @pytest.mark.anyio
-async def test_create_core_database_initializes_schema(app_client, auth_headers):
-    """POST CORE alias calls init_core_database instead of test_connection."""
-    settings.database_configs = [
-        make_test_database_config(),
-    ]
-    with (
-        patch("server.app.api.v1.endpoints.databases.init_core_database", new_callable=AsyncMock) as mock_init,
-        patch("server.app.api.v1.endpoints.databases.test_connection", new_callable=AsyncMock) as mock_test,
-    ):
+async def test_create_core_database_rejected(app_client, auth_headers, mock_persist_settings):
+    """POST cannot create the deployment-owned CORE definition."""
+    with patch("server.app.api.v1.endpoints.databases.test_connection", new_callable=AsyncMock) as mock_test:
         resp = await app_client.post(
             "/v1/databases",
-            json={"alias": "CORE", "username": "coreuser"},
+            json={"alias": "core", "username": "coreuser"},
             headers=auth_headers,
         )
-    assert resp.status_code == 201
-    mock_init.assert_called_once()
-    mock_test.assert_not_called()
+
+    assert resp.status_code == 403
+    assert "cannot be changed while the server is running" in resp.json()["detail"]
+    mock_test.assert_not_awaited()
+    mock_persist_settings.assert_not_awaited()
 
 
 @pytest.mark.unit
 @pytest.mark.anyio
-async def test_create_database_requires_core_first(app_client, auth_headers):
-    """POST non-CORE alias returns 422 when no CORE database exists."""
-    settings.database_configs = [
-        make_test_database_config(),
-        make_test_database_config(alias="PROD", username="produser", password="prod_secret", wallet_password=None),
-    ]
-    resp = await app_client.post(
-        "/v1/databases",
-        json={"alias": "NEW_DB", "username": "newuser"},
-        headers=auth_headers,
-    )
-    assert resp.status_code == 422
-    assert "CORE" in resp.json()["detail"]
+async def test_create_additional_database_has_no_first_core_flow(app_client, auth_headers):
+    """POST treats every runtime-created definition as an additional alias."""
+    settings.database_configs = []
+    with patch("server.app.api.v1.endpoints.databases.test_connection", new_callable=AsyncMock):
+        resp = await app_client.post(
+            "/v1/databases",
+            json={"alias": "NEW_DB", "username": "newuser"},
+            headers=auth_headers,
+        )
+
+    assert resp.status_code == 201
+    assert resp.json()["alias"] == "NEW_DB"
 
 
 @pytest.mark.unit
@@ -535,172 +528,23 @@ async def test_delete_vector_store_persist_failure_returns_503(app_client, auth_
 
 @pytest.mark.unit
 @pytest.mark.anyio
-async def test_update_core_database_reinitializes(app_client, auth_headers, mock_persist_settings):
-    """PUT on CORE alias closes existing pool, re-initialises, then persists."""
+async def test_update_core_database_rejected(app_client, auth_headers, mock_persist_settings):
+    """PUT cannot replace the deployment-owned CORE definition."""
     with (
+        patch("server.app.api.v1.endpoints.databases.test_connection", new_callable=AsyncMock) as mock_test,
         patch("server.app.api.v1.endpoints.databases.close_pool", new_callable=AsyncMock) as mock_close,
-        patch("server.app.api.v1.endpoints.databases.init_core_database", new_callable=AsyncMock) as mock_init,
-        patch(
-            "server.app.api.v1.endpoints.databases.count_active_embed_jobs",
-            new_callable=AsyncMock,
-            return_value=0,
-        ),
     ):
         resp = await app_client.put(
-            "/v1/databases/CORE",
+            "/v1/databases/core",
             json={"username": "new_core_user"},
             headers=auth_headers,
         )
-        assert resp.status_code == 200
-        mock_close.assert_called_once()
-        mock_init.assert_called_once()
-        mock_persist_settings.assert_called_once()
-        # CORE path does not call test_connection
 
-
-@pytest.mark.unit
-@pytest.mark.anyio
-async def test_update_core_database_blocked_by_active_embed_jobs(
-    app_client, auth_headers, mock_persist_settings
-):
-    """[P2] CORE rotation must be refused while non-terminal embed jobs exist.
-
-    Reviewer concern: rotating CORE closes the previous pool, but
-    the embed-job machinery has pinned that pool to in-flight jobs.
-    Once close runs, ``_store_get`` and the terminal-write retry
-    helper route to a closed pool — pollers get CORE errors and a
-    successful pipeline can be left non-terminal forever. Refuse
-    the rotation while there are queued / running jobs so the
-    existing pin keeps working; the admin must let jobs finish (or
-    cancel them) before changing CORE.
-    """
-    # The guard skips when CORE has no pool (no jobs to protect).
-    # In production CORE has a live pool; simulate that here so the
-    # guard actually runs.
-    core_cfg = next(c for c in settings.database_configs if c.alias == "CORE")
-    saved_pool = core_cfg.pool
-    core_cfg.pool = MagicMock()
-    try:
-        with (
-            patch(
-                "server.app.api.v1.endpoints.databases.count_active_embed_jobs",
-                new_callable=AsyncMock,
-                return_value=2,
-            ) as mock_count,
-            patch(
-                "server.app.api.v1.endpoints.databases.close_pool", new_callable=AsyncMock
-            ) as mock_close,
-            patch(
-                "server.app.api.v1.endpoints.databases.init_core_database",
-                new_callable=AsyncMock,
-            ) as mock_init,
-        ):
-            resp = await app_client.put(
-                "/v1/databases/CORE",
-                json={"username": "rotated_core_user"},
-                headers=auth_headers,
-            )
-    finally:
-        core_cfg.pool = saved_pool
-
-    assert resp.status_code == 409
-    detail = resp.json()["detail"].lower()
-    assert "embed" in detail
-    assert "2" in detail or "running" in detail or "queued" in detail
-    # Crucially, NOTHING was rotated. The old pool is still alive
-    # so existing pinned references keep working.
-    mock_init.assert_not_called()
-    mock_close.assert_not_called()
-    mock_persist_settings.assert_not_called()
-    mock_count.assert_called_once()
-
-
-@pytest.mark.unit
-@pytest.mark.anyio
-async def test_update_core_database_proceeds_when_active_jobs_check_times_out(
-    app_client, auth_headers, mock_persist_settings
-):
-    """[P2] A pool ``TimeoutError`` from the count check must not 500 the rotation.
-
-    Reviewer concern: ``oracledb`` async pools raise the *built-in*
-    ``TimeoutError`` (not ``oracledb.Error``) when ``acquire`` /
-    SELECT exceeds the wait timeout. A hung CORE pool is exactly
-    when an admin needs to rotate, but the previous guard only
-    handled ``oracledb.Error`` — letting ``TimeoutError`` escape
-    as a 500 and making CORE unrepairable through this endpoint.
-    """
-    core_cfg = next(c for c in settings.database_configs if c.alias == "CORE")
-    saved_pool = core_cfg.pool
-    core_cfg.pool = MagicMock()
-    try:
-        with (
-            patch(
-                "server.app.api.v1.endpoints.databases.count_active_embed_jobs",
-                new_callable=AsyncMock,
-                side_effect=TimeoutError("pool acquire timed out"),
-            ) as mock_count,
-            patch("server.app.api.v1.endpoints.databases.close_pool", new_callable=AsyncMock),
-            patch(
-                "server.app.api.v1.endpoints.databases.init_core_database",
-                new_callable=AsyncMock,
-            ) as mock_init,
-        ):
-            resp = await app_client.put(
-                "/v1/databases/CORE",
-                json={"username": "rotated_core_user"},
-                headers=auth_headers,
-            )
-    finally:
-        core_cfg.pool = saved_pool
-
-    assert resp.status_code == 200
-    mock_count.assert_called_once()
-    mock_init.assert_called_once()
-
-
-@pytest.mark.unit
-@pytest.mark.anyio
-async def test_update_core_database_proceeds_when_active_jobs_check_fails(
-    app_client, auth_headers, mock_persist_settings
-):
-    """A flaky count check must not permanently block CORE rotation.
-
-    The active-jobs guard queries the OLD CORE pool. If that pool
-    is itself unhealthy (which is often *why* the admin is rotating
-    in the first place), the count query fails. Failing closed
-    would make CORE unrepairable; failing open with a warning lets
-    the operator fix a broken CORE. The pin-validity invariant is
-    the optimistic-case guarantee, not an absolute one.
-    """
-    import oracledb as _oracledb
-
-    core_cfg = next(c for c in settings.database_configs if c.alias == "CORE")
-    saved_pool = core_cfg.pool
-    core_cfg.pool = MagicMock()
-    try:
-        with (
-            patch(
-                "server.app.api.v1.endpoints.databases.count_active_embed_jobs",
-                new_callable=AsyncMock,
-                side_effect=_oracledb.DatabaseError("ORA-12541: TNS no listener"),
-            ) as mock_count,
-            patch("server.app.api.v1.endpoints.databases.close_pool", new_callable=AsyncMock),
-            patch(
-                "server.app.api.v1.endpoints.databases.init_core_database",
-                new_callable=AsyncMock,
-            ) as mock_init,
-        ):
-            resp = await app_client.put(
-                "/v1/databases/CORE",
-                json={"username": "rotated_core_user"},
-                headers=auth_headers,
-            )
-    finally:
-        core_cfg.pool = saved_pool
-
-    assert resp.status_code == 200
-    mock_count.assert_called_once()
-    mock_init.assert_called_once()
+    assert resp.status_code == 403
+    assert "cannot be changed while the server is running" in resp.json()["detail"]
+    mock_test.assert_not_awaited()
+    mock_close.assert_not_awaited()
+    mock_persist_settings.assert_not_awaited()
 
 
 @pytest.mark.unit
@@ -730,9 +574,7 @@ async def test_update_non_core_database_blocked_by_active_jobs_targeting_alias(
             new_callable=AsyncMock,
             return_value=2,
         ) as mock_count_alias,
-        patch(
-            "server.app.api.v1.endpoints.databases.close_pool", new_callable=AsyncMock
-        ) as mock_close,
+        patch("server.app.api.v1.endpoints.databases.close_pool", new_callable=AsyncMock) as mock_close,
         patch(
             "server.app.api.v1.endpoints.databases.test_connection",
             new_callable=AsyncMock,
@@ -880,32 +722,6 @@ async def test_create_database_connection_error(app_client, auth_headers):
 
 @pytest.mark.unit
 @pytest.mark.anyio
-async def test_update_core_database_connection_failure(app_client, auth_headers, mock_persist_settings):
-    """Rule 4 (CORE path): not-working → not-working = accept (200 with error)."""
-    with (
-        patch("server.app.api.v1.endpoints.databases.close_pool", new_callable=AsyncMock),
-        patch(
-            "server.app.api.v1.endpoints.databases.init_core_database",
-            new_callable=AsyncMock,
-            side_effect=Exception("marker-alpha marker-beta marker-gamma"),
-        ),
-    ):
-        resp = await app_client.put(
-            "/v1/databases/CORE",
-            json={"username": "new_core_user"},
-            headers=auth_headers,
-        )
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["usable"] is False
-    assert body["error"]
-    for token in ("marker-alpha", "marker-beta", "marker-gamma"):
-        assert token not in body["error"]
-    mock_persist_settings.assert_called_once()
-
-
-@pytest.mark.unit
-@pytest.mark.anyio
 async def test_update_database_connection_error_not_usable(app_client, auth_headers):
     """Rule 4: not-working → not-working = accept (200 with error field)."""
     assert settings.database_configs[0].usable is False
@@ -1028,9 +844,7 @@ async def test_delete_database_not_found(app_client, auth_headers):
 
 @pytest.mark.unit
 @pytest.mark.anyio
-async def test_delete_database_blocked_by_active_jobs_targeting_alias(
-    app_client, auth_headers, mock_persist_settings
-):
+async def test_delete_database_blocked_by_active_jobs_targeting_alias(app_client, auth_headers, mock_persist_settings):
     """[P2] Removal must refuse while embed jobs still target the alias.
 
     Reviewer concern: the per-alias guard added on PUT only protects
@@ -1054,9 +868,7 @@ async def test_delete_database_blocked_by_active_jobs_targeting_alias(
             new_callable=AsyncMock,
             return_value=3,
         ) as mock_count_alias,
-        patch(
-            "server.app.api.v1.endpoints.databases.close_pool", new_callable=AsyncMock
-        ) as mock_close,
+        patch("server.app.api.v1.endpoints.databases.close_pool", new_callable=AsyncMock) as mock_close,
     ):
         resp = await app_client.delete("/v1/databases/TEST", headers=auth_headers)
 
@@ -1072,16 +884,13 @@ async def test_delete_database_blocked_by_active_jobs_targeting_alias(
     mock_count_alias.assert_called_once()
     args, _kwargs = mock_count_alias.call_args
     assert args[1] == "TEST" or _kwargs.get("alias") == "TEST", (
-        f"per-alias guard must pass the alias being deleted; "
-        f"got args={args}, kwargs={_kwargs}"
+        f"per-alias guard must pass the alias being deleted; got args={args}, kwargs={_kwargs}"
     )
 
 
 @pytest.mark.unit
 @pytest.mark.anyio
-async def test_delete_database_proceeds_when_count_check_fails(
-    app_client, auth_headers, mock_persist_settings
-):
+async def test_delete_database_proceeds_when_count_check_fails(app_client, auth_headers, mock_persist_settings):
     """[P2] A flaky count check must not permanently block removal.
 
     Same fail-open posture as the PUT-side guard: a wedged CORE pool

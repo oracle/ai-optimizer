@@ -127,46 +127,6 @@ class JobSubmission:
     task: asyncio.Task
 
 
-# ---------------------------------------------------------------------------
-# Per-job CORE pool pin
-# ---------------------------------------------------------------------------
-
-
-# Per-job CORE pool pin. Populated by ``_store_create`` when the
-# INSERT succeeds against an actual pool, drained by terminal-state
-# writes (``_store_set_status`` / ``_store_set_result``). Subsequent
-# reads / writes for a pinned ``job_id`` route through the captured
-# pool reference instead of ``get_core_pool()``.
-#
-# This protects against ``/v1/databases/CORE`` rotation while a job
-# is in flight: without the pin, ``_store_get`` after rotation would
-# look up the row in the *new* CORE database (likely empty) and
-# polling clients would see 404 on a still-running job. The pin is
-# per-job-id (not per-manager) so cross-replica reads on the same
-# pod can still fall through to the live pool when this pod did not
-# submit the job.
-_PINNED_POOLS: dict[str, oracledb.AsyncConnectionPool] = {}
-
-
-def _resolve_pool_for_job(job_id: str) -> Optional[oracledb.AsyncConnectionPool]:
-    """Return the CORE pool tied to *job_id*, falling back to the live pool.
-
-    When ``_store_create`` ran on this pod, the pool it used to insert
-    the row is pinned in ``_PINNED_POOLS``; subsequent operations for
-    the same ``job_id`` route back to that pinned reference so a
-    concurrent CORE rotation cannot redirect them to a different
-    database. For ``job_id``s this pod did not submit (cross-replica
-    reads), no pin exists and the live pool is returned. That falls
-    short of cross-replica visibility *during* a rotation but
-    preserves the common sticky-routing case where the user's poll
-    lands back on the submitting pod.
-    """
-    pinned = _PINNED_POOLS.get(job_id)
-    if pinned is not None:
-        return pinned
-    return get_core_pool()
-
-
 # The store has two CORE-unavailable policies, and the split is deliberate:
 #
 # * Correctness-critical single-job ops (``_store_create`` / ``_store_get`` /
@@ -192,20 +152,6 @@ INSERT INTO aio_embed_jobs
 VALUES
     (:job_id, :client, :owner_pod, :status, :target_db, :progress, SYSTIMESTAMP, SYSTIMESTAMP)
 """
-
-# CORE-rotation guard: a row is "live" if it is queued/running OR
-# terminal-but-still-readable (within the TTL window clients can
-# poll). Terminal rows count because status/result reads route
-# through CORE — rotating CORE during the TTL window would make
-# them disappear (the per-job pool pin is dropped on terminal
-# write, so the read falls through to the live CORE pool).
-_UNEXPIRED_ROW_PREDICATE = (
-    "status IN ('queued', 'running')"
-    " OR (status IN ('succeeded', 'failed')"
-    "     AND updated >= SYSTIMESTAMP - NUMTODSINTERVAL(:ttl_seconds, 'SECOND'))"
-)
-
-_COUNT_ACTIVE_SQL = f"SELECT COUNT(*) FROM aio_embed_jobs WHERE {_UNEXPIRED_ROW_PREDICATE}"
 
 # Per-alias variant used by ``/v1/databases/{alias}`` (PUT/DELETE).
 # Counts only running rows, NOT terminal ones — the guard exists
@@ -284,7 +230,7 @@ UPDATE aio_embed_jobs
 """
 # Intentionally does NOT touch ``error``: a queued/running → succeeded
 # row never had ``error`` set (only the failed path writes it), and
-# adding ``error = NULL`` here is rejected as ORA-00957 on Oracle 23ai —
+# adding ``error = NULL`` here is rejected as ORA-00957 by Oracle AI Database —
 # which would strand every successful row at ``running`` until the
 # reaper failed it. Shape pinned by
 # test_update_result_sql_does_not_redundantly_clear_error.
@@ -317,10 +263,9 @@ DELETE FROM aio_embed_jobs
 # Persisted-row inflation + the CORE-backed store.
 #
 # ``OracleJobStore`` holds the CORE-backed implementation of every store
-# operation. The ``_store_*`` dispatchers below resolve the pool per call
-# (live vs per-job pinned), own the per-job pool pin, and raise / no-op when
-# CORE is unavailable, so the manager keeps calling stable ``_store_*`` entry
-# points and never sees the pool resolution.
+# operation. The ``_store_*`` dispatchers below resolve the required CORE pool
+# per call and raise or no-op when CORE is unavailable, so the manager keeps
+# calling stable entry points and never sees the pool resolution.
 # ---------------------------------------------------------------------------
 
 
@@ -400,10 +345,9 @@ class JobFailure(Exception):
 class OracleJobStore:
     """CORE-backed job store bound to one live connection pool.
 
-    Holds the DB implementation of every store operation. Pool
-    resolution (live vs per-job pinned) and the ``_PINNED_POOLS``
-    lifecycle are the dispatcher's job (the ``_store_*`` functions), so
-    these methods assume *pool* is usable.
+    Holds the DB implementation of every store operation. The
+    ``_store_*`` dispatchers resolve the pool, so these methods assume
+    *pool* is usable.
     """
 
     def __init__(self, pool: oracledb.AsyncConnectionPool) -> None:
@@ -535,9 +479,8 @@ class OracleJobStore:
 
 
 # ---------------------------------------------------------------------------
-# ``_store_*`` dispatchers — resolve the pool per call (live vs per-job
-# pinned), own the per-job ``_PINNED_POOLS`` lifecycle, and raise / no-op when
-# CORE is unavailable. The manager and JobHandle call only these.
+# ``_store_*`` dispatchers resolve the required CORE pool per call and raise
+# or no-op when CORE is unavailable. The manager and JobHandle call only these.
 # ---------------------------------------------------------------------------
 
 
@@ -546,19 +489,10 @@ async def _store_create(row: _JobRow) -> None:
     if pool is None:
         raise EmbedJobStoreUnavailable("Job state store is unavailable for this operation.")
     await OracleJobStore(pool).create(row)
-    # Pin the pool that accepted the INSERT so subsequent reads / writes
-    # for this ``job_id`` route back here even if ``/v1/databases/CORE`` is
-    # rotated mid-job. Without this a later read would resolve to the new
-    # CORE pool, find nothing, and polling clients would 404 a running job.
-    # Released by the terminal-state writers.
-    _PINNED_POOLS[row.job_id] = pool
 
 
 async def _store_get(job_id: str) -> Optional[_JobRow]:
-    # Route through the per-job pin so a CORE rotation mid-flight cannot
-    # redirect this read to a different (likely empty) database. Falls
-    # through to ``get_core_pool()`` for cross-replica reads.
-    pool = _resolve_pool_for_job(job_id)
+    pool = get_core_pool()
     if pool is None:
         # Reporting a persisted job as 404 would make polling clients
         # (which only retry on 503) stop polling a still-running job.
@@ -574,37 +508,24 @@ async def _store_list_for_client(client: str, active_only: bool = False) -> list
 
 
 async def _store_set_progress(job_id: str, progress: EmbedJobProgress) -> None:
-    # Route through the per-job pin so progress writes target the CORE that
-    # holds the row, not a rotated-in replacement. Best-effort: a progress
-    # update is transient, so drop it silently when the pool is gone.
-    pool = _resolve_pool_for_job(job_id)
+    pool = get_core_pool()
     if pool is None:
         return
     await OracleJobStore(pool).set_progress(job_id, progress)
 
 
 async def _store_set_status(job_id: str, status: EmbedJobStatus, error: Optional[str]) -> None:
-    # Route through the per-job pin so terminal writes target the CORE that
-    # holds the row. Raise when the pool is gone so ``_terminal_write_with_retry``
-    # waits for CORE to return rather than dropping the terminal state.
-    pool = _resolve_pool_for_job(job_id)
+    pool = get_core_pool()
     if pool is None:
         raise EmbedJobStoreUnavailable(f"CORE pool unavailable while updating status for embed job {job_id}")
     await OracleJobStore(pool).set_status(job_id, status, error)
-    # Drop the per-job pin once the row reaches a terminal state so a
-    # long-lived pod does not accumulate references to replaced pools.
-    if status in (EmbedJobStatus.SUCCEEDED, EmbedJobStatus.FAILED):
-        _PINNED_POOLS.pop(job_id, None)
 
 
 async def _store_set_result(job_id: str, result: EmbedProcessingResult) -> None:
-    # See ``_store_set_status`` for the per-job pin and raise-on-unavailable
-    # rationale. Always transitions to SUCCEEDED, so always drop the pin.
-    pool = _resolve_pool_for_job(job_id)
+    pool = get_core_pool()
     if pool is None:
         raise EmbedJobStoreUnavailable(f"CORE pool unavailable while writing result for embed job {job_id}")
     await OracleJobStore(pool).set_result(job_id, result)
-    _PINNED_POOLS.pop(job_id, None)
 
 
 async def _store_heartbeat_active(owner_pod: str, job_ids: list[str]) -> tuple[int, bool]:
@@ -1097,16 +1018,7 @@ def reset_embed_job_manager() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Cross-module helper: active-job count.
-#
-# Used by the database-update endpoint to refuse a CORE rotation while
-# embed jobs are still in flight. Without that guard, rotating CORE
-# closes the previous pool — and the per-job pool pin in
-# ``_PINNED_POOLS`` keeps routing reads / terminal writes through it,
-# so polling clients see CORE errors and a successful pipeline can be
-# left non-terminal forever. By blocking the rotation until non-
-# terminal rows are gone, the pin remains valid for the whole job
-# lifecycle.
+# Cross-module helper: active-job count for target database aliases.
 # ---------------------------------------------------------------------------
 
 
@@ -1116,40 +1028,6 @@ def _is_ora_table_missing(ex: oracledb.DatabaseError) -> bool:
     code = getattr(first_arg, "code", None)
     message = str(first_arg) if first_arg is not None else ""
     return code == 942 or "ORA-00942" in message
-
-
-async def count_active_embed_jobs(
-    pool: oracledb.AsyncConnectionPool,
-    ttl_seconds: int = _DEFAULT_TTL_SECONDS,
-) -> int:
-    """Return the number of unexpired embed-job rows visible in *pool*.
-
-    "Unexpired" covers ``queued``/``running`` rows AND terminal rows
-    whose ``updated`` is within ``ttl_seconds`` of now. The latter
-    matters for rotation safety: terminal rows are kept for the TTL
-    so clients can poll the result; if rotation closed the pool
-    holding them, polls would 404 inside the documented retention
-    window. Counting them here forces the rotation guard to wait
-    until those reads have drained.
-
-    A missing ``aio_embed_jobs`` table (ORA-00942) is treated as
-    zero — a fresh CORE that has never had embed jobs run against
-    it has nothing to protect. Other ``oracledb.Error`` shapes
-    propagate so the caller can decide how to handle a flaky check
-    (the database-update endpoint logs and proceeds, since failing
-    closed would make a broken CORE unrepairable).
-    """
-    try:
-        async with pool.acquire() as conn, conn.cursor() as cursor:
-            await cursor.execute(_COUNT_ACTIVE_SQL, {"ttl_seconds": ttl_seconds})
-            row = await cursor.fetchone()
-            return int(row[0]) if row else 0
-    except oracledb.DatabaseError as ex:
-        # Fresh CORE without ``aio_embed_jobs`` has nothing to
-        # protect — surface as zero rather than blocking rotation.
-        if _is_ora_table_missing(ex):
-            return 0
-        raise
 
 
 async def count_active_embed_jobs_for_alias(
@@ -1162,10 +1040,7 @@ async def count_active_embed_jobs_for_alias(
     pipeline drops its captured target-pool reference on terminal
     write, so completed jobs no longer hold the alias's pool and
     rotating / removing the alias is safe even while the row is
-    retained for cross-replica polling. (CORE-side rotation is
-    different: terminal status reads route through CORE, so its
-    guard does count terminal rows — see
-    :func:`count_active_embed_jobs`.)
+    retained for cross-replica polling.
 
     ORA-00942 is treated as zero — a fresh deploy has no table to
     count against and rotation should still be allowed.

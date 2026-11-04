@@ -24,7 +24,7 @@ from server.app.api.v1.schemas.settings import (
     SettingsResponse,
 )
 from server.app.core.constants import PERSIST_FAIL_DETAIL as _PERSIST_FAIL
-from server.app.core.etc import ensure_core_alias, upsert_list_field
+from server.app.core.etc import upsert_list_field
 from server.app.core.schemas import (
     ClientSettings,
     ClientSettingsUpdate,
@@ -322,7 +322,6 @@ async def import_settings(body: SettingsImport, client: Annotated[ClientId, Quer
             # import can never *create* a config masquerading as managed.
             for db in body.database_configs:
                 db.managed_by = None
-            core_exists = any(c.alias.upper() == "CORE" for c in settings.database_configs)
             # Skip any incoming alias that collides with an existing hidden DDS-managed connection:
             # the normalised managed_by=None is now in model_fields_set, so upserting onto the
             # managed config would clear its server-owned marker and expose a runtime-only connect-as
@@ -331,7 +330,7 @@ async def import_settings(body: SettingsImport, client: Annotated[ClientId, Quer
             importable = [
                 db
                 for db in body.database_configs
-                if db.alias.lower() not in managed_aliases and not (core_exists and db.alias.upper() == "CORE")
+                if db.alias.lower() not in managed_aliases and db.alias.upper() != "CORE"
             ]
             skipped = len(body.database_configs) - len(importable)
             pre_import_db = {cfg.alias: cfg for cfg in snapshot["db"]}
@@ -342,8 +341,6 @@ async def import_settings(body: SettingsImport, client: Annotated[ClientId, Quer
                     item.usable, item.pool = False, None
                 else:
                     item.usable, item.pool = prior.usable, prior.pool
-            if not core_exists:
-                ensure_core_alias(settings.database_configs, settings.client_settings, _client_store)
             result.database_configs = ImportSectionResult(
                 created=len(created),
                 updated=len(updated),

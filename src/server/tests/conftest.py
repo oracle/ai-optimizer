@@ -332,9 +332,8 @@ async def embed_core_pool(oracle_db_container, monkeypatch):
     ``aio_embed_jobs`` table.
 
     Drives the embed job store against real Oracle: every ``_store_*`` call
-    routes through this pool, and the pinned-pool resolution falls back to it.
-    Tests that mock ``EmbedJobManager`` methods bypass the store and ignore it.
-    Returns the pool so callers can assert against it (e.g. pool pinning).
+    routes through this pool. Tests that mock ``EmbedJobManager`` methods
+    bypass the store and ignore it.
 
     The schema DDL runs per test (it is idempotent ``CREATE ... IF NOT EXISTS``)
     so the table self-heals for tests that follow one which drops it.
@@ -355,13 +354,11 @@ async def embed_core_pool(oracle_db_container, monkeypatch):
 
     monkeypatch.setattr(jobs_mod, "get_core_pool", lambda: pool)
     jobs_mod.reset_embed_job_manager()
-    jobs_mod._PINNED_POOLS.clear()
     try:
         yield pool
     finally:
         await jobs_mod.get_embed_job_manager().shutdown_local()
         jobs_mod.reset_embed_job_manager()
-        jobs_mod._PINNED_POOLS.clear()
         await close_pool(pool)
 
 

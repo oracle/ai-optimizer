@@ -577,14 +577,7 @@ def _ora_error(code: int, message: str) -> BaseException:
 
 
 def _make_recording_pool(fetch_rows: Optional[list[tuple]] = None):
-    """Build a fake CORE pool whose cursor records its usage and returns *fetch_rows*.
-
-    Used by tests that need to verify *which* pool an operation went
-    through (e.g. the CORE-rotation scenario). The mock chain mirrors
-    the production call path: ``pool.acquire() → conn.cursor() →
-    cursor.execute()``. ``rowcount`` is set to 1 by default so an
-    INSERT sees the success contract enforced by ``_store_create``.
-    """
+    """Build a fake CORE pool whose cursor records usage and returns rows."""
     from unittest.mock import AsyncMock as _AsyncMock
     from unittest.mock import MagicMock as _MagicMock
 
@@ -728,9 +721,7 @@ async def test_store_get_raises_on_missing_table() -> None:
     """
     from unittest.mock import patch as _patch
 
-    pool = _make_pool_with_failing_cursor(
-        _ora_error(942, "ORA-00942: table or view does not exist")
-    )
+    pool = _make_pool_with_failing_cursor(_ora_error(942, "ORA-00942: table or view does not exist"))
 
     with (
         _patch.object(jobs_mod, "get_core_pool", return_value=pool),
@@ -750,9 +741,7 @@ async def test_store_list_for_client_raises_on_missing_table() -> None:
     """
     from unittest.mock import patch as _patch
 
-    pool = _make_pool_with_failing_cursor(
-        _ora_error(942, "ORA-00942: table or view does not exist")
-    )
+    pool = _make_pool_with_failing_cursor(_ora_error(942, "ORA-00942: table or view does not exist"))
 
     with (
         _patch.object(jobs_mod, "get_core_pool", return_value=pool),
@@ -801,13 +790,15 @@ async def test_store_list_for_client_active_only_filters_terminal_rows() -> None
 
     full = await jobs_mod._store_list_for_client("x")
     assert {r.job_id for r in full} == {
-        "job-queued", "job-running", "job-succeeded", "job-failed",
+        "job-queued",
+        "job-running",
+        "job-succeeded",
+        "job-failed",
     }, "default list must return every still-tracked row (TTL contract preserved)"
 
     active = await jobs_mod._store_list_for_client("x", active_only=True)
     assert {r.job_id for r in active} == {"job-queued", "job-running"}, (
-        "active_only must drop terminal rows so the polling client "
-        "stops pulling fat result blobs every poll"
+        "active_only must drop terminal rows so the polling client stops pulling fat result blobs every poll"
     )
 
 
@@ -866,9 +857,7 @@ async def test_store_set_result_raises_on_missing_table() -> None:
     """
     from unittest.mock import patch as _patch
 
-    pool = _make_pool_with_failing_cursor(
-        _ora_error(942, "ORA-00942: table or view does not exist")
-    )
+    pool = _make_pool_with_failing_cursor(_ora_error(942, "ORA-00942: table or view does not exist"))
 
     with (
         _patch.object(jobs_mod, "get_core_pool", return_value=pool),
@@ -882,9 +871,7 @@ async def test_store_set_status_raises_on_missing_table() -> None:
     """Same swallow hazard applies to the FAILED terminal write path."""
     from unittest.mock import patch as _patch
 
-    pool = _make_pool_with_failing_cursor(
-        _ora_error(942, "ORA-00942: table or view does not exist")
-    )
+    pool = _make_pool_with_failing_cursor(_ora_error(942, "ORA-00942: table or view does not exist"))
 
     with (
         _patch.object(jobs_mod, "get_core_pool", return_value=pool),
@@ -911,9 +898,7 @@ async def test_store_create_raises_on_missing_table() -> None:
     """
     from unittest.mock import patch as _patch
 
-    pool = _make_pool_with_failing_cursor(
-        _ora_error(942, "ORA-00942: table or view does not exist")
-    )
+    pool = _make_pool_with_failing_cursor(_ora_error(942, "ORA-00942: table or view does not exist"))
 
     row = jobs_mod._JobRow(
         target_db="CORE",
@@ -991,9 +976,7 @@ async def test_warmup_gate_closes_when_last_heartbeat_is_stale() -> None:
 
     # The gap between them is normal (30s), but ``last`` itself is
     # stale — heartbeats have not been succeeding for the past 10 min.
-    assert not pod._is_heartbeat_warm(), (
-        "Gate must close when the last successful heartbeat is too old."
-    )
+    assert not pod._is_heartbeat_warm(), "Gate must close when the last successful heartbeat is too old."
 
     # And ``reap_stale`` honours it.
     reaped = await pod.reap_stale(threshold_seconds=300)
@@ -1027,9 +1010,7 @@ async def test_idle_heartbeat_requires_core_roundtrip() -> None:
     # Build a fake pool whose ``acquire().__aenter__`` raises — simulates
     # CORE listener refusing the connection.
     failing_acquire_ctx = MagicMock()
-    failing_acquire_ctx.__aenter__ = AsyncMock(
-        side_effect=_oracledb.DatabaseError("ORA-12541: CORE listener refused")
-    )
+    failing_acquire_ctx.__aenter__ = AsyncMock(side_effect=_oracledb.DatabaseError("ORA-12541: CORE listener refused"))
     failing_acquire_ctx.__aexit__ = AsyncMock(return_value=False)
     failing_pool = MagicMock()
     failing_pool.acquire.return_value = failing_acquire_ctx
@@ -1042,8 +1023,7 @@ async def test_idle_heartbeat_requires_core_roundtrip() -> None:
 
     # Failed heartbeat must NOT have advanced the warmup signal.
     assert pod._last_heartbeat_at is None, (
-        "An idle pod whose CORE round-trip failed must not record a "
-        "successful heartbeat timestamp."
+        "An idle pod whose CORE round-trip failed must not record a successful heartbeat timestamp."
     )
     assert pod._previous_heartbeat_at is None
 
@@ -1218,8 +1198,7 @@ async def test_terminal_failure_state_not_overwritten_after_reap() -> None:
     assert final is not None
     assert final.status == EmbedJobStatus.FAILED
     assert final.error == reap_error, (
-        "Reaper-authored error message was overwritten by the late "
-        "pipeline failure write."
+        "Reaper-authored error message was overwritten by the late pipeline failure write."
     )
 
 
@@ -1273,120 +1252,11 @@ async def test_heartbeat_skips_rows_without_local_task() -> None:
 
 
 @pytest.mark.anyio
-async def test_jobs_pinned_to_submitting_core_pool_after_rotation(monkeypatch) -> None:
-    """[P2] Reads/writes for an in-flight job stay tied to the CORE that accepted it.
-
-    Reviewer concern: when ``/v1/databases/CORE`` is updated while an
-    embed job is running, the row was inserted into the OLD CORE
-    pool. Subsequent ``_store_get`` / ``_store_set_*`` calls that
-    blindly resolve via ``get_core_pool()`` would target the NEW
-    (likely empty) pool — polling clients see 404 on a still-running
-    job, terminal writes target the wrong store, and the reaper-
-    versus-original-task race becomes silently incorrect.
-
-    The fix pins the pool used by ``_store_create`` to the job_id
-    so subsequent operations route back to the submitting database
-    even after rotation. This test:
-      1. Inserts via pool_a (submitting CORE).
-      2. Rotates ``get_core_pool`` to return pool_b (rotated CORE).
-      3. Reads via ``_store_get`` and asserts pool_a was hit, not pool_b.
-    """
-    job_id = "rotation-test-job"
-    now = datetime.datetime.now(datetime.timezone.utc)
-
-    # The row pool_a will return on SELECT — encoded as the tuple
-    # shape ``_row_from_db`` consumes.
-    db_row = (
-        job_id, "x", "pod-a", "queued", "", None, None, None, now, now,
-    )
-
-    pool_a = _make_recording_pool(fetch_rows=[db_row])
-    pool_b = _make_recording_pool(fetch_rows=[])  # rotated CORE — empty
-
-    current = {"pool": pool_a}
-    monkeypatch.setattr(jobs_mod, "get_core_pool", lambda: current["pool"])
-
-    # Phase 1: insert via pool_a.
-    row = jobs_mod._JobRow(
-        target_db="CORE",
-        job_id=job_id, client="x", owner_pod="pod-a",
-        status=EmbedJobStatus.QUEUED, progress=None, result=None, error=None,
-        created=now, updated=now,
-    )
-    await jobs_mod._store_create(row)
-    pool_a_inserts = pool_a.acquire.call_count
-    assert pool_a_inserts >= 1, "INSERT did not hit pool_a"
-
-    # Phase 2: rotate CORE — get_core_pool now returns pool_b. The
-    # in-flight job_id was pinned to pool_a at submission time.
-    current["pool"] = pool_b
-
-    # Phase 3: read. Must hit pool_a (pinned), not pool_b (empty new
-    # CORE). Otherwise polling clients see 404 on the still-running
-    # job and the reaper / terminal writes target the wrong DB.
-    info = await jobs_mod._store_get(job_id)
-    assert info is not None, (
-        "post-rotation read returned None — _store_get redirected "
-        "to the rotated (empty) CORE pool instead of the pool that "
-        "accepted the INSERT"
-    )
-    assert info.job_id == job_id
-    assert pool_a.acquire.call_count > pool_a_inserts, (
-        "SELECT did not hit pool_a — the read used the rotated pool"
-    )
-    pool_b.acquire.assert_not_called()
-
-
-@pytest.mark.anyio
-async def test_terminal_write_after_core_rotation_uses_submitting_pool(monkeypatch) -> None:
-    """[P2] Terminal status writes route through the pinned CORE.
-
-    Same rationale as the read-pinning test: a terminal
-    ``_store_set_status(SUCCEEDED, ...)`` after rotation must land
-    on the database holding the row, not on whatever CORE was
-    rotated in. Otherwise the original row stays at ``running``
-    forever (the UPDATE matches no rows in the new pool) and the
-    reaper eventually marks it failed against the wrong DB.
-    """
-    job_id = "rotation-terminal-job"
-    now = datetime.datetime.now(datetime.timezone.utc)
-
-    pool_a = _make_recording_pool()
-    pool_b = _make_recording_pool()
-
-    current = {"pool": pool_a}
-    monkeypatch.setattr(jobs_mod, "get_core_pool", lambda: current["pool"])
-
-    # Phase 1: insert via pool_a (submitting CORE).
-    row = jobs_mod._JobRow(
-        target_db="CORE",
-        job_id=job_id, client="x", owner_pod="pod-a",
-        status=EmbedJobStatus.QUEUED, progress=None, result=None, error=None,
-        created=now, updated=now,
-    )
-    await jobs_mod._store_create(row)
-    pool_a_calls_after_insert = pool_a.acquire.call_count
-
-    # Phase 2: rotate CORE.
-    current["pool"] = pool_b
-
-    # Phase 3: terminal status write. Must hit pool_a (pinned).
-    await jobs_mod._store_set_status(job_id, EmbedJobStatus.FAILED, error="boom")
-
-    assert pool_a.acquire.call_count > pool_a_calls_after_insert, (
-        "terminal status UPDATE did not hit pool_a — the write went "
-        "to the rotated CORE and the original row was left at "
-        "'running' forever"
-    )
-    pool_b.acquire.assert_not_called()
-
-
-@pytest.mark.anyio
 async def test_update_result_sql_does_not_redundantly_clear_error() -> None:
     """[P1] ``_UPDATE_RESULT_SQL`` must not assign ``error`` alongside the result.
 
     Reviewer concern: the success path UPDATE included ``error = NULL``
-    in addition to ``status`` / ``result`` / ``updated``. Oracle 23ai
+    in addition to ``status`` / ``result`` / ``updated``. Oracle AI Database
     rejects a SET list it considers to assign a column twice
     (ORA-00957) for this exact statement shape, so every successful
     embed terminal write hit ``_terminal_write_with_retry``, was
@@ -1400,61 +1270,13 @@ async def test_update_result_sql_does_not_redundantly_clear_error() -> None:
     """
     sql = jobs_mod._UPDATE_RESULT_SQL
     assert "error" not in sql.lower(), (
-        f"_UPDATE_RESULT_SQL must not touch the error column on the "
-        f"success path; got {sql!r}"
+        f"_UPDATE_RESULT_SQL must not touch the error column on the success path; got {sql!r}"
     )
-
-
-@pytest.mark.anyio
-async def test_count_active_embed_jobs_returns_select_count() -> None:
-    """The CORE-rotation guard's count helper returns the SELECT result."""
-    from unittest.mock import AsyncMock as _AsyncMock
-
-    pool = _make_recording_pool()
-    cursor = pool.acquire.return_value.__aenter__.return_value.cursor.return_value.__aenter__.return_value
-    cursor.fetchone = _AsyncMock(return_value=(7,))
-
-    n = await jobs_mod.count_active_embed_jobs(pool)
-    assert n == 7
-
-
-@pytest.mark.anyio
-async def test_count_active_embed_jobs_treats_missing_table_as_zero() -> None:
-    """A fresh CORE without ``aio_embed_jobs`` must report zero, not raise.
-
-    The database-update endpoint uses this count to refuse a CORE
-    rotation while jobs are in flight. A brand-new CORE that has
-    never had embed jobs run against it has no table to count
-    against, but rotation should still be allowed — there's nothing
-    to protect.
-    """
-    pool = _make_pool_with_failing_cursor(
-        _ora_error(942, "ORA-00942: table or view does not exist")
-    )
-
-    assert await jobs_mod.count_active_embed_jobs(pool) == 0
-
-
-@pytest.mark.anyio
-async def test_count_active_embed_jobs_propagates_other_db_errors() -> None:
-    """Non-ORA-00942 database errors must propagate so the caller can decide."""
-    pool = _make_pool_with_failing_cursor(
-        _ora_error(12541, "ORA-12541: TNS:no listener")
-    )
-
-    with pytest.raises(BaseException):
-        await jobs_mod.count_active_embed_jobs(pool)
 
 
 @pytest.mark.anyio
 async def test_count_active_embed_jobs_for_alias_filters_by_target_db() -> None:
-    """[P2] Non-CORE rotation guard counts only jobs targeting *that* alias.
-
-    The CORE rotation guard refuses any active embed job. A non-CORE
-    rotation must be more selective: blocking unrelated DBs would
-    make ordinary maintenance impossible. The new helper filters by
-    ``target_db`` so an admin updating ``MYDB`` only waits for jobs
-    whose vector store lives in ``MYDB``.
+    """[P2] Rotation guard counts only jobs targeting *that* alias.
 
     Test contract: the helper passes ``:target_db`` as a bind and
     returns the SELECT count.
@@ -1471,50 +1293,7 @@ async def test_count_active_embed_jobs_for_alias_filters_by_target_db() -> None:
     # is not falsely blocked by a job that targets ``OTHERDB``.
     args, kwargs = cursor.execute.call_args
     binds = args[1] if len(args) > 1 else kwargs.get("parameters") or kwargs
-    assert binds.get("target_db") == "MYDB", (
-        f"helper must bind ``target_db``; got {binds!r}"
-    )
-
-
-@pytest.mark.anyio
-async def test_count_active_embed_jobs_includes_recent_terminal_rows() -> None:
-    """[P2] Rotation guard must keep terminal rows readable across CORE rotation.
-
-    Reviewer concern: terminal (succeeded/failed) rows are retained
-    for the advertised TTL so clients can poll the result. Counting
-    only ``queued``/``running`` lets a CORE rotation slip through
-    while a recent terminal row still lives in the old CORE — the
-    rotation closes the old pool, and per-job pool pins are dropped
-    on terminal write, so subsequent polls hit the rotated CORE
-    (which has no row) and see 404 within the documented TTL.
-    Block rotation while ANY unexpired row exists.
-    """
-    from unittest.mock import AsyncMock as _AsyncMock
-
-    pool = _make_recording_pool()
-    cursor = pool.acquire.return_value.__aenter__.return_value.cursor.return_value.__aenter__.return_value
-    cursor.fetchone = _AsyncMock(return_value=(2,))
-
-    n = await jobs_mod.count_active_embed_jobs(pool)
-    assert n == 2
-
-    args, kwargs = cursor.execute.call_args
-    sql = args[0]
-    # The SQL must consider both active and recent-terminal rows.
-    # Without the latter, CORE rotation can slip through while
-    # clients still expect to read the result.
-    sql_lower = sql.lower()
-    assert "succeeded" in sql_lower or "terminal" in sql_lower or "ttl" in sql_lower, (
-        "count_active_embed_jobs SQL must also count terminal rows "
-        "still within their TTL window — clients poll those rows "
-        "and a CORE rotation between terminal write and TTL expiry "
-        f"would otherwise make them disappear. Got SQL: {sql}"
-    )
-    binds = args[1] if len(args) > 1 else kwargs.get("parameters") or {}
-    assert "ttl_seconds" in binds, (
-        f"SQL must bind ttl_seconds so the terminal-row window is "
-        f"explicit; got binds={binds}"
-    )
+    assert binds.get("target_db") == "MYDB", f"helper must bind ``target_db``; got {binds!r}"
 
 
 @pytest.mark.anyio
@@ -1531,12 +1310,6 @@ async def test_count_active_embed_jobs_for_alias_excludes_terminal_rows() -> Non
     blocks normal database maintenance for up to an hour after the
     last embed completes against an alias, with no correctness
     benefit. Use a queued/running-only predicate.
-
-    The CORE-side guard (``count_active_embed_jobs``) is different:
-    terminal status/result reads route through CORE, so rotating
-    CORE during the TTL window would make those reads disappear.
-    That guard rightly counts terminal rows; this per-alias one
-    must not.
     """
     from unittest.mock import AsyncMock as _AsyncMock
 
@@ -1558,8 +1331,7 @@ async def test_count_active_embed_jobs_for_alias_excludes_terminal_rows() -> Non
         f"so completed jobs no longer hold A's pool. SQL: {sql}"
     )
     assert "failed" not in sql, (
-        f"per-alias guard SQL still references 'failed'; "
-        f"completed jobs no longer hold the target pool. SQL: {sql}"
+        f"per-alias guard SQL still references 'failed'; completed jobs no longer hold the target pool. SQL: {sql}"
     )
     assert "ttl" not in sql and "numtodsinterval" not in sql, (
         f"per-alias guard SQL still references the TTL window; "
@@ -1568,51 +1340,19 @@ async def test_count_active_embed_jobs_for_alias_excludes_terminal_rows() -> Non
     )
     binds = args[1] if len(args) > 1 else kwargs.get("parameters") or {}
     assert binds.get("target_db") == "MYDB"
-    assert "ttl_seconds" not in binds, (
-        f"per-alias SQL no longer needs ttl_seconds; got binds={binds}"
-    )
+    assert "ttl_seconds" not in binds, f"per-alias SQL no longer needs ttl_seconds; got binds={binds}"
 
 
 @pytest.mark.anyio
 async def test_count_active_embed_jobs_for_alias_treats_missing_table_as_zero() -> None:
-    """[P2] A fresh CORE without ``aio_embed_jobs`` must report zero
-    for the per-alias guard too — same fail-open shape as the
-    CORE-wide variant. Otherwise an admin trying to update a non-CORE
-    DB on a brand-new deploy would get an unhelpful 500.
+    """[P2] A fresh CORE without ``aio_embed_jobs`` reports zero.
+
+    An administrator updating an additional database alias on a new deploy
+    should not receive a 500 when no jobs have been created.
     """
-    pool = _make_pool_with_failing_cursor(
-        _ora_error(942, "ORA-00942: table or view does not exist")
-    )
+    pool = _make_pool_with_failing_cursor(_ora_error(942, "ORA-00942: table or view does not exist"))
 
     assert await jobs_mod.count_active_embed_jobs_for_alias(pool, "MYDB") == 0
-
-
-@pytest.mark.anyio
-async def test_pinned_pool_released_after_terminal_write(monkeypatch) -> None:
-    """The per-job pool pin is dropped once the row reaches a terminal
-    state, so a long-running pod does not accumulate pinned references
-    to pools that have been replaced and would otherwise be eligible
-    for garbage collection.
-    """
-    job_id = "pin-release-job"
-    now = datetime.datetime.now(datetime.timezone.utc)
-
-    pool_a = _make_recording_pool()
-    monkeypatch.setattr(jobs_mod, "get_core_pool", lambda: pool_a)
-
-    row = jobs_mod._JobRow(
-        target_db="CORE",
-        job_id=job_id, client="x", owner_pod="pod-a",
-        status=EmbedJobStatus.QUEUED, progress=None, result=None, error=None,
-        created=now, updated=now,
-    )
-    await jobs_mod._store_create(row)
-    assert job_id in jobs_mod._PINNED_POOLS, "pool was not pinned on insert"
-
-    await jobs_mod._store_set_status(job_id, EmbedJobStatus.FAILED, error="done")
-    assert job_id not in jobs_mod._PINNED_POOLS, (
-        "terminal write should release the per-job pool pin"
-    )
 
 
 @pytest.mark.anyio
@@ -1660,8 +1400,7 @@ async def test_submit_registers_task_without_blocking_on_tasks_lock() -> None:
         # time ``submit`` returns — otherwise heartbeats wouldn't
         # cover it on the very next sweep.
         assert submission.job_id in pod._tasks, (
-            "task was not registered before submit() returned; the "
-            "registration window must close before any await"
+            "task was not registered before submit() returned; the registration window must close before any await"
         )
     finally:
         pod._tasks_lock.release()

@@ -195,12 +195,12 @@ class TestPendingDbSelect:
 
         assert "runtime_database_selector" not in state
 
-    def test_core_fields_disabled_when_core_connected(self, make_state):
-        """CORE database shows informational lock message and disables fields when usable."""
+    def test_core_definition_is_always_read_only(self, make_state):
+        """CORE details and actions stay disabled even when its connection is unavailable."""
         from client.app.content.config.tabs.databases import _render_databases
 
         state = make_state(["CORE"], "CORE")
-        state.settings["database_configs"][0]["usable"] = True
+        state.settings["database_configs"][0]["usable"] = False
 
         mock_st = MagicMock()
         mock_st.selectbox.return_value = "CORE"
@@ -212,25 +212,53 @@ class TestPendingDbSelect:
             patch(f"{MODULE}.st", mock_st),
             patch(f"{MODULE}.state", state),
             patch(f"{MODULE}.helpers") as hlp,
-            patch(f"{MODULE}._fetch_database", return_value={"alias": "CORE", "usable": True}),
+            patch(f"{MODULE}._fetch_database", return_value={"alias": "CORE", "usable": False}),
             patch(f"{MODULE}.api_put"),
         ):
             hlp.selectbox_index.return_value = 0
-            selected, is_new = _render_databases({"CORE": {"alias": "CORE", "usable": True}}, ["CORE"], "CORE")
+            selected, is_new = _render_databases({"CORE": {"alias": "CORE", "usable": False}}, ["CORE"], "CORE")
 
         assert selected == "CORE" and not is_new
         mock_st.info.assert_called_once()
+        assert "cannot be changed here" in mock_st.info.call_args.args[0]
         alias_call = next(call for call in mock_st.text_input.mock_calls if call.kwargs["key"].endswith("alias_CORE"))
         assert alias_call.kwargs.get("disabled") is True
 
         other_calls = [call for call in mock_st.text_input.mock_calls if not call.kwargs["key"].endswith("alias_CORE")]
         assert all(call.kwargs.get("disabled") is True for call in other_calls)
+        save_call = next(call for call in mock_st.button.mock_calls if call.kwargs.get("key") == "runtime_db_save_CORE")
+        assert save_call.kwargs.get("disabled") is True
+
+    def test_add_new_never_forces_core_alias(self, make_state, mock_st):
+        """The additional-database form remains generic when CORE is absent from isolated state."""
+        from client.app.content.config.tabs.databases import _render_databases
+
+        state = make_state()
+        mock_st.selectbox.return_value = "Add New..."
+        mock_st.text_input.return_value = ""
+        mock_st.button.return_value = False
+
+        with (
+            patch(f"{MODULE}.st", mock_st),
+            patch(f"{MODULE}.state", state),
+            patch(f"{MODULE}.helpers") as hlp,
+            patch(f"{MODULE}.is_authenticated", return_value=True),
+        ):
+            hlp.selectbox_index.return_value = 0
+            _render_databases({}, [], None)
+
+        alias_call = next(
+            call for call in mock_st.text_input.mock_calls if call.kwargs["key"].startswith("runtime_db_alias_")
+        )
+        assert alias_call.kwargs.get("value") == ""
+        assert alias_call.kwargs.get("disabled") is False
+        assert not any("first database" in str(call.args[0]).lower() for call in mock_st.info.call_args_list)
 
     def test_create_button_disabled_until_alias_entered(self, make_state):
         """A new config's Create button stays disabled while the alias is blank."""
         from client.app.content.config.tabs.databases import _render_databases
 
-        state = make_state(["CORE"], "CORE")  # CORE exists -> not force_core, alias not forced
+        state = make_state(["CORE"], "CORE")
 
         mock_st = MagicMock()
         mock_st.selectbox.return_value = "Add New..."
