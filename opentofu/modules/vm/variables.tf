@@ -89,6 +89,14 @@ variable "db_conn" {
     password = string
     service  = string
   })
+  validation {
+    condition = alltrue([
+      trimspace(var.db_conn.username) != "",
+      trimspace(var.db_conn.password) != "",
+      trimspace(var.db_conn.service) != "",
+    ])
+    error_message = "db_conn must provide a non-empty username, password, and service."
+  }
 }
 
 variable "lb_client_http_port" {
