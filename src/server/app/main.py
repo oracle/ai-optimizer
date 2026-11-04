@@ -19,10 +19,10 @@ import server.app.core.environ  # noqa: F401, E402  # side-effect: loads .env
 from _version import __version__
 from server.app.api.mcp.router import router as mcp_router
 from server.app.api.v1.router import router as v1_router
-from server.app.core.etc import apply_overlay, ensure_core_alias, load_config_file
+from server.app.core.etc import apply_overlay, load_config_file
 from server.app.core.mcp import MCPApiKeyMiddleware, MCPOriginMiddleware, mcp
-from server.app.core.settings import _client_store, settings
-from server.app.database.config import close_pool, get_database_settings
+from server.app.core.settings import _client_store, require_core_database_config, settings
+from server.app.database.config import close_pool
 from server.app.database.registry import init_core_database
 from server.app.database.settings import (
     load_client_settings,
@@ -62,8 +62,9 @@ async def _apply_configured_overlay(protected: set[str]) -> None:
         source = await load_settings("CONFIGURED")
 
     if source is not None:
+        source = source.model_copy(deep=True)
+        source.database_configs = [database for database in source.database_configs if database.alias.upper() != "CORE"]
         apply_overlay(source, protected, exclude_fields={"oci_configs", "prompt_configs"})
-        ensure_core_alias(settings.database_configs, settings.client_settings, _client_store)
         has_models = "model_configs" in source.model_fields_set if from_file else bool(source.model_configs)
         if has_models:
             # Restored settings can carry duplicate (provider, id) entries written
@@ -85,12 +86,11 @@ async def lifespan(_app: FastAPI):
         protected.discard("api_key")
 
     # --- Phase 2: Init CORE database ---
-    core_db = get_database_settings(settings.database_configs, "CORE")
-    if core_db is not None:
-        try:
-            await init_core_database(core_db)
-        except Exception:
-            LOGGER.exception("CORE database initialization failed — continuing without persistence")
+    core_db = require_core_database_config()
+    try:
+        await init_core_database(core_db)
+    except Exception:
+        LOGGER.exception("CORE database initialization failed — continuing without persistence")
 
     # --- Phase 3: Build FACTORY baseline ---
     await load_default_models()

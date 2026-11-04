@@ -9,19 +9,22 @@ Tests for server.app.core.settings — resolve_client, _apply_default_ll_model, 
 from typing import Literal
 
 import pytest
-from pydantic import ValidationError
+from pydantic import SecretStr, ValidationError
 
 from server.app.core.schemas import ClientSettings
 from server.app.core.settings import (
     _PROTECTED_CLIENTS,
+    CoreDatabaseConfigurationError,
     Settings,
     SettingsBase,
     _apply_default_ll_model,
     _client_store,
     _ensure_capacity,
+    require_core_database_config,
     resolve_client,
     settings,
 )
+from server.app.database.schemas import DatabaseConfig
 from server.app.models.schemas import ModelConfig
 from server.tests.constants import TEST_OPENAI_MODEL_ID
 
@@ -105,6 +108,95 @@ class TestSettingsValidators:
     def test_mcp_cache_ttl_rejects_negative_values(self):
         with pytest.raises(ValidationError):
             Settings.model_validate({"mcp_cache_ttl_seconds": -1})
+
+    def test_requires_complete_core_bootstrap_settings(self, monkeypatch):
+        monkeypatch.delenv("DB_USERNAME", raising=False)
+        monkeypatch.delenv("DB_PASSWORD", raising=False)
+        monkeypatch.delenv("DB_DSN", raising=False)
+        monkeypatch.setenv("AIO_DB_DSN", "")
+
+        app_settings = Settings(db_username="core_user", db_password=SecretStr("secret-value"))
+
+        with pytest.raises(CoreDatabaseConfigurationError) as exc_info:
+            require_core_database_config(app_settings)
+
+        assert "DB_DSN/AIO_DB_DSN" in str(exc_info.value)
+        assert "secret-value" not in str(exc_info.value)
+
+    def test_rejects_core_supplied_only_as_database_config(self, monkeypatch):
+        monkeypatch.delenv("DB_USERNAME", raising=False)
+        monkeypatch.delenv("DB_PASSWORD", raising=False)
+        monkeypatch.delenv("DB_DSN", raising=False)
+        monkeypatch.setenv("AIO_DB_USERNAME", "")
+        monkeypatch.setenv("AIO_DB_PASSWORD", "")
+        monkeypatch.setenv("AIO_DB_DSN", "")
+        app_settings = Settings(
+            database_configs=[
+                DatabaseConfig(
+                    alias="core",
+                    username="file_user",
+                    password=SecretStr("file_secret"),
+                    dsn="file_dsn",
+                )
+            ]
+        )
+
+        with pytest.raises(CoreDatabaseConfigurationError) as exc_info:
+            require_core_database_config(app_settings)
+
+        message = str(exc_info.value)
+        assert "DB_USERNAME/AIO_DB_USERNAME" in message
+        assert "DB_PASSWORD/AIO_DB_PASSWORD" in message
+        assert "DB_DSN/AIO_DB_DSN" in message
+        assert "file_secret" not in message
+
+    def test_builds_canonical_core_from_aio_settings(self, monkeypatch):
+        monkeypatch.delenv("DB_USERNAME", raising=False)
+        monkeypatch.delenv("DB_PASSWORD", raising=False)
+        monkeypatch.delenv("DB_DSN", raising=False)
+        app_settings = Settings(
+            db_username="aio_user",
+            db_password=SecretStr("aio_secret"),
+            db_dsn="aio_dsn",
+            db_wallet_password=SecretStr("wallet_secret"),
+            db_wallet_location="/wallet",
+        )
+
+        core = require_core_database_config(app_settings)
+
+        assert core.alias == "CORE"
+        assert core.username == "aio_user"
+        assert core.password is not None
+        assert core.password.get_secret_value() == "aio_secret"
+        assert core.dsn == "aio_dsn"
+        assert core.wallet_password is not None
+        assert core.wallet_password.get_secret_value() == "wallet_secret"
+        assert core.wallet_location == "/wallet"
+        assert app_settings.database_configs == [core]
+
+    def test_db_settings_take_precedence_over_aio_settings(self, monkeypatch):
+        monkeypatch.setenv("DB_USERNAME", "db_user")
+        monkeypatch.setenv("DB_PASSWORD", "db_secret")
+        monkeypatch.setenv("DB_DSN", "db_dsn")
+        app_settings = Settings(
+            db_username="aio_user",
+            db_password=SecretStr("aio_secret"),
+            db_dsn="aio_dsn",
+        )
+
+        core = require_core_database_config(app_settings)
+
+        assert core.username == "db_user"
+        assert core.password is not None
+        assert core.password.get_secret_value() == "db_secret"
+        assert core.dsn == "db_dsn"
+
+    def test_db_pool_size_takes_precedence_over_aio_setting(self, monkeypatch):
+        monkeypatch.setenv("DB_POOL_SIZE", "9")
+
+        app_settings = Settings(db_pool_size=3)
+
+        assert app_settings.db_pool_size == 9
 
 
 # ---------------------------------------------------------------------------
