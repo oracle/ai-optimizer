@@ -95,6 +95,18 @@ async def test_create_pool_missing_credentials():
 
 
 @pytest.mark.unit
+async def test_create_pool_sets_program():
+    """create_pool() identifies the application to Oracle."""
+    cfg = DatabaseConfig(alias="TEST", username="u", password=SecretStr("p"), dsn="dsn")
+
+    with patch("server.app.database.config.oracledb.create_pool_async", new_callable=MagicMock) as mock_create:
+        await create_pool(cfg)
+
+    _, kwargs = mock_create.call_args
+    assert kwargs["program"] == "AI_OPTIMIZER"
+
+
+@pytest.mark.unit
 async def test_create_pool_strips_retry_params():
     """create_pool() strips retry_count and retry_delay from the DSN."""
     dsn = "(description=(retry_count=20)(retry_delay=3)(address=(host=db.example.com)(port=1521)))"
@@ -277,6 +289,7 @@ async def test_create_sync_connection_basic():
     assert kwargs["user"] == "u"
     assert kwargs["password"] == "p"
     assert kwargs["dsn"] == "dsn"
+    assert kwargs["program"] == "AI_OPTIMIZER"
 
 
 @pytest.mark.unit
@@ -388,6 +401,36 @@ async def test_create_pool_success(configure_db_env):
     pool = await create_pool(cfg)
     assert pool is not None
     await pool.close()
+
+
+@pytest.mark.integration
+@pytest.mark.db
+async def test_create_pool_sets_session_program(configure_db_env):
+    """Pooled sessions identify the application to Oracle."""
+    del configure_db_env
+    pool = await create_pool(make_core_db_config())
+    try:
+        async with pool.acquire() as connection, connection.cursor() as cursor:
+            await cursor.execute("SELECT SYS_CONTEXT('USERENV', 'CLIENT_PROGRAM_NAME') FROM DUAL")
+            (program,) = await cursor.fetchone()
+        assert program == "AI_OPTIMIZER"
+    finally:
+        await pool.close()
+
+
+@pytest.mark.integration
+@pytest.mark.db
+def test_create_sync_connection_sets_session_program(configure_db_env):
+    """Direct sessions identify the application to Oracle."""
+    del configure_db_env
+    connection = create_sync_connection(make_core_db_config())
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT SYS_CONTEXT('USERENV', 'CLIENT_PROGRAM_NAME') FROM DUAL")
+            (program,) = cursor.fetchone()
+        assert program == "AI_OPTIMIZER"
+    finally:
+        connection.close()
 
 
 @pytest.mark.integration

@@ -21,6 +21,7 @@ from .schemas import DatabaseConfig
 
 LOGGER = logging.getLogger(__name__)
 _CORE_TNS_ADMIN = PROJECT_ROOT / "server" / "tns_admin"
+_ORACLE_PROGRAM = "AI_OPTIMIZER"
 # Matches Oracle descriptor retry tokens tolerating insignificant whitespace
 # (docs often show the spaced `(RETRY_COUNT = 5)` form). The schema preserves
 # descriptor whitespace verbatim to avoid corrupting values like
@@ -96,6 +97,7 @@ def _build_connect_args(db_config: DatabaseConfig) -> dict:
         "password": reveal(db_config.password),
         "dsn": _strip_retry_tokens(db_config.dsn or ""),
         "config_dir": config_dir,
+        "program": _ORACLE_PROGRAM,
     }
     if db_config.wallet_password:
         args["wallet_password"] = reveal(db_config.wallet_password)
