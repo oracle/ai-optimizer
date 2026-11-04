@@ -10,7 +10,8 @@ import asyncio
 import contextlib
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastmcp.utilities.lifespan import combine_lifespans
 from starlette.middleware import Middleware
 
@@ -21,7 +22,7 @@ from server.app.api.v1.router import router as v1_router
 from server.app.core.etc import apply_overlay, load_config_file
 from server.app.core.mcp import MCPApiKeyMiddleware, MCPOriginMiddleware, mcp
 from server.app.core.settings import _client_store, require_core_database_config, settings
-from server.app.database.config import close_pool
+from server.app.database.config import CoreDatabaseUnavailable, close_pool
 from server.app.database.registry import init_core_database
 from server.app.database.settings import (
     load_client_settings,
@@ -56,8 +57,8 @@ async def _apply_configured_overlay(protected: set[str]) -> None:
     source = load_config_file()
     from_file = source is not None
 
-    if not source and await row_exists("CONFIGURED", raise_on_error=True):
-        source = await load_settings("CONFIGURED", raise_on_error=True)
+    if not source and await row_exists("CONFIGURED"):
+        source = await load_settings("CONFIGURED")
 
     if source is not None:
         source = source.model_copy(deep=True)
@@ -93,16 +94,16 @@ async def lifespan(_app: FastAPI):
         await load_default_models()
         apply_env_overrides()
         load_factory_prompts()
-        await persist_settings("FACTORY", is_current=False, raise_on_error=True)
+        await persist_settings("FACTORY", is_current=False)
 
         # --- Phase 4: Build/load CONFIGURED ---
         await _apply_configured_overlay(protected)
 
         # --- Phase 4b: Init server client settings ---
-        server_cs = await load_client_settings("server", raise_on_error=True)
+        server_cs = await load_client_settings("server")
         if server_cs is None:
             server_cs = settings.client_settings.model_copy(deep=True)
-            await persist_client_settings("server", server_cs, raise_on_error=True)
+            await persist_client_settings("server", server_cs)
         server_cs.client = "server"
         _client_store["server"] = server_cs
 
@@ -114,7 +115,7 @@ async def lifespan(_app: FastAPI):
         settings.nl2sql_available = await register_sqlcl_proxy() is not None
 
         # Persist after OCI loading so the saved GenAI overlay is retained.
-        await persist_settings("CONFIGURED", is_current=True, raise_on_error=True)
+        await persist_settings("CONFIGURED", is_current=True)
 
         # --- Phase 6: Model reachability ---
         await check_model_reachability()
@@ -169,6 +170,13 @@ app = FastAPI(
     },
 )
 instrument_fastapi(app)
+
+
+@app.exception_handler(CoreDatabaseUnavailable)
+async def core_database_unavailable_handler(_request: Request, _exc: CoreDatabaseUnavailable) -> JSONResponse:
+    """Translate required CORE dependency failures into a retryable response."""
+    return JSONResponse(status_code=503, content={"detail": "CORE database is unavailable"})
+
 
 app.include_router(v1_router, prefix=API_PREFIX)
 app.include_router(mcp_router, prefix=MCP_PREFIX)

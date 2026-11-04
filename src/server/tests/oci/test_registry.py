@@ -477,6 +477,11 @@ class TestApplyEnvOverrides:
 class TestLoadOciProfiles:
     """Test load_oci_profiles startup function."""
 
+    @pytest.fixture(autouse=True)
+    def _empty_persisted_overlay(self):
+        with patch(f"{MODULE}.load_oci_genai_overlay", return_value={}):
+            yield
+
     @pytest.mark.anyio
     async def test_calls_parse_check_register_env_overrides(self):
         """load_oci_profiles calls parse, check, register, and env_overrides."""

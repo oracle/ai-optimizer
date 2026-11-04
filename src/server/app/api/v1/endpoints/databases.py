@@ -14,6 +14,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 
 from server.app.api.v1.endpoints._helpers import _build_updates, _log_sensitive_read
+from server.app.api.v1.persistence import persistence_succeeded
 from server.app.core.constants import PERSIST_FAIL_DETAIL as _PERSIST_FAIL
 from server.app.core.error_detail import response_error_detail
 from server.app.core.secrets import REVEAL_KEY
@@ -242,7 +243,7 @@ async def register_database(
         return error
 
     settings.database_configs.append(cfg)
-    if persist and not await persist_settings():
+    if persist and not await persistence_succeeded(persist_settings()):
         settings.database_configs.remove(cfg)
         await close_pool(cfg.pool)
         raise HTTPException(status_code=503, detail=_PERSIST_FAIL)
@@ -331,7 +332,7 @@ async def update_database(alias: str, body: DatabaseUpdate):
             raise HTTPException(status_code=422, detail=error)
 
         # Accept — persist first, then close old pool
-        if not await persist_settings():
+        if not await persistence_succeeded(persist_settings()):
             await close_pool(cfg.pool)
             _restore()
             raise HTTPException(status_code=503, detail=_PERSIST_FAIL)
@@ -368,7 +369,7 @@ async def remove_database(alias: str):
 
         idx = settings.database_configs.index(cfg)
         settings.database_configs.remove(cfg)
-        if not await persist_settings():
+        if not await persistence_succeeded(persist_settings()):
             settings.database_configs.insert(idx, cfg)
             raise HTTPException(status_code=503, detail=_PERSIST_FAIL)
         await close_pool(cfg.pool)
@@ -398,6 +399,7 @@ async def delete_vector_store(alias: str, table_name: str):
 
         # Table is already dropped — list removal just reflects reality.
         db_config.vector_stores.remove(vs_entry)
-        if not await persist_settings():
+        if not await persistence_succeeded(persist_settings()):
             LOGGER.warning("delete_vector_store: failed to persist after dropping %s", table_name)
+            raise HTTPException(status_code=503, detail=_PERSIST_FAIL)
         return None

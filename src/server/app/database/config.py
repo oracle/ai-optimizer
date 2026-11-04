@@ -139,6 +139,18 @@ def get_core_pool() -> Optional[oracledb.AsyncConnectionPool]:
     return core_cfg.pool if _is_usable(core_cfg) else None
 
 
+class CoreDatabaseUnavailable(RuntimeError):
+    """Raised when an operation requires the CORE database."""
+
+
+def require_core_pool() -> oracledb.AsyncConnectionPool:
+    """Return the usable CORE pool or raise a sanitized dependency error."""
+    pool = get_core_pool()
+    if pool is None:
+        raise CoreDatabaseUnavailable("CORE database is unavailable")
+    return pool
+
+
 def get_client_db_config(client: str = "CONFIGURED") -> Optional[DatabaseConfig]:
     """Resolve a client string to its ``DatabaseConfig``.
 

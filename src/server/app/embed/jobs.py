@@ -45,7 +45,7 @@ from server.app.api.v1.schemas.embed import (
     EmbedJobStatus,
     EmbedProcessingResult,
 )
-from server.app.database.config import get_core_pool
+from server.app.database.config import CoreDatabaseUnavailable, get_core_pool
 from server.app.database.sql import execute_sql
 
 LOGGER = logging.getLogger(__name__)
@@ -373,7 +373,7 @@ async def _read_lob_safe_rows(cursor) -> list[tuple]:
     return out
 
 
-class EmbedJobStoreUnavailable(RuntimeError):
+class EmbedJobStoreUnavailable(CoreDatabaseUnavailable):
     """Raised when a terminal write cannot reach the persisted row.
 
     The job was originally inserted while CORE was up, but the pool is
@@ -544,9 +544,6 @@ class OracleJobStore:
 async def _store_create(row: _JobRow) -> None:
     pool = get_core_pool()
     if pool is None:
-        # CORE was cleared between the endpoint's availability guard and this
-        # call; raise so the endpoint returns a retry-able 503 rather than
-        # accepting a submission that was never persisted.
         raise EmbedJobStoreUnavailable("Job state store is unavailable for this operation.")
     await OracleJobStore(pool).create(row)
     # Pin the pool that accepted the INSERT so subsequent reads / writes
@@ -572,8 +569,6 @@ async def _store_get(job_id: str) -> Optional[_JobRow]:
 async def _store_list_for_client(client: str, active_only: bool = False) -> list[_JobRow]:
     pool = get_core_pool()
     if pool is None:
-        # An empty list would imply "this client has no jobs" even though
-        # jobs may exist in CORE we just can't reach.
         raise EmbedJobStoreUnavailable(f"Job state store is unavailable for this operation (client {client}).")
     return await OracleJobStore(pool).list_for_client(client, active_only)
 

@@ -9,11 +9,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from server.app.core.schemas import ClientSettings
 from server.app.core.settings import settings
+from server.app.database.config import CoreDatabaseUnavailable
 from server.app.database.schemas import DatabaseConfig
 from server.app.database.settings import (
     SettingsPersistenceError,
+    delete_row,
     load_settings,
+    persist_client_settings,
     persist_settings,
     row_exists,
 )
@@ -42,8 +46,29 @@ def _set_core_pool() -> MagicMock:
 async def test_persist_settings_required_pool():
     settings.database_configs = []
 
-    with pytest.raises(SettingsPersistenceError, match="CORE database unavailable"):
-        await persist_settings(raise_on_error=True)
+    with pytest.raises(CoreDatabaseUnavailable, match="CORE database is unavailable"):
+        await persist_settings()
+
+
+async def test_persist_client_settings_required_pool():
+    settings.database_configs = []
+
+    with pytest.raises(CoreDatabaseUnavailable, match="CORE database is unavailable"):
+        await persist_client_settings("client", ClientSettings())
+
+
+async def test_persist_settings_propagates_write_failure():
+    _set_core_pool()
+    with (
+        patch(
+            "server.app.database.settings.execute_sql",
+            new_callable=AsyncMock,
+            side_effect=[[], RuntimeError("lost")],
+        ),
+        patch("server.app.oci.registry.get_oci_source_baseline", return_value={}),
+        pytest.raises(SettingsPersistenceError, match="Settings persistence failed"),
+    ):
+        await persist_settings()
 
 
 async def test_row_exists_propagates_startup_query_failure():
@@ -52,7 +77,7 @@ async def test_row_exists_propagates_startup_query_failure():
         patch("server.app.database.settings.execute_sql", new_callable=AsyncMock, side_effect=RuntimeError("lost")),
         pytest.raises(SettingsPersistenceError, match="row check failed"),
     ):
-        await row_exists("CONFIGURED", raise_on_error=True)
+        await row_exists("CONFIGURED")
 
 
 async def test_load_settings_propagates_startup_query_failure():
@@ -61,7 +86,7 @@ async def test_load_settings_propagates_startup_query_failure():
         patch("server.app.database.settings.execute_sql", new_callable=AsyncMock, side_effect=RuntimeError("lost")),
         pytest.raises(SettingsPersistenceError, match="load_settings failed"),
     ):
-        await load_settings("CONFIGURED", raise_on_error=True)
+        await load_settings("CONFIGURED")
 
 
 async def test_load_settings_keeps_malformed_payload_distinct_from_query_failure():
@@ -71,6 +96,15 @@ async def test_load_settings_keeps_malformed_payload_distinct_from_query_failure
         new_callable=AsyncMock,
         return_value=[("not-json",)],
     ):
-        result = await load_settings("CONFIGURED", raise_on_error=True)
+        result = await load_settings("CONFIGURED")
 
     assert result is None
+
+
+async def test_delete_row_propagates_query_failure():
+    _set_core_pool()
+    with (
+        patch("server.app.database.settings.execute_sql", new_callable=AsyncMock, side_effect=RuntimeError("lost")),
+        pytest.raises(SettingsPersistenceError, match="row deletion failed"),
+    ):
+        await delete_row("TEMP_CLIENT")

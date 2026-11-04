@@ -15,6 +15,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from server.app.api.v1.endpoints._helpers import _build_updates, _log_sensitive_read
+from server.app.api.v1.persistence import persistence_succeeded
 from server.app.core.constants import PERSIST_FAIL_DETAIL as _PERSIST_FAIL
 from server.app.core.secrets import REVEAL_KEY
 from server.app.core.settings import _settings_lock, settings
@@ -154,7 +155,7 @@ async def pull_model(provider: str, model_id: str):
             yield json.dumps(event) + "\n"
         if not error_occurred:
             await check_single_model(cfg)
-            if not await persist_settings():
+            if not await persistence_succeeded(persist_settings()):
                 yield json.dumps({"error": _PERSIST_FAIL}) + "\n"
             else:
                 yield json.dumps({"status": "success"}) + "\n"
@@ -187,7 +188,7 @@ async def create_model(body: ModelConfig):
             raise HTTPException(status_code=409, detail=f"Model config already exists: {body.provider}/{body.id}")
         settings.model_configs.append(body)
         await check_single_model(body)
-        if not await persist_settings():
+        if not await persistence_succeeded(persist_settings()):
             settings.model_configs.remove(body)
             raise HTTPException(status_code=503, detail=_PERSIST_FAIL)
         return body.model_dump(exclude=SENSITIVE_FIELDS)
@@ -217,7 +218,7 @@ async def update_model(provider: str, model_id: str, body: ModelUpdate):
         for field, value in updates.items():
             setattr(cfg, field, value)
         await check_single_model(cfg)
-        if not await persist_settings():
+        if not await persistence_succeeded(persist_settings()):
             for field, value in originals.items():
                 setattr(cfg, field, value)
             cfg.status = saved_status
@@ -236,7 +237,7 @@ async def delete_model(provider: str, model_id: str):
             raise HTTPException(status_code=404, detail=f"Model config not found: {provider}/{model_id}")
         idx = settings.model_configs.index(cfg)
         settings.model_configs.remove(cfg)
-        if not await persist_settings():
+        if not await persistence_succeeded(persist_settings()):
             settings.model_configs.insert(idx, cfg)
             raise HTTPException(status_code=503, detail=_PERSIST_FAIL)
         return None

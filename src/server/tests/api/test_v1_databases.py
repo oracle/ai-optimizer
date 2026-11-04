@@ -512,8 +512,8 @@ async def test_update_database_duplicate_credentials(app_client, auth_headers):
 
 @pytest.mark.unit
 @pytest.mark.anyio
-async def test_delete_vector_store_persist_failure_still_removes(app_client, auth_headers, mock_persist_settings):
-    """Persist failure after DROP TABLE still removes vector_stores entry (table is already gone)."""
+async def test_delete_vector_store_persist_failure_returns_503(app_client, auth_headers, mock_persist_settings):
+    """Persist failure after DROP TABLE reports the required CORE write failure."""
     vector_store = VectorStoreConfig(vector_store="VS_GONE", alias="vs")
     conn = AsyncMock()
     pool = _create_mock_pool(conn)
@@ -528,7 +528,7 @@ async def test_delete_vector_store_persist_failure_still_removes(app_client, aut
             headers=auth_headers,
         )
 
-    assert resp.status_code == 204
+    assert resp.status_code == 503
     mock_drop.assert_called_once_with(conn, "VS_GONE")
     assert settings.database_configs[0].vector_stores == []
 

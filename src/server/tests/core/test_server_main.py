@@ -79,7 +79,7 @@ class TestApplyConfiguredOverlay:
 
             await _apply_configured_overlay(set())
 
-        mock_load.assert_awaited_once_with("CONFIGURED", raise_on_error=True)
+        mock_load.assert_awaited_once_with("CONFIGURED")
         mock_overlay.assert_called_once()
 
     async def test_overlay_no_source_does_not_persist(self):
@@ -242,8 +242,7 @@ class TestLifespan:
         async def _track_oci():
             call_order.append("load_oci_profiles")
 
-        async def _track_persist(client, is_current=True, raise_on_error=False):
-            assert raise_on_error is True
+        async def _track_persist(client, is_current=True):
             del is_current
             call_order.append(f"persist_settings:{client}")
             return True

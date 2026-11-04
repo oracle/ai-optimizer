@@ -15,6 +15,7 @@ from fastapi.responses import JSONResponse
 
 from runtime_config_fields import RUNTIME_ONLY_FIELDS
 from server.app.api.v1.endpoints.chat import get_orchestrator
+from server.app.api.v1.persistence import persistence_succeeded
 from server.app.api.v1.schemas.common import ClientId
 from server.app.api.v1.schemas.settings import (
     ImportSectionResult,
@@ -40,6 +41,7 @@ from server.app.core.settings import (
     resolve_client,
     settings,
 )
+from server.app.database.config import CoreDatabaseUnavailable
 from server.app.database.registry import refresh_db_vector_stores
 from server.app.database.schemas import DatabaseSensitive, DatabaseUpdate
 from server.app.database.settings import (
@@ -284,7 +286,7 @@ async def copy_to_server(client: Annotated[ClientId, Query()] = "CONFIGURED"):
         server_cs.client = "server"
         old_server_cs = _client_store.get("server")
         _client_store["server"] = server_cs
-        if not await persist_client_settings("server", server_cs):
+        if not await persistence_succeeded(persist_client_settings("server", server_cs)):
             if old_server_cs is not None:
                 _client_store["server"] = old_server_cs
             else:
@@ -391,7 +393,7 @@ async def import_settings(body: SettingsImport, client: Annotated[ClientId, Quer
             await check_model_reachability()
 
         # --- Persist once — rollback everything on failure ---
-        if not await persist_settings(oci_user_touched=oci_touched):
+        if not await persistence_succeeded(persist_settings(oci_user_touched=oci_touched)):
             (settings.database_configs, settings.model_configs, settings.oci_configs, settings.log_level) = (
                 snapshot["db"],
                 snapshot["models"],
@@ -449,7 +451,7 @@ async def reset_to_factory():
             client_entries[key] = cs
 
         # Persist app state (models, prompts, CONFIGURED client) first
-        if not await persist_settings("CONFIGURED"):
+        if not await persistence_succeeded(persist_settings("CONFIGURED")):
             settings.model_configs = saved_models
             _restore_prompts(saved_prompts)
             settings.client_settings = saved_cs
@@ -457,11 +459,11 @@ async def reset_to_factory():
             _client_store.update(saved_store)
             raise HTTPException(status_code=503, detail=_PERSIST_FAIL)
 
-        # Persist non-CONFIGURED protected clients (best-effort after app state is safe)
+        # Persist non-CONFIGURED protected clients after app state is safe.
         for key, cs in client_entries.items():
             if key != "CONFIGURED":
-                if not await persist_client_settings(key, cs):
-                    LOGGER.warning("reset_to_factory: failed to persist client=%s", key)
+                if not await persistence_succeeded(persist_client_settings(key, cs)):
+                    raise HTTPException(status_code=503, detail=_PERSIST_FAIL)
 
         # 5. Evict non-protected client sessions
         for key in [k for k in _client_store if k not in _PROTECTED_CLIENTS]:
@@ -483,6 +485,10 @@ async def delete_client_settings(client: Annotated[ClientId, Query()]):
         if client not in _client_store:
             raise HTTPException(status_code=404, detail=f"Client '{client}' not found")
 
-        _client_store.pop(client)
-        await delete_row(client)
+        removed = _client_store.pop(client)
+        try:
+            await delete_row(client)
+        except CoreDatabaseUnavailable:
+            _client_store[client] = removed
+            raise HTTPException(status_code=503, detail=_PERSIST_FAIL) from None
         return Response(status_code=204)
