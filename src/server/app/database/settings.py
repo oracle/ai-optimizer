@@ -24,6 +24,10 @@ from .sql import execute_sql
 LOGGER = logging.getLogger(__name__)
 
 
+class SettingsPersistenceError(RuntimeError):
+    """Raised when required CORE settings persistence fails."""
+
+
 def hide_managed_db_configs(data: dict) -> None:
     """Strip DDS-managed (runtime-only) connections from a serialized settings ``data`` dict.
 
@@ -63,7 +67,13 @@ DELETE FROM aio_settings WHERE client = :client
 
 
 async def _upsert_settings_row(
-    pool: oracledb.AsyncConnectionPool, client: str, payload: dict, is_current: bool, *, label: str
+    pool: oracledb.AsyncConnectionPool,
+    client: str,
+    payload: dict,
+    is_current: bool,
+    *,
+    label: str,
+    raise_on_error: bool = False,
 ) -> bool:
     """Upsert *payload* into aio_settings for *client*.
 
@@ -83,6 +93,8 @@ async def _upsert_settings_row(
         LOGGER.info("%s persisted to aio_settings (client=%s)", label, client)
         return True
     except Exception as exc:
+        if raise_on_error:
+            raise SettingsPersistenceError(f"{label} persistence failed for client={client}") from None
         LOGGER.error("%s: failed to persist for client=%s: %s", label, client, exc)
         return False
 
@@ -92,12 +104,14 @@ async def persist_settings(
     is_current: bool = True,
     *,
     oci_user_touched: Optional[Mapping[str, Iterable[str]]] = None,
+    raise_on_error: bool = False,
 ) -> bool:
     """Serialize current settings and upsert into aio_settings.
 
     Returns ``True`` on success or when the CORE pool is unavailable
     (best-effort — the in-memory change is kept).  Returns ``False``
-    only when a pool exists and the write fails.
+    only when a pool exists and the write fails. ``raise_on_error`` makes
+    CORE availability and database operations required.
 
     ``oci_user_touched`` maps an OCI auth_profile (case-insensitive) to the set
     of GenAI fields the caller just explicitly changed. When a touched field's
@@ -107,6 +121,8 @@ async def persist_settings(
     """
     pool = get_core_pool()
     if not pool:
+        if raise_on_error:
+            raise SettingsPersistenceError("CORE database unavailable while persisting settings")
         LOGGER.warning("persist_settings: CORE database not available — skipping")
         return True
 
@@ -126,7 +142,14 @@ async def persist_settings(
     from server.app.oci.registry import get_oci_source_baseline  # noqa: PLC0415 — avoids circular import
 
     baseline = get_oci_source_baseline()
-    prior_raw = await _load_raw_settings(client, op="persist_settings:carry-forward") or {}
+    prior_raw = (
+        await _load_raw_settings(
+            client,
+            op="persist_settings:carry-forward",
+            raise_on_error=raise_on_error,
+        )
+        or {}
+    )
     prior_entries = prior_raw.get(_OCI_OVERLAY_KEY) or prior_raw.get("oci_configs") or []
     prior_overlay: dict[str, dict] = {}
     for prior_entry in prior_entries:
@@ -155,34 +178,48 @@ async def persist_settings(
             base_value = base.get(field)
             if current != base_value:
                 entry[field] = current
-            elif field not in touched and field in carry and (
-                env_masking[field] or carry[field] != base_value
-            ):
+            elif field not in touched and field in carry and (env_masking[field] or carry[field] != base_value):
                 entry[field] = carry[field]
         if len(entry) > 1:
             oci_entries.append(entry)
     payload[_OCI_OVERLAY_KEY] = oci_entries
 
-    return await _upsert_settings_row(pool, client, payload, is_current, label="Settings")
+    return await _upsert_settings_row(
+        pool,
+        client,
+        payload,
+        is_current,
+        label="Settings",
+        raise_on_error=raise_on_error,
+    )
 
 
-async def _load_raw_settings(client: str, *, op: str) -> Optional[dict]:
+async def _load_raw_settings(client: str, *, op: str, raise_on_error: bool = False) -> Optional[dict]:
     """Fetch and decode the JSON payload for *client*; returns None if unavailable or absent."""
     pool = get_core_pool()
     if not pool:
+        if raise_on_error:
+            raise SettingsPersistenceError(f"CORE database unavailable during {op}")
         LOGGER.info("%s: CORE database not available — skipping", op)
         return None
 
     try:
         async with pool.acquire() as conn:
             rows = await execute_sql(conn, _SELECT_SQL, {"client": client})
-        if not rows:
-            LOGGER.info("%s: No persisted settings found for client=%s", op, client)
-            return None
-        raw = rows[0][0]
-        data = json.loads(raw) if isinstance(raw, str) else raw
     except Exception as exc:
+        if raise_on_error:
+            raise SettingsPersistenceError(f"{op} failed for client={client}") from None
         LOGGER.warning("%s: Failed to load for client=%s: %s", op, client, exc)
+        return None
+    if not rows:
+        LOGGER.info("%s: No persisted settings found for client=%s", op, client)
+        return None
+
+    raw = rows[0][0]
+    try:
+        data = json.loads(raw) if isinstance(raw, str) else raw
+    except json.JSONDecodeError as exc:
+        LOGGER.warning("%s: Failed to decode for client=%s: %s", op, client, exc)
         return None
     if not isinstance(data, dict):
         # JSON column can hold arrays/scalars too; callers do mapping ops on
@@ -198,7 +235,7 @@ async def _load_raw_settings(client: str, *, op: str) -> Optional[dict]:
     return data
 
 
-async def load_settings(client: str = "CONFIGURED") -> Optional[SettingsBase]:
+async def load_settings(client: str = "CONFIGURED", *, raise_on_error: bool = False) -> Optional[SettingsBase]:
     """Load settings from aio_settings for the given client.
 
     Strips the OCI GenAI overlay keys before validating so generic callers
@@ -206,7 +243,7 @@ async def load_settings(client: str = "CONFIGURED") -> Optional[SettingsBase]:
     ``OciProfileConfig`` objects; ``load_oci_genai_overlay()`` reads the
     overlay directly.
     """
-    data = await _load_raw_settings(client, op="load_settings")
+    data = await _load_raw_settings(client, op="load_settings", raise_on_error=raise_on_error)
     if data is None:
         return None
     data.pop(_OCI_OVERLAY_KEY, None)
@@ -218,9 +255,9 @@ async def load_settings(client: str = "CONFIGURED") -> Optional[SettingsBase]:
         return None
 
 
-async def load_client_settings(client: str = "CONFIGURED") -> Optional[ClientSettings]:
+async def load_client_settings(client: str = "CONFIGURED", *, raise_on_error: bool = False) -> Optional[ClientSettings]:
     """Load client settings from aio_settings for the given client."""
-    data = await _load_raw_settings(client, op="load_client_settings")
+    data = await _load_raw_settings(client, op="load_client_settings", raise_on_error=raise_on_error)
     if data is None:
         return None
     cs_data = data.get("client_settings")
@@ -253,17 +290,17 @@ async def load_oci_genai_overlay(client: str = "CONFIGURED") -> dict[str, dict]:
         if not profile:
             continue
         overlay[profile.casefold()] = {
-            field: entry[field]
-            for field in ("genai_compartment_id", "genai_region")
-            if field in entry
+            field: entry[field] for field in ("genai_compartment_id", "genai_region") if field in entry
         }
     return overlay
 
 
-async def row_exists(client: str) -> bool:
+async def row_exists(client: str, *, raise_on_error: bool = False) -> bool:
     """Check whether a row exists in aio_settings for the given client."""
     pool = get_core_pool()
     if not pool:
+        if raise_on_error:
+            raise SettingsPersistenceError("CORE database unavailable while checking settings")
         return False
 
     try:
@@ -271,18 +308,29 @@ async def row_exists(client: str) -> bool:
             rows = await execute_sql(conn, _ROW_EXISTS_SQL, {"client": client})
         return bool(rows)
     except Exception:
+        if raise_on_error:
+            raise SettingsPersistenceError(f"Settings row check failed for client={client}") from None
         return False
 
 
-async def persist_client_settings(client: str, cs: ClientSettings, is_current: bool = False) -> bool:
+async def persist_client_settings(
+    client: str,
+    cs: ClientSettings,
+    is_current: bool = False,
+    *,
+    raise_on_error: bool = False,
+) -> bool:
     """Serialize a ClientSettings object and upsert into aio_settings.
 
     Returns ``True`` on success or when the CORE pool is unavailable
     (best-effort — the in-memory change is kept).  Returns ``False``
-    only when a pool exists and the write fails.
+    only when a pool exists and the write fails. ``raise_on_error`` makes
+    CORE availability and the write required.
     """
     pool = get_core_pool()
     if not pool:
+        if raise_on_error:
+            raise SettingsPersistenceError("CORE database unavailable while persisting client settings")
         LOGGER.warning("persist_client_settings: CORE database not available — skipping")
         return True
 
@@ -291,7 +339,14 @@ async def persist_client_settings(client: str, cs: ClientSettings, is_current: b
         "client_settings": cs.model_dump(mode="json", context={REVEAL_KEY: True}, exclude={"deep_data_security"})
     }
 
-    return await _upsert_settings_row(pool, client, payload, is_current, label="Client settings")
+    return await _upsert_settings_row(
+        pool,
+        client,
+        payload,
+        is_current,
+        label="Client settings",
+        raise_on_error=raise_on_error,
+    )
 
 
 async def delete_row(client: str) -> None:

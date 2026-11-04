@@ -16,6 +16,7 @@ from langchain_oracledb.vectorstores.oraclevs import DistanceStrategy
 
 from server.app.database.config import close_pool, create_pool
 from server.app.database.registry import (
+    CoreDatabaseInitializationError,
     discover_vector_stores,
     drop_vector_store,
     init_core_database,
@@ -404,7 +405,7 @@ class TestConnectionTimeout:
         del configure_db_env
         cfg = make_core_db_config(password="WRONG_PASSWORD_123")
 
-        with pytest.raises(oracledb.Error):
+        with pytest.raises(CoreDatabaseInitializationError, match="CORE database connection failed"):
             await init_core_database(cfg)
 
         assert cfg.usable is False

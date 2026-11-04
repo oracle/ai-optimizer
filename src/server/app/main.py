@@ -8,7 +8,6 @@ FastAPI application entrypoint.
 
 import asyncio
 import contextlib
-import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -47,7 +46,6 @@ from server.app.otel import init_telemetry, instrument_fastapi
 
 init_telemetry()
 
-LOGGER = logging.getLogger(__name__)
 #############################################################################
 # APP FACTORY
 #############################################################################
@@ -58,8 +56,8 @@ async def _apply_configured_overlay(protected: set[str]) -> None:
     source = load_config_file()
     from_file = source is not None
 
-    if not source and await row_exists("CONFIGURED"):
-        source = await load_settings("CONFIGURED")
+    if not source and await row_exists("CONFIGURED", raise_on_error=True):
+        source = await load_settings("CONFIGURED", raise_on_error=True)
 
     if source is not None:
         source = source.model_copy(deep=True)
@@ -85,64 +83,57 @@ async def lifespan(_app: FastAPI):
     if settings.api_key_generated:
         protected.discard("api_key")
 
-    # --- Phase 2: Init CORE database ---
+    # --- Phase 2: Init required CORE database ---
     core_db = require_core_database_config()
+    await init_core_database(core_db)
+
+    background_tasks: list[asyncio.Task] = []
     try:
-        await init_core_database(core_db)
-    except Exception:
-        LOGGER.exception("CORE database initialization failed — continuing without persistence")
+        # --- Phase 3: Build FACTORY baseline ---
+        await load_default_models()
+        apply_env_overrides()
+        load_factory_prompts()
+        await persist_settings("FACTORY", is_current=False, raise_on_error=True)
 
-    # --- Phase 3: Build FACTORY baseline ---
-    await load_default_models()
-    apply_env_overrides()
-    load_factory_prompts()
-    await persist_settings("FACTORY", is_current=False)
+        # --- Phase 4: Build/load CONFIGURED ---
+        await _apply_configured_overlay(protected)
 
-    # --- Phase 4: Build/load CONFIGURED ---
-    await _apply_configured_overlay(protected)
+        # --- Phase 4b: Init server client settings ---
+        server_cs = await load_client_settings("server", raise_on_error=True)
+        if server_cs is None:
+            server_cs = settings.client_settings.model_copy(deep=True)
+            await persist_client_settings("server", server_cs, raise_on_error=True)
+        server_cs.client = "server"
+        _client_store["server"] = server_cs
 
-    # --- Phase 4b: Init server client settings ---
-    server_cs = await load_client_settings("server")
-    if server_cs is None:
-        server_cs = settings.client_settings.model_copy(deep=True)
-        await persist_client_settings("server", server_cs)
-    server_cs.client = "server"
-    _client_store["server"] = server_cs
+        # --- Phase 5: Post-config startup ---
+        await load_oci_profiles()
+        await load_ollama_models()
+        register_mcp_prompts()
+        register_mcp_tools()
+        settings.nl2sql_available = await register_sqlcl_proxy() is not None
 
-    # --- Phase 5: Post-config startup ---
-    await load_oci_profiles()
-    await load_ollama_models()
-    register_mcp_prompts()
-    register_mcp_tools()
-    settings.nl2sql_available = await register_sqlcl_proxy() is not None
+        # Persist after OCI loading so the saved GenAI overlay is retained.
+        await persist_settings("CONFIGURED", is_current=True, raise_on_error=True)
 
-    # Persist CONFIGURED after load_oci_profiles() so the OCI GenAI overlay
-    # picked up from the previous run's row is preserved (an earlier persist
-    # would write an empty oci_configs list and erase it).
-    await persist_settings("CONFIGURED", is_current=True)
+        # --- Phase 6: Model reachability ---
+        await check_model_reachability()
 
-    # --- Phase 6: Model reachability ---
-    await check_model_reachability()
-
-    # --- Phase 7: Embed-job heartbeat + reaper ---
-    # Each replica heartbeats its own owned rows in aio_embed_jobs and
-    # also participates in the cross-pod reaper sweep. This is what
-    # turns a pod crash mid-pipeline into a terminal "failed" record
-    # for polling clients instead of an indefinite "running" row.
-    embed_job_manager = get_embed_job_manager()
-    heartbeat_task = asyncio.create_task(
-        run_heartbeat_loop(embed_job_manager),
-        name="embed-jobs-heartbeat",
-    )
-    reaper_task = asyncio.create_task(
-        run_reaper_loop(embed_job_manager),
-        name="embed-jobs-reaper",
-    )
-
-    try:
+        # --- Phase 7: Embed-job heartbeat + reaper ---
+        embed_job_manager = get_embed_job_manager()
+        background_tasks = [
+            asyncio.create_task(
+                run_heartbeat_loop(embed_job_manager),
+                name="embed-jobs-heartbeat",
+            ),
+            asyncio.create_task(
+                run_reaper_loop(embed_job_manager),
+                name="embed-jobs-reaper",
+            ),
+        ]
         yield
     finally:
-        for task in (heartbeat_task, reaper_task):
+        for task in background_tasks:
             task.cancel()
             with contextlib.suppress(BaseException):
                 await task

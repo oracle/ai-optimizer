@@ -9,7 +9,6 @@ Database initialization utilities for the server.
 import asyncio
 import json
 import logging
-from typing import Optional
 
 import oracledb
 from langchain_oracledb.vectorstores.oraclevs import DistanceStrategy
@@ -18,13 +17,53 @@ from server.app.embed.schemas import VectorStoreConfig
 from server.app.models.schemas import ModelIdentity
 
 from .config import close_pool, create_pool
-from .objects import RENAME_DDL, SCHEMA_DDL
+from .objects import RENAME_DDL, REQUIRED_SCHEMA_INDEXES, REQUIRED_SCHEMA_TABLES, SCHEMA_DDL
 from .schemas import DatabaseConfig
 from .sql import execute_sql, validate_vs_table_name
 
 LOGGER = logging.getLogger(__name__)
 
 _DISCOVERY_TIMEOUT_SECONDS = 2.0
+_STRICT_DDL_ERROR_CODES = frozenset()
+
+
+class CoreSchemaInitializationError(RuntimeError):
+    """Raised when CORE schema bootstrap postconditions are not satisfied."""
+
+
+class CoreDatabaseInitializationError(RuntimeError):
+    """Raised when CORE connection or schema initialization fails."""
+
+
+def _catalog_query(object_type: str, names: frozenset[str]) -> str:
+    quoted_names = ", ".join(f"'{name}'" for name in sorted(names))
+    catalog = {"table": "user_tables", "index": "user_indexes"}[object_type]
+    return f"SELECT {object_type}_name FROM {catalog} WHERE {object_type}_name IN ({quoted_names})"
+
+
+async def verify_core_schema(conn: oracledb.AsyncConnection) -> None:
+    """Verify every required CORE table and index exists."""
+    table_rows = await execute_sql(
+        conn,
+        _catalog_query("table", REQUIRED_SCHEMA_TABLES),
+        ignored_error_codes=_STRICT_DDL_ERROR_CODES,
+    )
+    index_rows = await execute_sql(
+        conn,
+        _catalog_query("index", REQUIRED_SCHEMA_INDEXES),
+        ignored_error_codes=_STRICT_DDL_ERROR_CODES,
+    )
+    present_tables = {row[0].upper() for row in table_rows or []}
+    present_indexes = {row[0].upper() for row in index_rows or []}
+    missing_tables = sorted(REQUIRED_SCHEMA_TABLES - present_tables)
+    missing_indexes = sorted(REQUIRED_SCHEMA_INDEXES - present_indexes)
+    if missing_tables or missing_indexes:
+        details = []
+        if missing_tables:
+            details.append(f"tables: {', '.join(missing_tables)}")
+        if missing_indexes:
+            details.append(f"indexes: {', '.join(missing_indexes)}")
+        raise CoreSchemaInitializationError(f"CORE schema verification failed; missing {'; '.join(details)}")
 
 
 async def discover_vector_stores(conn: oracledb.AsyncConnection) -> list[VectorStoreConfig]:
@@ -146,7 +185,7 @@ async def test_connection(db_config: DatabaseConfig) -> None:
             db_config.vector_stores = await discover_vector_stores(conn)
         db_config.usable = True
         db_config.pool = pool
-    except (oracledb.Error, ValueError, OSError):
+    except (oracledb.Error, ValueError, OSError, TimeoutError):
         db_config.usable = False
         db_config.vector_stores = []
         await close_pool(pool)
@@ -155,29 +194,29 @@ async def test_connection(db_config: DatabaseConfig) -> None:
 
 async def init_core_database(
     core_db_config: DatabaseConfig,
-) -> Optional[oracledb.AsyncConnectionPool]:
-    """Create database schema using oracledb if configuration is present.
-
-    Returns the connection pool on success so callers can manage its
-    lifecycle. When configuration is incomplete or connection fails, the
-    failure is logged and ``None`` is returned without interrupting startup.
-    """
+) -> oracledb.AsyncConnectionPool:
+    """Connect CORE, initialize its schema, and return the live pool."""
+    stage = "connection"
     try:
         await test_connection(core_db_config)
+        stage = "schema initialization"
         if core_db_config.pool is None:
-            return None
+            raise CoreSchemaInitializationError("CORE connection did not publish a pool")
         async with core_db_config.pool.acquire() as conn:
             conn.autocommit = True
             for rename in RENAME_DDL:
-                await execute_sql(conn, rename)
+                await execute_sql(conn, rename, ignored_error_codes=_STRICT_DDL_ERROR_CODES)
             for ddl in SCHEMA_DDL:
-                await execute_sql(conn, ddl)
+                await execute_sql(conn, ddl, ignored_error_codes=_STRICT_DDL_ERROR_CODES)
+            await verify_core_schema(conn)
         LOGGER.info("Oracle schema initialized")
         return core_db_config.pool
-    except (oracledb.Error, ValueError, TimeoutError) as exc:
-        LOGGER.warning("Oracle schema initialization failed: %s", exc)
+    except Exception as exc:
         core_db_config.usable = False
         core_db_config.vector_stores = []
         await close_pool(core_db_config.pool)
         core_db_config.pool = None
-        raise
+        if isinstance(exc, CoreSchemaInitializationError):
+            raise
+        LOGGER.error("CORE database %s failed; category=%s", stage, type(exc).__name__)
+        raise CoreDatabaseInitializationError(f"CORE database {stage} failed") from None

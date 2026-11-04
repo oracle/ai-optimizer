@@ -15,7 +15,10 @@ import pytest
 from pydantic import SecretStr
 
 from server.app.database.config import close_pool
+from server.app.database.objects import REQUIRED_SCHEMA_INDEXES, REQUIRED_SCHEMA_TABLES
 from server.app.database.registry import (
+    CoreDatabaseInitializationError,
+    CoreSchemaInitializationError,
     discover_vector_stores,
     drop_vector_store,
     init_core_database,
@@ -116,7 +119,10 @@ async def test_test_connection_success():
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("error", [oracledb.Error("connection refused"), OSError("host not found")])
+@pytest.mark.parametrize(
+    "error",
+    [oracledb.Error("connection refused"), OSError("host not found"), TimeoutError("connection timed out")],
+)
 async def test_test_connection_failure(error):
     """test_connection sets usable=False, closes pool, and re-raises on failure."""
     cfg = DatabaseConfig(alias="TEST", username="u", password=SecretStr("p"), dsn="d")
@@ -146,9 +152,16 @@ async def test_init_core_database_success():
     mock_conn = AsyncMock()
     mock_pool = _make_mock_pool(mock_conn)
 
+    async def _execute(_conn, sql, **_kwargs):
+        if "FROM user_tables" in sql:
+            return [(name,) for name in REQUIRED_SCHEMA_TABLES]
+        if "FROM user_indexes" in sql:
+            return [(name,) for name in REQUIRED_SCHEMA_INDEXES]
+        return None
+
     with (
         patch("server.app.database.registry.test_connection", new_callable=AsyncMock) as mock_test,
-        patch("server.app.database.registry.execute_sql", new_callable=AsyncMock) as mock_exec,
+        patch("server.app.database.registry.execute_sql", new_callable=AsyncMock, side_effect=_execute) as mock_exec,
     ):
 
         async def _set_pool(db_cfg):
@@ -160,13 +173,70 @@ async def test_init_core_database_success():
         result = await init_core_database(cfg)
 
     assert result is mock_pool
-    # DDL executed for each statement in SCHEMA_DDL
     assert mock_exec.await_count > 0
 
 
 @pytest.mark.unit
+async def test_init_core_database_fails_schema_postconditions():
+    """Missing required schema objects close CORE and abort initialization."""
+    cfg = DatabaseConfig(alias="CORE", username="u", password=SecretStr("p"), dsn="d")
+    mock_conn = AsyncMock()
+    mock_pool = _make_mock_pool(mock_conn)
+
+    async def _set_pool(db_cfg):
+        db_cfg.pool = mock_pool
+        db_cfg.usable = True
+
+    async def _execute(_conn, sql, **_kwargs):
+        if "FROM user_tables" in sql:
+            return [(name,) for name in REQUIRED_SCHEMA_TABLES]
+        if "FROM user_indexes" in sql:
+            return []
+        return None
+
+    with (
+        patch("server.app.database.registry.test_connection", new_callable=AsyncMock, side_effect=_set_pool),
+        patch("server.app.database.registry.execute_sql", new_callable=AsyncMock, side_effect=_execute),
+        patch("server.app.database.registry.close_pool", new_callable=AsyncMock) as mock_close,
+        pytest.raises(CoreSchemaInitializationError, match="AIO_EMBED_JOBS_CLIENT_IX"),
+    ):
+        await init_core_database(cfg)
+
+    assert cfg.usable is False
+    assert cfg.pool is None
+    mock_close.assert_awaited_once_with(mock_pool)
+
+
+@pytest.mark.unit
+async def test_init_core_database_sanitizes_schema_execution_failure():
+    """A schema DDL error closes CORE and raises a stage-specific error."""
+    cfg = DatabaseConfig(alias="CORE", username="u", password=SecretStr("p"), dsn="d")
+    mock_pool = _make_mock_pool(AsyncMock())
+
+    async def _set_pool(db_cfg):
+        db_cfg.pool = mock_pool
+        db_cfg.usable = True
+
+    with (
+        patch("server.app.database.registry.test_connection", new_callable=AsyncMock, side_effect=_set_pool),
+        patch(
+            "server.app.database.registry.execute_sql",
+            new_callable=AsyncMock,
+            side_effect=oracledb.Error("DDL failed"),
+        ),
+        patch("server.app.database.registry.close_pool", new_callable=AsyncMock) as mock_close,
+        pytest.raises(CoreDatabaseInitializationError, match="CORE database schema initialization failed"),
+    ):
+        await init_core_database(cfg)
+
+    assert cfg.usable is False
+    assert cfg.pool is None
+    mock_close.assert_awaited_once_with(mock_pool)
+
+
+@pytest.mark.unit
 async def test_init_core_database_failure():
-    """init_core_database cleans up pool, sets usable=False, and re-raises."""
+    """Connection failure is sanitized after CORE state is cleaned up."""
     cfg = DatabaseConfig(alias="CORE", username="u", password=SecretStr("p"), dsn="d")
 
     with (
@@ -176,7 +246,7 @@ async def test_init_core_database_failure():
             side_effect=oracledb.Error("connect failed"),
         ),
         patch("server.app.database.registry.close_pool", new_callable=AsyncMock) as mock_close,
-        pytest.raises(oracledb.Error),
+        pytest.raises(CoreDatabaseInitializationError, match="CORE database connection failed"),
     ):
         await init_core_database(cfg)
 
@@ -431,13 +501,15 @@ async def test_test_connection_real(configure_db_env):
 @pytest.mark.integration
 @pytest.mark.db
 async def test_init_core_database_real(configure_db_env):
-    """Real init creates schema tables and returns pool."""
+    """Real initialization creates, verifies, and idempotently reopens CORE."""
     del configure_db_env
     cfg = make_core_db_config()
     pool = None
     try:
         pool = await init_core_database(cfg)
-        assert pool is not None
+        assert cfg.usable is True
+        await close_pool(pool)
+        pool = await init_core_database(cfg)
         assert cfg.usable is True
     finally:
         await close_pool(pool)

@@ -181,13 +181,10 @@ def start_server() -> None:
 
     if not _wait_for_server_ready(proc):
         if proc.poll() is not None:
-            stderr = log_path.read_text()
             LOGGER.error(
-                "Server process exited (code %d). PYTHONPATH=%s\nSee %s\n%s",
+                "Server process exited during startup (code %d). See server log: %s",
                 proc.returncode,
-                src_dir,
                 log_path,
-                stderr.strip(),
             )
             _SERVER["process"] = None
             log_fh.close()

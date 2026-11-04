@@ -933,6 +933,30 @@ class TestStartServer:
             start_server()
         assert settings.server_url == "http://127.0.0.1:8000"
 
+    def test_startup_exit_points_to_server_log(self, caplog):
+        """An early server exit reports the log location without copying its contents."""
+        mock_proc = MagicMock()
+        mock_proc.poll.return_value = 1
+        mock_proc.returncode = 1
+        mock_fh = MagicMock()
+        settings = _mock_settings()
+        with (
+            patch(f"{MODULE}._SERVER", {"process": None, "log_file": None}),
+            patch(f"{MODULE}.settings", settings),
+            patch(f"{MODULE}._spawn_server", return_value=(mock_proc, mock_fh)),
+            patch(f"{MODULE}._wait_for_server_ready", return_value=False),
+            patch(f"{MODULE}.atexit.register"),
+            caplog.at_level("ERROR"),
+        ):
+            from client.app.core.api import start_server
+
+            start_server()
+
+        assert "Server process exited during startup (code 1)" in caplog.text
+        assert "See server log:" in caplog.text
+        assert "apiserver_8000.log" in caplog.text
+        mock_fh.close.assert_called_once_with()
+
     def test_skips_spawn_when_server_module_absent(self, tmp_path):
         """Component-specific images (Helm client pod, server-only image)
         strip the unused tree. With no `server/` directory under src/, the
