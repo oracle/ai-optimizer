@@ -25,6 +25,7 @@ jobs:
       contents: read
     outputs:
       python-variants: ${{ steps.changes.outputs.python-variants }}
+      aio-integration: ${{ steps.changes.outputs.aio-integration }}
       helm: ${{ steps.changes.outputs.helm }}
       opentofu: ${{ steps.changes.outputs.opentofu }}
     steps:
@@ -39,6 +40,7 @@ jobs:
           # workflow_dispatch → run everything
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo 'python-variants=["client","server"]' >> $GITHUB_OUTPUT
+            echo "aio-integration=true" >> $GITHUB_OUTPUT
             echo "helm=true" >> $GITHUB_OUTPUT
             echo "opentofu=true" >> $GITHUB_OUTPUT
             exit 0
@@ -53,7 +55,7 @@ jobs:
 
           # Python-specific shared paths (project metadata, lint config, common
           # test/runtime modules, and the Python composite action).
-          PYTHON_INFRA_RE="^(pyproject\.toml|uv\.lock|pytest\.ini|\.yamllint|src/tests/|src/_version\.py|src/logging_config\.py|\.github/actions/setup-python-uv/)|$CI_INFRA_RE"
+          PYTHON_INFRA_RE="^(conftest\.py|pyproject\.toml|uv\.lock|pytest\.ini|\.yamllint|src/conftest\.py|src/tests/|src/_version\.py|src/logging_config\.py|\.github/actions/setup-python-uv/)|$CI_INFRA_RE"
 
           CLIENT=false
           SERVER=false
@@ -73,6 +75,12 @@ jobs:
             VARIANTS='["server"]'
           fi
           echo "python-variants=$VARIANTS" >> $GITHUB_OUTPUT
+
+          if echo "$CHANGED" | grep -qE "^src/aio/|^src/client/app/(main\.py|core/(api|local_bootstrap)\.py|content/local_database_setup\.py)|$PYTHON_INFRA_RE"; then
+            echo "aio-integration=true" >> $GITHUB_OUTPUT
+          else
+            echo "aio-integration=false" >> $GITHUB_OUTPUT
+          fi
 
           # Helm — chart sources, the pytest contract suite, or CI wiring.
           if echo "$CHANGED" | grep -qE "^helm/|^tests/helm/|$CI_INFRA_RE"; then
@@ -124,11 +132,10 @@ jobs:
 
       - name: Run Tests
         env:
-          PYTHON_VERSION: ${{ matrix.python-version }}
           VARIANT: ${{ matrix.variant }}
         run: |
           marker_args=()
-          if [[ "$VARIANT" == server && "$PYTHON_VERSION" != 3.14 ]]; then
+          if [[ "$VARIANT" == server ]]; then
             marker_args=(-m "not db")
           fi
           pytest "src/$VARIANT/tests" src/tests -v \
@@ -146,6 +153,50 @@ jobs:
           path: |
             test-results-${{ matrix.variant }}.xml
             coverage-${{ matrix.variant }}.xml
+
+  check-db-aio:
+    needs: detect-changes
+    if: >-
+      contains(needs.detect-changes.outputs.python-variants, 'server') ||
+      needs.detect-changes.outputs.aio-integration == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    name: check-db-aio-python-3.14
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Python + uv
+        uses: ./.github/actions/setup-python-uv
+        with:
+          python-version: "3.14"
+          extras: all
+
+      - name: Run Pyright
+        run: pyright src/aio src/conftest.py src/tests/oracle.py
+
+      - name: Run Ruff
+        run: ruff check src/aio src/conftest.py src/tests/oracle.py
+
+      - name: Run Oracle and all-in-one integration tests
+        run: >-
+          pytest src/server/tests src/aio/tests -m db -v
+          --junitxml=test-results-db-aio.xml
+          --cov=src/server
+          --cov-report=xml:coverage-db-aio.xml
+          --cov-report=term
+
+      - name: Upload Test Results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: test-results-db-aio-python-3.14
+          path: |
+            test-results-db-aio.xml
+            coverage-db-aio.xml
 
   check-helm:
     needs: detect-changes
@@ -299,6 +350,7 @@ jobs:
     needs:
       - detect-changes
       - check-python
+      - check-db-aio
       - check-helm
       - check-opentofu
     if: always() && (github.event.pull_request.draft == false || github.event_name == 'workflow_dispatch')
@@ -310,6 +362,7 @@ jobs:
         run: |
           echo "detect-changes: ${{ needs.detect-changes.result }}"
           echo "check-python:   ${{ needs.check-python.result }}"
+          echo "check-db-aio:   ${{ needs.check-db-aio.result }}"
           echo "check-helm:     ${{ needs.check-helm.result }}"
           echo "check-opentofu: ${{ needs.check-opentofu.result }}"
 
