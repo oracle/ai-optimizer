@@ -13,9 +13,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Generator
 
-import docker
 import pytest
-from docker.errors import DockerException
 
 TEST_DB_CONFIG = {
     "db_username": "PYTEST",
@@ -30,8 +28,11 @@ READY_LOG_MARKER = "DATABASE IS READY TO USE!"
 
 @contextmanager
 def _oracle_container() -> Generator:
+    from docker import from_env
+    from docker.errors import DockerException
+
     try:
-        client = docker.from_env()
+        client = from_env()
     except DockerException as exc:  # pragma: no cover - unit tests mock this
         pytest.skip(f"Docker not available: {exc}", allow_module_level=True)
 
@@ -112,6 +113,8 @@ def _wait_for_ready(container, timeout: int = 300) -> None:
 
 
 def _remove_existing(client) -> None:
+    from docker.errors import DockerException
+
     try:
         existing = client.containers.list(all=True, filters={"name": CONTAINER_NAME})
     except DockerException:

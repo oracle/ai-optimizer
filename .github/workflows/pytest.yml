@@ -55,7 +55,7 @@ jobs:
 
           # Python-specific shared paths (project metadata, lint config, common
           # test/runtime modules, and the Python composite action).
-          PYTHON_INFRA_RE="^(conftest\.py|pyproject\.toml|uv\.lock|pytest\.ini|\.yamllint|src/conftest\.py|src/tests/|src/_version\.py|src/logging_config\.py|\.github/actions/setup-python-uv/)|$CI_INFRA_RE"
+          PYTHON_INFRA_RE="^(conftest\.py|pyproject\.toml|uv\.lock|pytest\.ini|\.yamllint|src/tests/|src/_version\.py|src/logging_config\.py|\.github/actions/setup-python-uv/)|$CI_INFRA_RE"
           AIO_RE='^src/(aio/|client/app/(main\.py|core/(api|local_bootstrap|secrets|settings)\.py|content/local_database_setup\.py))'
 
           CLIENT=false
@@ -177,10 +177,10 @@ jobs:
           extras: all
 
       - name: Run Pyright
-        run: pyright src/aio src/conftest.py src/tests/oracle.py
+        run: pyright src/aio conftest.py src/tests/oracle.py
 
       - name: Run Ruff
-        run: ruff check src/aio src/conftest.py src/tests/oracle.py
+        run: ruff check src/aio conftest.py src/tests/oracle.py
 
       - name: Run Oracle and all-in-one integration tests
         run: >-

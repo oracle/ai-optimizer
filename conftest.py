@@ -24,6 +24,8 @@ pytest-asyncio). Such tests must be written as ``async def``.
 
 import pytest
 
+pytest_plugins = ("tests.oracle",)
+
 
 @pytest.fixture
 def anyio_backend() -> str:
