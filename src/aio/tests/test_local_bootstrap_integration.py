@@ -1,6 +1,6 @@
 """
 Copyright (c) 2024, 2026, Oracle and/or its affiliates.
-Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
+Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/upl.
 
 Real-Oracle validation for client-managed local server bootstrap.
 """
@@ -10,10 +10,11 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
+from pydantic import SecretStr
 
 from client.app.core import api
 from client.app.core.local_bootstrap import LocalCoreConfig
-from server.tests.conftest import make_core_db_config
+from tests.oracle import TEST_DB_CONFIG
 
 pytestmark = [pytest.mark.db, pytest.mark.integration]
 
@@ -27,12 +28,10 @@ def _unused_local_port() -> int:
 def test_local_bootstrap_starts_server_with_real_core(oracle_db_container, tmp_path):
     """Submitted local credentials pass the normal server lifespan gate."""
     del oracle_db_container
-    database = make_core_db_config()
-    assert database.username and database.password and database.dsn
     core = LocalCoreConfig(
-        username=database.username,
-        password=database.password,
-        dsn=database.dsn,
+        username=TEST_DB_CONFIG["db_username"],
+        password=SecretStr(TEST_DB_CONFIG["db_password"]),
+        dsn=TEST_DB_CONFIG["db_dsn"],
     )
     local_settings = SimpleNamespace(
         server_url="http://localhost",
