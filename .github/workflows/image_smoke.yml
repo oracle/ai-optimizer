@@ -77,9 +77,20 @@ jobs:
           IMAGE: ${{ matrix.build.name }}:${{ github.sha }}
           COMPONENTS: ${{ matrix.build.components }}
         run: |
+          DB_NAME="test-${{ matrix.build.name }}-oracle"
+          DB_NETWORK="test-${{ matrix.build.name }}-network"
+          DB_USERNAME="SMOKE"
+          DB_PASSWORD="OrA_41_3xPl0d3r"
+
           fail() {
             echo "❌ $NAME: $1"
             docker logs "$NAME" 2>&1 || true
+            exit 1
+          }
+
+          fail_database() {
+            echo "❌ $DB_NAME: $1"
+            docker logs "$DB_NAME" 2>&1 || true
             exit 1
           }
 
@@ -87,18 +98,69 @@ jobs:
             [ "$(docker inspect --format '{{.State.Running}}' "$NAME")" = true ]
           }
 
+          start_database() {
+            docker run -d --name "$DB_NAME" \
+              --network "$DB_NETWORK" \
+              --network-alias core-db \
+              -e ORACLE_PWD="$DB_PASSWORD" \
+              -e ORACLE_PDB=FREEPDB1 \
+              container-registry.oracle.com/database/free:latest-lite
+
+            DEADLINE=$((SECONDS + 300))
+            while (( SECONDS < DEADLINE )); do
+              if [ "$(docker inspect --format '{{.State.Running}}' "$DB_NAME")" != true ]; then
+                fail_database "container exited during startup"
+              fi
+              if docker logs "$DB_NAME" 2>&1 | grep -q "DATABASE IS READY TO USE!"; then
+                break
+              fi
+              sleep 5
+            done
+            if ! docker logs "$DB_NAME" 2>&1 | grep -q "DATABASE IS READY TO USE!"; then
+              fail_database "database did not become ready within 300 seconds"
+            fi
+
+            docker exec -i "$DB_NAME" sqlplus -s / as sysdba <<'SQL'
+          WHENEVER SQLERROR EXIT SQL.SQLCODE
+          ALTER SESSION SET CONTAINER=FREEPDB1;
+          CREATE TABLESPACE IF NOT EXISTS USERS DATAFILE '/opt/oracle/oradata/FREE/FREEPDB1/users_01.dbf' SIZE 100M;
+          CREATE USER IF NOT EXISTS SMOKE IDENTIFIED BY OrA_41_3xPl0d3r
+            DEFAULT TABLESPACE USERS
+            TEMPORARY TABLESPACE TEMP;
+          GRANT DB_DEVELOPER_ROLE TO SMOKE;
+          ALTER USER SMOKE DEFAULT ROLE ALL;
+          ALTER USER SMOKE QUOTA UNLIMITED ON USERS;
+          EXIT;
+          SQL
+          }
+
+          docker network create "$DB_NETWORK"
           for COMPONENT in $COMPONENTS; do
             NAME="test-${{ matrix.build.name }}-$COMPONENT"
             case "$COMPONENT" in
               client) PORT=8501; PROBE=/_stcore/health ;;
-              server) PORT=8000; PROBE=/v1/liveness ;;
+              server)
+                PORT=8000
+                PROBE=/v1/liveness
+                start_database
+                ;;
               *) fail "unknown component: $COMPONENT" ;;
             esac
             echo "Testing $IMAGE in $COMPONENT mode..."
 
+            DATABASE_ENV=()
+            if [ "$COMPONENT" = server ]; then
+              DATABASE_ENV=(
+                -e "AIO_DB_USERNAME=$DB_USERNAME"
+                -e "AIO_DB_PASSWORD=$DB_PASSWORD"
+                -e AIO_DB_DSN=core-db:1521/FREEPDB1
+              )
+            fi
             docker run -d --name "$NAME" \
+              --network "$DB_NETWORK" \
               -p "127.0.0.1::$PORT" \
               -e AIO_API_KEY=test-key-for-ci \
+              "${DATABASE_ENV[@]}" \
               "$IMAGE" "$COMPONENT"
             URL="http://$(docker port "$NAME" "$PORT/tcp")$PROBE"
 
@@ -134,6 +196,8 @@ jobs:
             docker stop "$NAME" 2>/dev/null || true
             docker rm "$NAME" 2>/dev/null || true
           done
+          docker rm --force "test-${{ matrix.build.name }}-oracle" 2>/dev/null || true
+          docker network rm "test-${{ matrix.build.name }}-network" 2>/dev/null || true
 
   # Summary job
   image-validation-summary:

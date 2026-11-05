@@ -123,12 +123,20 @@ jobs:
         run: ruff check src/${{ matrix.variant }}
 
       - name: Run Tests
-        run: >-
-          pytest src/${{ matrix.variant }}/tests src/tests -v
-          --junitxml=test-results-${{ matrix.variant }}.xml
-          --cov=src/${{ matrix.variant }}
-          --cov-report=xml:coverage-${{ matrix.variant }}.xml
-          --cov-report=term
+        env:
+          PYTHON_VERSION: ${{ matrix.python-version }}
+          VARIANT: ${{ matrix.variant }}
+        run: |
+          marker_args=()
+          if [[ "$VARIANT" == server && "$PYTHON_VERSION" != 3.14 ]]; then
+            marker_args=(-m "not db")
+          fi
+          pytest "src/$VARIANT/tests" src/tests -v \
+            "${marker_args[@]}" \
+            --junitxml="test-results-$VARIANT.xml" \
+            --cov="src/$VARIANT" \
+            --cov-report="xml:coverage-$VARIANT.xml" \
+            --cov-report=term
 
       - name: Upload Test Results
         if: always()
