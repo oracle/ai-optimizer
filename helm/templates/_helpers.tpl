@@ -195,17 +195,11 @@ Define the API Key Secret with Defaults
 
 
 {{/* ******************************************
-Validate that either client.cookieSecret or client.cookieSecretName is provided.
-The cookie secret must be stable and operator-provided so Streamlit state remains
-consistent across replicas. Same contract as global.api.apiKey.
+Reject ambiguous Client cookie-secret ownership.
 *********************************************** */}}
-{{- define "ai-optimizer.client.cookieKeyOrSecretName.required" -}}
+{{- define "ai-optimizer.client.cookieBothSet.fail" -}}
   {{- $cookieSecret := .Values.client.cookieSecret | trim | default "" -}}
   {{- $secretName := .Values.client.cookieSecretName | trim | default "" -}}
-
-  {{- if and (eq $cookieSecret "") (eq $secretName "") -}}
-    {{- fail "You must specify either client.cookieSecret or client.cookieSecretName" -}}
-  {{- end -}}
 
   {{- if and (ne $cookieSecret "") (ne $secretName "") -}}
     {{- fail "You cannot specify both client.cookieSecret and client.cookieSecretName; please choose one" -}}
@@ -273,34 +267,23 @@ rationale as the cookie helpers: whitespace-only values are treated as unset.
 {{- end }}
 
 {{/* ******************************************
-Checksum used to roll the client Deployment when the cookie-signing secret
-changes. Two branches:
-
-  * Inline path (.Values.client.cookieSecret set): hash the rendered cookie-secret.yaml.
-    The hash changes whenever the chart-managed Secret's value changes.
-
-  * External path (.Values.client.cookieSecretName set): use `lookup` to read
-    the operator-owned Secret from the cluster and hash its current data. On
-    `helm upgrade` after the operator rotates the Secret in place, the content
-    changes → hash changes → pods roll. During `helm template` / `--dry-run` /
-    first install, `lookup` returns empty; we fall back to a name-keyed
-    sentinel so the annotation is still stable and distinct per configuration.
-
-Rotation workflow for the external path: operator rotates the Secret, then
-runs `helm upgrade` (or equivalent CD step). Fully automated rotation on
-Secret-change requires a reloader controller and is out of scope for this chart.
+Checksum used to roll the Client when its cookie-signing Secret changes.
 *********************************************** */}}
 {{- define "ai-optimizer.client.cookieSecretChecksum" -}}
-{{- if .Values.client.cookieSecret | trim -}}
-{{- include (print $.Template.BasePath "/client/cookie-secret.yaml") . | sha256sum -}}
+{{- $inline := .Values.client.cookieSecret | trim -}}
+{{- $externalName := .Values.client.cookieSecretName | trim -}}
+{{- $name := include "ai-optimizer.client.cookieSecretName" . -}}
+{{- $key := include "ai-optimizer.client.cookieSecretKey" . -}}
+{{- if $inline -}}
+{{- printf "inline:%s:%s:%s" $name $key $inline | sha256sum -}}
 {{- else -}}
-  {{- $name := include "ai-optimizer.client.cookieSecretName" . -}}
-  {{- $key := include "ai-optimizer.client.cookieSecretKey" . -}}
   {{- $found := lookup "v1" "Secret" .Release.Namespace $name -}}
   {{- if and $found $found.data (hasKey $found.data $key) -}}
 {{- printf "live:%s:%s" $name (index $found.data $key) | sha256sum -}}
+  {{- else if $externalName -}}
+{{- printf "external:%s:%s" $name $key | sha256sum -}}
   {{- else -}}
-{{- printf "unresolved:%s:%s" $name $key | sha256sum -}}
+{{- printf "generated:%s:%s" $name $key | sha256sum -}}
   {{- end -}}
 {{- end -}}
 {{- end -}}

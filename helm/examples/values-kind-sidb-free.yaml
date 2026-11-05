@@ -3,6 +3,10 @@
 # spell-checker: ignore sidb ollama
 
 # Example Helm Values for Containerized SIDB
+global:
+  api:
+    secretName: ai-optimizer-api
+
 server:
   replicaCount: 1
   image:

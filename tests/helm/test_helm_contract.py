@@ -2,11 +2,11 @@
 Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 
-Contract tests for the Helm chart: enforce explicit operator configuration of
-the client cookie-signing secret, mirroring the existing apiKey pattern.
+Contract tests for the Helm chart.
 """
 # spell-checker: disable
 
+import base64
 import os
 import re
 import shutil
@@ -273,18 +273,23 @@ def _extract_checksum(rendered: str) -> str:
 
 
 class TestClientCookieSecretContract:
-    """client.cookieSecret must be operator-supplied — no silent fallback."""
+    """The chart owns a stable cookie Secret unless an override is supplied."""
 
-    def test_fails_when_neither_provided(self):
-        """helm template must fail if neither client.cookieSecret nor client.cookieSecretName is set."""
+    def test_generates_when_neither_provided(self):
+        """The default render creates one random 32-character cookie Secret."""
         result = _render()
-        assert result.returncode != 0, (
-            "helm template should fail when no cookie secret is configured; "
-            f"got rc={result.returncode}\nstdout={result.stdout[:500]}"
-        )
-        assert "cookieSecret" in result.stderr or "cookieSecretName" in result.stderr, (
-            f"expected failure message to mention cookieSecret/cookieSecretName; got: {result.stderr[:500]}"
-        )
+        assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
+        docs = _docs(result.stdout)
+        chart_cookie_secrets = _chart_rendered_cookie_secrets(docs)
+        assert len(chart_cookie_secrets) == 1
+        encoded = chart_cookie_secrets[0]["data"]["cookieSecret"]
+        generated = base64.b64decode(encoded).decode()
+        assert len(generated) == 32
+        assert generated.isalnum()
+
+        deployment = _client_deployment(docs)
+        secret_name = chart_cookie_secrets[0]["metadata"]["name"]
+        assert _cookie_env(deployment)["valueFrom"]["secretKeyRef"]["name"] == secret_name
 
     def test_succeeds_with_inline_value(self):
         """helm template must succeed when client.cookieSecret is set inline."""
@@ -347,14 +352,18 @@ class TestClientCookieSecretContract:
             "Secret; see reviewer finding P2"
         )
 
+    def test_generated_secret_uses_lookup(self):
+        """Live upgrades reuse the value stored in the chart-managed Secret."""
+        secret_tpl = (CHART_DIR / "templates" / "client" / "cookie-secret.yaml").read_text()
+        assert 'lookup "v1" "Secret"' in secret_tpl
+        assert "randAlphaNum 32" in secret_tpl
+
     def test_whitespace_only_cookie_secret_routes_to_external_path(self):
         """P2: whitespace cookieSecret + external cookieSecretName must take external path.
 
-        The validator already trims both values, so this combination passes the
-        "exactly one" check. But the render paths used raw values — meaning the
-        chart would render its OWN Secret named after the external name,
-        silently clobbering the operator-owned Secret. The fix is to trim
-        consistently across every site that branches on these values.
+        Render paths must use the same trimmed values as validation. Otherwise
+        the chart could render its own Secret under the external name and
+        clobber an operator-owned Secret.
         """
         result = _render_raw(
             "--set-string",
@@ -401,17 +410,16 @@ class TestClientCookieSecretContract:
         deployment = _client_deployment(docs)
         assert _cookie_env(deployment)["valueFrom"]["secretKeyRef"]["name"] == name
 
-    def test_whitespace_only_both_fails_validation(self):
-        """P2 invariant: both-whitespace must still fail validation (not slip through)."""
+    def test_whitespace_only_both_uses_generated_secret(self):
+        """Whitespace-only overrides select the chart-managed default."""
         result = _render_raw(
             "--set-string",
             "client.cookieSecret=   ",
             "--set-string",
             "client.cookieSecretName=   ",
         )
-        assert result.returncode != 0, (
-            "both whitespace-only values must fail the required validator, just like both empty would"
-        )
+        assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
+        assert len(_chart_rendered_cookie_secrets(_docs(result.stdout))) == 1
 
     def test_external_secret_checksum_varies_by_name(self):
         """Black-box check: two different cookieSecretName values must produce

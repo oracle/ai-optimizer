@@ -183,7 +183,7 @@ jobs:
       - name: Run Helm Lint (strict, with required values)
         run: >-
           helm lint --strict helm/
-          --set global.api.apiKey=test-api-key
+          --values helm/examples/values-kind-other.yaml
           --set client.cookieSecret=test-cookie-32-char-test-key-padding
 
       - name: Run Helm Package (validate chart builds)
@@ -191,19 +191,37 @@ jobs:
         env:
           RUNNER_TEMP: ${{ runner.temp }}
 
-      # Render every example values file end-to-end. Catches regressions
-      # the lint+package pair can miss — e.g., a helper rename that breaks
-      # template resolution, or a schema tightening that rejects a shape
-      # the example files rely on.
+      # Render local examples and each supported production overlay.
       - name: helm template against examples
         run: |
           shopt -s nullglob
           failed=0
-          for f in helm/examples/*.yaml; do
+          for f in helm/examples/values-kind-*.yaml; do
             echo "::group::$f"
             if ! helm template ci helm/ \
                 --values "$f" \
-                --set global.api.apiKey=ci-test \
+                --set client.cookieSecret=ci-cookie-32-char-test-key-padding \
+                --set server.database.adb.skipCrdCheck=true >/dev/null; then
+              failed=1
+            fi
+            echo "::endgroup::"
+          done
+
+          base=helm/examples/values-adb-s.yaml
+          echo "::group::$base"
+          if ! helm template ci helm/ \
+              --values "$base" \
+              --set client.cookieSecret=ci-cookie-32-char-test-key-padding \
+              --set server.database.adb.skipCrdCheck=true >/dev/null; then
+            failed=1
+          fi
+          echo "::endgroup::"
+
+          for f in helm/examples/overlays/*.yaml; do
+            echo "::group::$base + $f"
+            if ! helm template ci helm/ \
+                --values "$base" \
+                --values "$f" \
                 --set client.cookieSecret=ci-cookie-32-char-test-key-padding \
                 --set server.database.adb.skipCrdCheck=true >/dev/null; then
               failed=1
@@ -218,7 +236,7 @@ jobs:
       - name: helm template at minimum kubeVersion (1.23.0)
         run: >-
           helm template ci helm/ --kube-version=1.23.0
-          --set global.api.apiKey=ci-test
+          --values helm/examples/values-kind-other.yaml
           --set client.cookieSecret=ci-cookie-32-char-test-key-padding
 
       # Negative test: the schema must reject pinned-banned tags.
@@ -226,8 +244,8 @@ jobs:
       - name: values.schema.json rejects banned tag
         run: |
           if helm template ci helm/ \
+              --values helm/examples/values-kind-other.yaml \
               --set server.image.tag=latest \
-              --set global.api.apiKey=ci-test \
               --set client.cookieSecret=ci-cookie-32-char-test-key-padding \
               >/dev/null 2>&1; then
             echo "::error::values.schema.json no longer rejects image.tag=latest"

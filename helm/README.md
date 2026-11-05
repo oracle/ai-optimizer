@@ -9,7 +9,7 @@ The Oracle AI Optimizer enables developers and data scientists to explore Large 
 **Architecture Components:**
 - **Server**: FastAPI-based REST API server with LangGraph agent orchestration
 - **Client**: Streamlit web UI for interactive chat, testing, and configuration
-- **Database**: Support for Oracle Autonomous Database (ADB-S, ADB-FREE) and Single Instance Database (SIDB-FREE)
+- **Database**: Required for persistence using Oracle Autonomous Database (ADB-S, ADB-FREE), Single Instance Database (SIDB-FREE), or an external Oracle AI Database
 - **Ollama** (optional): Local LLM deployment for on-premises inference
 
 ## Prerequisites
@@ -37,20 +37,21 @@ This downloads the SigNoz subchart referenced in `Chart.yaml` into `helm/charts/
 
 ## Quick Start
 
-### 1. Generate API Key
+### 1. Create the API Secret
 
 Create a secure API key for server-client authentication:
 
 ```bash
-# Generate random API key
 export API_KEY=$(openssl rand -base64 32)
+kubectl create secret generic ai-optimizer-api \
+  --from-literal=apiKey="$API_KEY"
 ```
 
 ### 2. Basic Installation (with Ollama and SIDB-FREE)
 
 ```bash
 helm install ai-optimizer . \
-  --set global.api.apiKey="$API_KEY"
+  --values examples/values-kind-sidb-free.yaml
 ```
 
 ### 3. Access the Application
@@ -69,7 +70,6 @@ open http://localhost:8501
 
 ```bash
 helm install ai-optimizer . \
-  --set global.api.apiKey="$API_KEY" \
   --values examples/values-kind-sidb-free.yaml
 ```
 
@@ -77,7 +77,6 @@ helm install ai-optimizer . \
 
 ```bash
 helm install ai-optimizer . \
-  --set global.api.apiKey="$API_KEY" \
   --values examples/values-kind-adb-free.yaml
 ```
 
@@ -86,6 +85,10 @@ helm install ai-optimizer . \
 First, create necessary secrets:
 
 ```bash
+# Create the API authentication secret
+kubectl create secret generic ai-optimizer-api \
+  --from-literal=apiKey="$API_KEY"
+
 # Create database authentication secret
 kubectl create secret generic db-authn \
   --from-literal=username=AI_OPTIMIZER \
@@ -100,19 +103,18 @@ python3 scripts/oci_config.py \
   kubectl apply -f -
 ```
 
-Then install:
+Set the database OCID, TNS service name, and OCI region in
+`examples/values-adb-s.yaml`, then install:
 
 ```bash
 helm install ai-optimizer . \
-  --set global.api.apiKey="$API_KEY" \
-  --set server.database.type="ADB-S" \
-  --set server.database.oci.ocid="ocid1.autonomousdatabase.oc1..." \
-  --set server.database.authn.secretName="db-authn" \
-  --set server.ociConfig.fileSecretName="oci-config-file" \
-  --set server.ociConfig.region="us-ashburn-1"
+  --values examples/values-adb-s.yaml
 ```
 
 ### Example 4: Production with OpenAI Integration
+
+This example uses the `ai-optimizer-api`, `db-authn`, and `oci-config-file`
+Secrets created in Example 3.
 
 ```bash
 # Create OpenAI API key secret
@@ -120,27 +122,19 @@ kubectl create secret generic openai-secret \
   --from-literal=apiKey='sk-...'
 
 helm install ai-optimizer . \
-  --set global.api.apiKey="$API_KEY" \
-  --set server.models.openai.secretName="openai-secret" \
-  --set server.database.type="ADB-S" \
-  --set server.database.oci.ocid="ocid1.autonomousdatabase..."
+  --values examples/values-adb-s.yaml \
+  --values examples/overlays/openai.yaml
 ```
 
 ### Example 5: High Availability with Autoscaling
 
+This example uses the `ai-optimizer-api`, `db-authn`, and `oci-config-file`
+Secrets created in Example 3.
+
 ```bash
 helm install ai-optimizer . \
-  --set global.api.apiKey="$API_KEY" \
-  --set server.autoscaling.enabled=true \
-  --set server.autoscaling.minReplicas=2 \
-  --set server.autoscaling.maxReplicas=10 \
-  --set server.resources.requests.cpu=1000m \
-  --set server.resources.requests.memory=2Gi \
-  --set server.resources.limits.cpu=2000m \
-  --set server.resources.limits.memory=4Gi \
-  --set client.autoscaling.enabled=true \
-  --set client.autoscaling.minReplicas=2 \
-  --set client.autoscaling.maxReplicas=5
+  --values examples/values-adb-s.yaml \
+  --values examples/overlays/high-availability.yaml
 ```
 
 > **Embed pipeline + multi-replica.** `GET /v1/embed/jobs/{job_id}`
@@ -167,7 +161,7 @@ the demo capacity overlay onto the existing release:
 ```bash
 helm upgrade ai-optimizer . \
   --reuse-values \
-  --values examples/values-oke-demo-50.yaml
+  --values examples/overlays/oke-demo-50.yaml
 ```
 
 The overlay raises the server client cache and database pool, adds explicit
@@ -177,6 +171,10 @@ routing.
 
 ### Example 6: Ingress with TLS
 
+This example uses the `ai-optimizer-api`, `db-authn`, and `oci-config-file`
+Secrets created in Example 3. Set the deployment hostnames in
+`examples/overlays/ingress-tls.yaml` before installing.
+
 ```bash
 # Create TLS secret
 kubectl create secret tls ai-optimizer-tls \
@@ -184,15 +182,8 @@ kubectl create secret tls ai-optimizer-tls \
   --key=path/to/tls.key
 
 helm install ai-optimizer . \
-  --set global.api.apiKey="$API_KEY" \
-  --set server.ingress.enabled=true \
-  --set server.ingress.className="nginx" \
-  --set server.ingress.tls[0].hosts[0]="api.example.com" \
-  --set server.ingress.tls[0].secretName="ai-optimizer-tls" \
-  --set client.ingress.enabled=true \
-  --set client.ingress.className="nginx" \
-  --set client.ingress.tls[0].hosts[0]="app.example.com" \
-  --set client.ingress.tls[0].secretName="ai-optimizer-tls"
+  --values examples/values-adb-s.yaml \
+  --values examples/overlays/ingress-tls.yaml
 ```
 
 ## Configuration
@@ -233,7 +224,7 @@ helm install ai-optimizer . \
 
 | Parameter | Description | Default | Options |
 |-----------|-------------|---------|---------|
-| `server.database.type` | Type of Oracle Database | `""` | `SIDB-FREE`, `ADB-FREE`, `ADB-S`, `OTHER` |
+| `server.database.type` | Required Oracle Database mode | `""` (invalid until set) | `SIDB-FREE`, `ADB-FREE`, `ADB-S`, `OTHER` |
 | `server.database.image.repository` | Container image for SIDB/ADB-FREE | `""` | See examples |
 | `server.database.image.tag` | Container image tag for in-cluster DB images | `""` | Required for SIDB-FREE/ADB-FREE |
 | `server.database.oci.ocid` | ADB-S OCID (for ADB-S only) | `""` | |
@@ -256,6 +247,8 @@ helm install ai-optimizer . \
 - **ADB-FREE**: Autonomous Oracle AI Database Free (containerized)
 - **ADB-S**: Autonomous Database Shared (managed OCI service)
 - **OTHER**: External/bring-your-own database (requires host, port, and serviceName)
+
+The chart rejects an empty database type.
 
 When AI Optimizer is installed as the OBaaS subchart and both use the same ADB-S,
 set `server.database.adb.useExisting=true` and
@@ -319,6 +312,12 @@ Use `scripts/oci_config.py` to create the `fileSecretName` secret from your `~/.
 | `client.image.repository` | Client container image | `localhost/ai-optimizer-client` |
 | `client.image.tag` | Client container image tag; empty defaults to `appVersion` | `""` |
 | `client.service.type` | Kubernetes service type | `ClusterIP` |
+| `client.cookieSecret` | Explicit chart-managed cookie-signing value | `""` (generated when both cookie settings are empty) |
+| `client.cookieSecretName` | Pre-existing cookie-signing Secret | `""` |
+| `client.cookieSecretKey` | Key in the cookie-signing Secret | `"cookieSecret"` |
+
+`client.cookieSecret` and `client.cookieSecretName` are mutually exclusive. A
+live Helm install generates the default Secret once and reads it back.
 
 #### Client Autoscaling
 
@@ -438,7 +437,6 @@ Omit `storageClass` to use the cluster default. The claim is retained on uninsta
 
 ```bash
 helm upgrade ai-optimizer . \
-  --set global.api.apiKey="$API_KEY" \
   --reuse-values
 ```
 

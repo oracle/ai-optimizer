@@ -178,7 +178,7 @@ variable "ssl_key_pem" {
 }
 
 variable "client_cookie_secret" {
-  description = "Streamlit XSRF-cookie signing key. Rendered into ai-optimizer-values.yaml as client.cookieSecret so the Helm chart's required contract is satisfied without operator input."
+  description = "Streamlit signed-cookie key supplied explicitly by OpenTofu so the value remains stable across deployment renders."
   type        = string
   sensitive   = true
 }

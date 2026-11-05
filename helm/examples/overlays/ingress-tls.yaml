@@ -1,0 +1,22 @@
+## Copyright (c) 2024, 2026, Oracle and/or its affiliates.
+## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/upl.
+
+# TLS ingress overlay. Create ai-optimizer-tls before installing and replace
+# the example hostnames for your environment.
+server:
+  ingress:
+    enabled: true
+    className: nginx
+    tls:
+      - hosts:
+          - api.example.com
+        secretName: ai-optimizer-tls
+
+client:
+  ingress:
+    enabled: true
+    className: nginx
+    tls:
+      - hosts:
+          - app.example.com
+        secretName: ai-optimizer-tls

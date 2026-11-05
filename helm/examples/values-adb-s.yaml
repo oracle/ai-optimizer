@@ -1,0 +1,22 @@
+## Copyright (c) 2024, 2026, Oracle and/or its affiliates.
+## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/upl.
+
+# Production baseline using an external Autonomous Database. Create the named
+# Kubernetes Secrets before installing and replace the OCI values for your
+# environment.
+global:
+  api:
+    secretName: ai-optimizer-api
+
+server:
+  database:
+    type: ADB-S
+    oci:
+      ocid: ocid1.autonomousdatabase.oc1...
+    adb:
+      serviceName: adb_service_high
+    authn:
+      secretName: db-authn
+  ociConfig:
+    fileSecretName: oci-config-file
+    region: us-ashburn-1

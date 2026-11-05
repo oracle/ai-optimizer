@@ -61,8 +61,9 @@ To run the application on bare-metal; download the [source](https://github.com/o
    cp src/.env.example src/.env.dev
    ```
 
-   Edit the `src/.env.dev` file and set your default configuration.  
-   To utilize database functionality, at a minimum, set the `AIO_DB_*` parameters.
+   Edit `src/.env.dev` and set your default configuration. 
+   
+   Supply the `AIO_DB_*` values here, or complete the required CORE database setup page when the local client first starts.
 
 1. Start Streamlit:
 
@@ -89,10 +90,13 @@ To run the application in a container; download the [source](https://github.com/
 1. Start the Container:
 
    ```bash
-   podman run -p 8501:8501 -it --rm ai-optimizer-aio
+   podman run -v ai-optimizer-data:/app/data -p 8501:8501 -it --rm ai-optimizer-aio
    ```
 
 1. Navigate to `http://localhost:8501`.
+
+1. Connect to the required Oracle AI Database (CORE). The all-in-one container starts
+   the Server only after the database connects and initializes.
 
 1. [Configure](https://oracle.github.io/ai-optimizer/client/configuration/index.html) the **AI Optimizer**.
 
