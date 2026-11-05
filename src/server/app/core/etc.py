@@ -80,41 +80,6 @@ def migrate_legacy_settings(data):
     return migrated
 
 
-def ensure_core_alias(db_configs: list, client_settings=None, client_store: Optional[dict] = None) -> None:
-    """Ensure *db_configs* contains an entry with the exact alias ``"CORE"``.
-
-    If an entry already matches case-insensitively, its alias is normalised
-    to ``"CORE"``.  Otherwise the first entry is promoted.  No-op when the
-    list is empty or already contains ``"CORE"`` with correct casing.
-
-    Any *client_settings* and *client_store* entries whose database alias
-    matched the old value are updated to ``"CORE"`` so that downstream
-    lookups remain valid.
-    """
-    if not db_configs:
-        return
-    # Determine which alias (if any) needs to become "CORE"
-    old_alias: Optional[str] = None
-    for cfg in db_configs:
-        if cfg.alias == "CORE":
-            return  # exact match — nothing to do
-    for cfg in db_configs:
-        if cfg.alias.upper() == "CORE":
-            old_alias = cfg.alias
-            cfg.alias = "CORE"
-            break
-    else:
-        # No CORE variant at all — promote the first entry
-        old_alias = db_configs[0].alias
-        db_configs[0].alias = "CORE"
-    # Sync client aliases that still reference the old name
-    if client_settings is not None and client_settings.database.alias == old_alias:
-        client_settings.database.alias = "CORE"
-    for cs in (client_store or {}).values():
-        if cs.database.alias == old_alias:
-            cs.database.alias = "CORE"
-
-
 def load_config_file(path: Optional[Path] = None) -> Optional[SettingsBase]:
     """Load and validate configuration.json.
 
@@ -180,6 +145,8 @@ def upsert_list_field(field_name: str, incoming: list) -> tuple[list, list]:
 
     created, updated = [], []
     for item in incoming:
+        if field_name == "database_configs" and item.alias.upper() == "CORE":
+            continue
         key = _extract_key(item, identity_spec)
         target = existing_by_key.get(key)
         if target is not None:
@@ -204,6 +171,8 @@ def _merge_list_field(field_name: str, source: SettingsBase, identity_spec: _Ide
 
     merged = list(existing)
     for item in incoming:
+        if field_name == "database_configs" and item.alias.upper() == "CORE":
+            continue
         key = _extract_key(item, identity_spec)
         if key not in existing_keys:
             merged.append(item)

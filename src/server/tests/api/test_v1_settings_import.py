@@ -305,8 +305,8 @@ async def test_import_database_resets_usable_when_timeout_changes(app_client, au
 
 
 async def test_import_legacy_v203_database_configs(app_client, auth_headers, mock_persist):
-    """A v2.0.3-shaped single-database payload is promoted to CORE when no CORE exists."""
-    settings.database_configs = []
+    """A v2.0.3-shaped additional database retains its imported alias."""
+    settings.database_configs = [DatabaseConfig(alias="CORE", dsn="core_dsn")]
     payload = {
         "database_configs": [
             {"name": "LEGACY", "user": "admin", "dsn": "//host/svc"},
@@ -319,7 +319,7 @@ async def test_import_legacy_v203_database_configs(app_client, auth_headers, moc
     data = resp.json()
     assert data["database_configs"]["created"] == 1
     assert data["database_configs"]["skipped"] == 0
-    new_db = next(db for db in settings.database_configs if db.alias == "CORE")
+    new_db = next(db for db in settings.database_configs if db.alias == "LEGACY")
     assert new_db.username == "admin"
     assert new_db.dsn == "//host/svc"
 
@@ -365,8 +365,8 @@ async def test_import_database_skips_core(app_client, auth_headers, mock_persist
     assert data["database_configs"]["updated"] == 0
 
 
-async def test_import_promotes_first_db_to_core_when_no_core(app_client, auth_headers, mock_persist):
-    """When no CORE exists, the first imported database is promoted to CORE."""
+async def test_import_never_promotes_additional_database_to_core(app_client, auth_headers, mock_persist):
+    """Import preserves an additional alias even in isolated state without CORE."""
     settings.database_configs = []
     payload = {"database_configs": [{"alias": "ANALYTICS", "dsn": "analytics_dsn"}]}
 
@@ -376,7 +376,7 @@ async def test_import_promotes_first_db_to_core_when_no_core(app_client, auth_he
     data = resp.json()
     assert data["database_configs"]["created"] == 1
     assert data["database_configs"]["skipped"] == 0
-    new_db = next(db for db in settings.database_configs if db.alias == "CORE")
+    new_db = next(db for db in settings.database_configs if db.alias == "ANALYTICS")
     assert new_db.dsn == "analytics_dsn"
 
 
@@ -409,8 +409,8 @@ async def test_import_empty_database_configs_no_crash(app_client, auth_headers, 
     assert settings.database_configs == []
 
 
-async def test_import_updates_existing_then_promotes_to_core(app_client, auth_headers, mock_persist):
-    """An existing non-CORE DB is updated in-place, then promoted to CORE."""
+async def test_import_updates_existing_without_promoting_to_core(app_client, auth_headers, mock_persist):
+    """An existing additional database is updated in place."""
     settings.database_configs = [DatabaseConfig(alias="LEGACY", dsn="old_dsn")]
     payload = {"database_configs": [{"alias": "LEGACY", "dsn": "new_dsn"}]}
 
@@ -421,24 +421,26 @@ async def test_import_updates_existing_then_promotes_to_core(app_client, auth_he
     assert data["database_configs"]["updated"] == 1
     assert data["database_configs"]["created"] == 0
     assert len(settings.database_configs) == 1
-    assert settings.database_configs[0].alias == "CORE"
+    assert settings.database_configs[0].alias == "LEGACY"
     assert settings.database_configs[0].dsn == "new_dsn"
 
 
-async def test_import_normalizes_lowercase_core_alias(app_client, auth_headers, mock_persist):
-    """A lowercase 'core' alias is normalized to exact 'CORE' string."""
+async def test_import_skips_lowercase_core_alias(app_client, auth_headers, mock_persist):
+    """CORE is skipped case-insensitively."""
     settings.database_configs = []
     payload = {"database_configs": [{"alias": "core", "dsn": "core_dsn"}]}
 
     resp = await app_client.post(ENDPOINT, json=payload, headers=auth_headers)
 
     assert resp.status_code == 200
-    assert settings.database_configs[0].alias == "CORE"
-    assert settings.database_configs[0].dsn == "core_dsn"
+    data = resp.json()
+    assert data["database_configs"]["created"] == 0
+    assert data["database_configs"]["skipped"] == 1
+    assert settings.database_configs == []
 
 
-async def test_import_no_promotion_when_incoming_has_core(app_client, auth_headers, mock_persist):
-    """When no CORE exists but incoming already has a CORE alias, it is imported as-is."""
+async def test_import_cannot_supply_core(app_client, auth_headers, mock_persist):
+    """An import cannot create CORE even in isolated state without it."""
     settings.database_configs = []
     payload = {"database_configs": [{"alias": "CORE", "dsn": "core_dsn"}]}
 
@@ -446,10 +448,9 @@ async def test_import_no_promotion_when_incoming_has_core(app_client, auth_heade
 
     assert resp.status_code == 200
     data = resp.json()
-    assert data["database_configs"]["created"] == 1
-    assert data["database_configs"]["skipped"] == 0
-    assert settings.database_configs[0].alias == "CORE"
-    assert settings.database_configs[0].dsn == "core_dsn"
+    assert data["database_configs"]["created"] == 0
+    assert data["database_configs"]["skipped"] == 1
+    assert settings.database_configs == []
 
 
 # ---------------------------------------------------------------------------
@@ -698,8 +699,8 @@ async def test_import_persists_once(app_client, auth_headers, mock_persist):
     mock_persist.assert_called_once()
 
 
-async def test_import_rollback_does_not_promote_core(app_client, auth_headers):
-    """When persistence fails, CORE promotion is skipped and aliases stay consistent."""
+async def test_import_rollback_restores_additional_alias(app_client, auth_headers):
+    """A persistence failure restores the original additional database state."""
     settings.database_configs = [DatabaseConfig(alias="LEGACY", dsn="old")]
     settings.client_settings.database.alias = "LEGACY"
     payload = {"database_configs": [{"alias": "LEGACY", "dsn": "new"}]}
@@ -708,7 +709,6 @@ async def test_import_rollback_does_not_promote_core(app_client, auth_headers):
         resp = await app_client.post(ENDPOINT, json=payload, headers=auth_headers)
 
     assert resp.status_code == 503
-    # Rollback should restore original state — no CORE promotion occurred
     assert settings.database_configs[0].alias == "LEGACY"
     assert settings.client_settings.database.alias == "LEGACY"
 

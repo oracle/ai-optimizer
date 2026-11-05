@@ -8,6 +8,7 @@ CRUD endpoints for prompt management.
 from fastapi import APIRouter, HTTPException
 
 from server.app.api.v1.endpoints.chat import get_orchestrator
+from server.app.api.v1.persistence import persistence_succeeded
 from server.app.api.v1.schemas.prompts import PromptResponse, PromptUpdate
 from server.app.core.constants import PERSIST_FAIL_DETAIL as _PERSIST_FAIL
 from server.app.core.settings import _settings_lock, settings
@@ -33,7 +34,7 @@ async def update_prompt(name: str, body: PromptUpdate):
         old_text = pc.text
         pc.text = body.text
         register_mcp_prompt(pc)
-        if not await persist_settings():
+        if not await persistence_succeeded(persist_settings()):
             pc.text = old_text
             register_mcp_prompt(pc)
             raise HTTPException(status_code=503, detail=_PERSIST_FAIL)
@@ -51,7 +52,7 @@ async def reset_all_prompts():
             if factory_text is not None:
                 pc.text = factory_text
         register_mcp_prompts()
-        if not await persist_settings():
+        if not await persistence_succeeded(persist_settings()):
             for pc in settings.prompt_configs:
                 if pc.name in saved:
                     pc.text = saved[pc.name]
@@ -74,7 +75,7 @@ async def reset_prompt(name: str):
         old_text = pc.text
         pc.text = factory_text
         register_mcp_prompt(pc)
-        if not await persist_settings():
+        if not await persistence_succeeded(persist_settings()):
             pc.text = old_text
             register_mcp_prompt(pc)
             raise HTTPException(status_code=503, detail=_PERSIST_FAIL)

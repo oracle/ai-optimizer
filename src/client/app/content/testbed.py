@@ -354,7 +354,10 @@ def _setup_testbed_sources() -> list:
     if not state.runtime_testbed_db_testsets:
         testset_sources.remove("Database")
     if state.get("_core_unavailable"):
-        st.warning("CORE database is not configured. Configure it in Settings > Databases.", icon="⚠️")
+        st.warning(
+            "CORE database is unavailable. Check the deployment configuration and restart the server.",
+            icon="⚠️",
+        )
     return testset_sources
 
 

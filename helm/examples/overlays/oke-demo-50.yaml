@@ -1,0 +1,35 @@
+## Copyright (c) 2024, 2026, Oracle and/or its affiliates.
+## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/upl.
+
+# Capacity overlay for a hands-on OKE demo with about 50 concurrent attendees.
+# The server remains single-replica because document embedding uses per-pod
+# temporary storage.
+server:
+  replicaCount: 1
+  maxClients: 150
+  envSecret:
+    content:
+      AIO_DB_POOL_SIZE: "20"
+  resources:
+    requests:
+      cpu: 2000m
+      memory: 4Gi
+    limits:
+      cpu: 4000m
+      memory: 8Gi
+
+client:
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 1000m
+      memory: 2Gi
+    limits:
+      cpu: 2000m
+      memory: 4Gi
+  livenessProbe:
+    timeoutSeconds: 5
+    failureThreshold: 6
+  readinessProbe:
+    timeoutSeconds: 5
+    failureThreshold: 6

@@ -30,9 +30,11 @@ def _fetchmany_from(rows):
 
     return _fm
 
+
 # ---------------------------------------------------------------------------
 # Unit tests (no database required)
 # ---------------------------------------------------------------------------
+
 
 def _make_ora_error(code: int, message: str = "error"):
     """Create an oracledb.DatabaseError with a given ORA code."""
@@ -209,6 +211,17 @@ async def test_execute_sql_ignores_ora_942():
     result = await execute_sql(conn, 'DROP TABLE "MISSING" PURGE')
 
     assert result is None
+
+
+@pytest.mark.unit
+async def test_execute_sql_strict_mode_reraises_ora_942():
+    """Bootstrap callers can require missing-object errors to propagate."""
+    cursor = AsyncMock()
+    cursor.execute = AsyncMock(side_effect=_make_ora_error(942, "table or view does not exist"))
+    conn = _mock_conn(cursor)
+
+    with pytest.raises(oracledb.DatabaseError):
+        await execute_sql(conn, 'DROP TABLE "MISSING" PURGE', ignored_error_codes=frozenset())
 
 
 @pytest.mark.unit

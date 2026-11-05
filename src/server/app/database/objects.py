@@ -14,11 +14,8 @@ RENAME_DDL = [
                      WHERE table_name
                         IN ('OAI_TESTSETS','OAI_TESTSET_QA','OAI_EVALUATIONS')
         ) LOOP
-            BEGIN
-                EXECUTE IMMEDIATE 'ALTER TABLE ' || rec.table_name ||
-                    ' RENAME TO ' || 'AIO_' || SUBSTR(rec.table_name, 5);
-            EXCEPTION WHEN OTHERS THEN NULL;
-            END;
+            EXECUTE IMMEDIATE 'ALTER TABLE ' || rec.table_name ||
+                ' RENAME TO ' || 'AIO_' || SUBSTR(rec.table_name, 5);
         END LOOP;
     END;
     """,
@@ -122,3 +119,21 @@ SCHEMA_DDL = [
         ON aio_embed_jobs (target_db)
     """,
 ]
+
+REQUIRED_SCHEMA_TABLES = frozenset(
+    {
+        "AIO_SETTINGS",
+        "AIO_TESTSETS",
+        "AIO_TESTSET_QA",
+        "AIO_EVALUATIONS",
+        "AIO_EMBED_JOBS",
+    }
+)
+
+REQUIRED_SCHEMA_INDEXES = frozenset(
+    {
+        "AIO_EMBED_JOBS_CLIENT_IX",
+        "AIO_EMBED_JOBS_STATUS_IX",
+        "AIO_EMBED_JOBS_TARGET_DB_IX",
+    }
+)

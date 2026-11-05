@@ -2,12 +2,12 @@
 Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 
-Integration tests for the embed job store against a real Oracle container.
+Integration tests for the embed job store against a real Oracle database.
 
 These drive the store through its public ``_store_*`` entry points with
 ``get_core_pool`` pointed at a live Oracle Free pool, so the actual SQL
 (JSON binds, LOB reads, terminal-state guards, reaper / TTL predicates)
-executes against real Oracle 23ai — the behaviour the mock-pool unit
+executes against Oracle AI Database — the behaviour the mock-pool unit
 tests in ``test_jobs.py`` can only approximate.
 """
 # spell-checker: disable
@@ -33,9 +33,7 @@ pytestmark = [pytest.mark.db, pytest.mark.integration]
 
 @pytest.fixture
 async def core_pool(embed_core_pool):
-    """A live CORE pool wired into ``jobs.get_core_pool`` (see the shared
-    ``embed_core_pool`` fixture in conftest). Aliased here so these tests can
-    take ``core_pool`` and assert against the pinned pool object."""
+    """Expose the live CORE pool wired into ``jobs.get_core_pool``."""
     yield embed_core_pool
 
 
@@ -74,8 +72,6 @@ async def test_create_and_get_roundtrip(core_pool):
     assert got.progress is not None
     assert got.progress.stage == EmbedJobStage.SPLITTING
     assert got.progress.total_chunks == 4
-    # Create pins the inserting pool for the job.
-    assert jobs_mod._PINNED_POOLS.get("it-create") is core_pool
 
 
 async def test_get_missing_returns_none(core_pool):
@@ -114,7 +110,7 @@ async def test_set_progress_persists(core_pool):
 
 
 async def test_set_status_running_to_failed(core_pool):
-    """A failed terminal write records status + error and drops the pin."""
+    """A failed terminal write records status and error."""
     await jobs_mod._store_create(_make_row("it-fail"))
     await jobs_mod._store_set_status("it-fail", EmbedJobStatus.FAILED, error="boom")
 
@@ -122,14 +118,13 @@ async def test_set_status_running_to_failed(core_pool):
     assert got is not None
     assert got.status == EmbedJobStatus.FAILED
     assert got.error == "boom"
-    assert "it-fail" not in jobs_mod._PINNED_POOLS
 
 
 async def test_set_result_running_to_succeeded_leaves_error_null(core_pool):
     """The success-path UPDATE moves running → succeeded with error still NULL.
 
-    This is the ORA-00957 invariant exercised end-to-end through the store
-    against real Oracle 23ai, not just a SQL-string assertion.
+    This is the ORA-00957 invariant exercised end-to-end through the store,
+    not just a SQL-string assertion.
     """
     await jobs_mod._store_create(_make_row("it-ok"))
     await jobs_mod._store_set_result(
@@ -149,7 +144,6 @@ async def test_set_result_running_to_succeeded_leaves_error_null(core_pool):
     assert got.result is not None
     assert [f.filename for f in got.result.processed_files] == ["a.txt"]
     assert [f.filename for f in got.result.skipped_files] == ["b.txt"]
-    assert "it-ok" not in jobs_mod._PINNED_POOLS
 
 
 async def test_terminal_state_is_final(core_pool):

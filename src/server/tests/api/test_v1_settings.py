@@ -18,6 +18,7 @@ from server.app.core.settings import (
     _ensure_capacity,
     settings,
 )
+from server.app.database.config import CoreDatabaseUnavailable
 from server.tests.conftest import make_test_database_config, make_test_model_config, make_test_oci_profile
 from server.tests.constants import TEST_OPENAI_MODEL_ID
 
@@ -35,7 +36,8 @@ def _populate_configs():
     settings.oci_configs = [make_test_oci_profile()]
     settings.model_configs = [make_test_model_config()]
     settings.client_settings = original_cs.model_copy(deep=True)
-    yield
+    with patch(f"{SETTINGS_MODULE}.load_settings", new_callable=AsyncMock, return_value=None):
+        yield
     _client_store.clear()
     settings.database_configs = original_db
     settings.oci_configs = original_oci
@@ -347,6 +349,22 @@ async def test_post_settings_creates_client(app_client, auth_headers):
 
 @pytest.mark.unit
 @pytest.mark.anyio
+async def test_post_settings_core_unavailable_returns_503(app_client, auth_headers):
+    """CORE read failures are translated at the API boundary."""
+    with patch(
+        f"{SETTINGS_MODULE}.load_settings",
+        new_callable=AsyncMock,
+        side_effect=CoreDatabaseUnavailable,
+    ):
+        resp = await app_client.post("/v1/settings?client=FRESH", headers=auth_headers)
+
+    assert resp.status_code == 503
+    assert resp.json() == {"detail": "CORE database is unavailable"}
+    assert "FRESH" not in _client_store
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
 async def test_post_settings_duplicate_returns_409(app_client, auth_headers):
     """POST /settings returns 409 if client already exists."""
     resp1 = await app_client.post("/v1/settings?client=DUP", headers=auth_headers)
@@ -451,6 +469,19 @@ async def test_delete_settings_success(app_client, auth_headers):
     assert resp.status_code == 204
     assert "TEMP" not in _client_store
     mock_del.assert_awaited_once_with("TEMP")
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_delete_settings_core_unavailable_rolls_back(app_client, auth_headers):
+    """DELETE returns 503 and restores the cached client when CORE is unavailable."""
+    _client_store["TEMP"] = ClientSettings(client="TEMP")
+
+    with patch(f"{SETTINGS_MODULE}.delete_row", new_callable=AsyncMock, side_effect=CoreDatabaseUnavailable):
+        resp = await app_client.delete("/v1/settings?client=TEMP", headers=auth_headers)
+
+    assert resp.status_code == 503
+    assert "TEMP" in _client_store
 
 
 @pytest.mark.unit
@@ -588,6 +619,26 @@ async def test_copy_to_server_persist_failure_rollback(app_client, auth_headers)
     assert _client_store["server"].database.alias == "ORIGINAL"
 
 
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_copy_to_server_core_unavailable_rollback(app_client, auth_headers):
+    """CORE unavailability follows the same rollback and 503 path as a failed write."""
+    original_server = ClientSettings(client="server")
+    original_server.database.alias = "ORIGINAL"
+    _client_store["server"] = original_server
+    _client_store["SOURCE"] = ClientSettings(client="SOURCE")
+
+    with patch(
+        f"{SETTINGS_MODULE}.persist_client_settings",
+        new_callable=AsyncMock,
+        side_effect=CoreDatabaseUnavailable,
+    ):
+        resp = await app_client.post("/v1/settings/server/copy?client=SOURCE", headers=auth_headers)
+
+    assert resp.status_code == 503
+    assert _client_store["server"].database.alias == "ORIGINAL"
+
+
 # ---------------------------------------------------------------------------
 # POST /settings/reset
 # ---------------------------------------------------------------------------
@@ -673,6 +724,25 @@ async def test_reset_persist_failure_rollback(app_client, auth_headers):
     assert resp.status_code == 503
     # model_configs should be rolled back
     assert settings.model_configs == saved_models
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_reset_client_persist_failure_returns_503(app_client, auth_headers):
+    """Reset reports a required protected-client write failure."""
+    with (
+        patch(f"{SETTINGS_MODULE}.reset_factory_models"),
+        patch(f"{SETTINGS_MODULE}.apply_env_overrides"),
+        patch(f"{SETTINGS_MODULE}.load_ollama_models", new_callable=AsyncMock),
+        patch(f"{SETTINGS_MODULE}.load_factory_prompts"),
+        patch(f"{SETTINGS_MODULE}.register_mcp_prompts"),
+        patch(f"{SETTINGS_MODULE}.check_model_reachability", new_callable=AsyncMock),
+        patch(f"{SETTINGS_MODULE}.persist_settings", new_callable=AsyncMock, return_value=True),
+        patch(f"{SETTINGS_MODULE}.persist_client_settings", new_callable=AsyncMock, return_value=False),
+    ):
+        resp = await app_client.post("/v1/settings/reset", headers=auth_headers)
+
+    assert resp.status_code == 503
 
 
 # ---------------------------------------------------------------------------

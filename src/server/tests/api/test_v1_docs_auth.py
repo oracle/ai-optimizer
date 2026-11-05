@@ -8,6 +8,8 @@ surfaces (/redoc, /docs/oauth2-redirect) are no longer exposed.
 """
 # spell-checker: disable
 
+from unittest.mock import patch
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 
@@ -130,9 +132,11 @@ async def test_liveness_still_unauth(app_client):
 @pytest.mark.unit
 @pytest.mark.anyio
 async def test_readiness_still_unauth(app_client):
-    """Readiness probe remains unauthenticated."""
-    resp = await app_client.get("/v1/readiness")
-    assert resp.status_code == 200
+    """Readiness reports dependency failure without requiring authentication."""
+    with patch("server.app.api.v1.endpoints.probes.get_core_pool", return_value=None):
+        resp = await app_client.get("/v1/readiness")
+    assert resp.status_code == 503
+    assert resp.json() == {"detail": "CORE database is unavailable"}
 
 
 @pytest.mark.unit

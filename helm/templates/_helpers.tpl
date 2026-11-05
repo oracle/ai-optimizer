@@ -195,17 +195,11 @@ Define the API Key Secret with Defaults
 
 
 {{/* ******************************************
-Validate that either client.cookieSecret or client.cookieSecretName is provided.
-The cookie secret must be stable and operator-provided so Streamlit state remains
-consistent across replicas. Same contract as global.api.apiKey.
+Reject ambiguous Client cookie-secret ownership.
 *********************************************** */}}
-{{- define "ai-optimizer.client.cookieKeyOrSecretName.required" -}}
+{{- define "ai-optimizer.client.cookieBothSet.fail" -}}
   {{- $cookieSecret := .Values.client.cookieSecret | trim | default "" -}}
   {{- $secretName := .Values.client.cookieSecretName | trim | default "" -}}
-
-  {{- if and (eq $cookieSecret "") (eq $secretName "") -}}
-    {{- fail "You must specify either client.cookieSecret or client.cookieSecretName" -}}
-  {{- end -}}
 
   {{- if and (ne $cookieSecret "") (ne $secretName "") -}}
     {{- fail "You cannot specify both client.cookieSecret and client.cookieSecretName; please choose one" -}}
@@ -273,34 +267,23 @@ rationale as the cookie helpers: whitespace-only values are treated as unset.
 {{- end }}
 
 {{/* ******************************************
-Checksum used to roll the client Deployment when the cookie-signing secret
-changes. Two branches:
-
-  * Inline path (.Values.client.cookieSecret set): hash the rendered cookie-secret.yaml.
-    The hash changes whenever the chart-managed Secret's value changes.
-
-  * External path (.Values.client.cookieSecretName set): use `lookup` to read
-    the operator-owned Secret from the cluster and hash its current data. On
-    `helm upgrade` after the operator rotates the Secret in place, the content
-    changes → hash changes → pods roll. During `helm template` / `--dry-run` /
-    first install, `lookup` returns empty; we fall back to a name-keyed
-    sentinel so the annotation is still stable and distinct per configuration.
-
-Rotation workflow for the external path: operator rotates the Secret, then
-runs `helm upgrade` (or equivalent CD step). Fully automated rotation on
-Secret-change requires a reloader controller and is out of scope for this chart.
+Checksum used to roll the Client when its cookie-signing Secret changes.
 *********************************************** */}}
 {{- define "ai-optimizer.client.cookieSecretChecksum" -}}
-{{- if .Values.client.cookieSecret | trim -}}
-{{- include (print $.Template.BasePath "/client/cookie-secret.yaml") . | sha256sum -}}
+{{- $inline := .Values.client.cookieSecret | trim -}}
+{{- $externalName := .Values.client.cookieSecretName | trim -}}
+{{- $name := include "ai-optimizer.client.cookieSecretName" . -}}
+{{- $key := include "ai-optimizer.client.cookieSecretKey" . -}}
+{{- if $inline -}}
+{{- printf "inline:%s:%s:%s" $name $key $inline | sha256sum -}}
 {{- else -}}
-  {{- $name := include "ai-optimizer.client.cookieSecretName" . -}}
-  {{- $key := include "ai-optimizer.client.cookieSecretKey" . -}}
   {{- $found := lookup "v1" "Secret" .Release.Namespace $name -}}
   {{- if and $found $found.data (hasKey $found.data $key) -}}
 {{- printf "live:%s:%s" $name (index $found.data $key) | sha256sum -}}
+  {{- else if $externalName -}}
+{{- printf "external:%s:%s" $name $key | sha256sum -}}
   {{- else -}}
-{{- printf "unresolved:%s:%s" $name $key | sha256sum -}}
+{{- printf "generated:%s:%s" $name $key | sha256sum -}}
   {{- end -}}
 {{- end -}}
 {{- end -}}
@@ -572,6 +555,39 @@ Environment to include Database Authentication
 
 
 {{/* ******************************************
+Require the structured CORE database configuration and keep database
+credentials out of chart-managed dotenv content.
+*********************************************** */}}
+{{- define "ai-optimizer.server.database.required" -}}
+  {{- $db := .Values.server.database | default dict -}}
+  {{- $dbType := $db.type | default "" | toString | trim -}}
+  {{- $envSecret := .Values.server.envSecret | default dict -}}
+  {{- $content := $envSecret.content | default dict -}}
+  {{- $requiredEnv := list "AIO_DB_USERNAME" "AIO_DB_PASSWORD" "AIO_DB_DSN" -}}
+  {{- range $key := $requiredEnv -}}
+    {{- if hasKey $content $key -}}
+      {{- fail (printf "server.envSecret.content.%s is not supported; configure CORE through server.database and server.database.authn" $key) -}}
+    {{- end -}}
+  {{- end -}}
+
+  {{- if eq $dbType "" -}}
+    {{- fail "server.database.type is required; use SIDB-FREE, ADB-FREE, ADB-S, or OTHER" -}}
+  {{- end -}}
+  {{- if not (has $dbType (list "SIDB-FREE" "ADB-FREE" "ADB-S" "OTHER")) -}}
+    {{- fail (printf "server.database.type=%q is unsupported; use SIDB-FREE, ADB-FREE, ADB-S, or OTHER" $dbType) -}}
+  {{- end -}}
+  {{- $authn := $db.authn | default dict -}}
+  {{- range $field := list "usernameKey" "passwordKey" "serviceKey" -}}
+    {{- if eq (dig $field "" $authn | toString | trim) "" -}}
+      {{- fail (printf "server.database.authn.%s must be non-empty" $field) -}}
+    {{- end -}}
+  {{- end -}}
+  {{- include "ai-optimizer.server.database.validateADBSType" . -}}
+  {{- include "ai-optimizer.server.database.validateOtherType" . -}}
+{{- end -}}
+
+
+{{/* ******************************************
 Create the pull model list for Ollama
 *********************************************** */}}
 {{- define "ai-optimizer.ollama.modelPullList" -}}
@@ -583,28 +599,29 @@ Create the pull model list for Ollama
 {{- end -}}
 
 {{/* ******************************************
-Validate that server.database.adb.serviceName is provided when database type is ADB-S
-and no external authn secret overrides the default.
+Validate the chart-managed ADB-S authentication Secret's TNS service.
 *********************************************** */}}
 {{- define "ai-optimizer.server.database.validateADBSType" -}}
   {{- if eq (include "ai-optimizer.server.database.isADBS" .) "true" -}}
     {{- $adb := .Values.server.database.adb | default dict -}}
     {{- $serviceName := $adb.serviceName | default "" -}}
-    {{- if eq ($serviceName | trim) "" -}}
+    {{- if and (eq (include "ai-optimizer.server.database.explicitAuthnName" .) "") (eq ($serviceName | trim) "") -}}
       {{- fail "server.database.type is ADB-S: must provide server.database.adb.serviceName (TNS alias from wallet tnsnames.ora, e.g., mydb_low)" -}}
     {{- end -}}
   {{- end -}}
 {{- end -}}
 
 {{/* ******************************************
-Validate that server.database.other fields are provided when database type is OTHER.
-Requires either 'dsn' OR all of (host, port, serviceName).
+Validate OTHER database credentials. An external auth Secret supplies the
+complete connection; chart-provisioned users require a DSN.
 *********************************************** */}}
 {{- define "ai-optimizer.server.database.validateOtherType" -}}
   {{- if .Values.server.database -}}
     {{- $dbType := .Values.server.database.type | default "" -}}
 
     {{- if eq $dbType "OTHER" -}}
+      {{- $authnSecret := include "ai-optimizer.server.database.explicitAuthnName" . -}}
+      {{- $privAuthSecret := include "ai-optimizer.server.database.explicitPrivAuthnName" . -}}
       {{- $dsn := .Values.server.database.other.dsn -}}
       {{- $host := .Values.server.database.other.host -}}
       {{- $port := .Values.server.database.other.port -}}
@@ -641,7 +658,7 @@ Requires either 'dsn' OR all of (host, port, serviceName).
       {{- end -}}
 
       {{- /* Validate: must have either dsn OR all three individual fields */ -}}
-      {{- if not $hasDsn -}}
+      {{- if and (eq $authnSecret "") (not $hasDsn) -}}
         {{- if not (and $hasHost $hasPort $hasServiceName) -}}
           {{- fail "server.database.type is OTHER: must provide either 'dsn' OR all of (host, port, serviceName)" -}}
         {{- end -}}
@@ -658,8 +675,6 @@ Requires either 'dsn' OR all of (host, port, serviceName).
                  user via the init Job using the operator's privileged creds.
              Empty for both means the chart would render a Secret with
              random credentials that the external DB cannot authenticate. */ -}}
-      {{- $authnSecret := include "ai-optimizer.server.database.explicitAuthnName" . -}}
-      {{- $privAuthSecret := include "ai-optimizer.server.database.explicitPrivAuthnName" . -}}
       {{- if and (eq $authnSecret "") (eq $privAuthSecret "") -}}
         {{- fail "server.database.type=OTHER requires either server.database.authn.secretName (a pre-created Secret with valid external-DB credentials) or server.database.privAuthn.secretName (a Secret with privileged credentials so the chart can provision the application user). Without one of these, the chart would generate random credentials that the external database cannot authenticate." -}}
       {{- end -}}
@@ -669,12 +684,9 @@ Requires either 'dsn' OR all of (host, port, serviceName).
 
 
 {{/* ******************************************
-DB Initialization Job gating: decide whether the init Job + ConfigMap
-render. Returns "true" when init should run, empty otherwise. For
-chart-managed databases (SIDB-FREE / ADB-FREE / ADB-S) the existing
-truthy `privAuthN` check is the gate; for OTHER mode we additionally
-require `privAuthn.secretName` so a BYO-user install (authn.secretName
-provided, no priv creds) does not trigger a doomed init attempt.
+DB Initialization Job gating. An ADB-S or OTHER external authentication
+Secret asserts that the application user already exists. OTHER can instead
+run initialization with an explicit privileged Secret.
 *********************************************** */}}
 {{- define "ai-optimizer.server.database.shouldRunInit" -}}
 {{- $db := .Values.server.database | default dict -}}
@@ -682,7 +694,7 @@ provided, no priv creds) does not trigger a doomed init attempt.
 {{- if and $db $type $db.privAuthn -}}
   {{- if eq (include "ai-optimizer.server.database.isOther" .) "true" -}}
     {{- if ne (include "ai-optimizer.server.database.explicitPrivAuthnName" .) "" -}}true{{- end -}}
-  {{- else -}}
+  {{- else if or (ne (include "ai-optimizer.server.database.isADBS" .) "true") (eq (include "ai-optimizer.server.database.explicitAuthnName" .) "") -}}
 true
   {{- end -}}
 {{- end -}}

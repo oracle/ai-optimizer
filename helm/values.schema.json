@@ -38,6 +38,7 @@
     },
     "server": {
       "type": "object",
+      "required": ["database"],
       "not": {
         "required": [
           "oci_config"
@@ -69,6 +70,7 @@
         "otel": { "$ref": "#/definitions/otel" },
         "database": {
           "type": "object",
+          "required": ["type"],
           "not": {
             "anyOf": [
               {
@@ -87,7 +89,6 @@
             "type": {
               "type": "string",
               "enum": [
-                "",
                 "SIDB-FREE",
                 "ADB-FREE",
                 "ADB-S",
@@ -520,7 +521,16 @@
       "properties": {
         "secretName": { "type": "string" },
         "secretKey": { "type": "string" },
-        "content": { "type": "object" }
+        "content": {
+          "type": "object",
+          "not": {
+            "anyOf": [
+              { "required": ["AIO_DB_USERNAME"] },
+              { "required": ["AIO_DB_PASSWORD"] },
+              { "required": ["AIO_DB_DSN"] }
+            ]
+          }
+        }
       }
     },
     "otel": {

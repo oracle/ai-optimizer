@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from server.app.core.settings import SettingsBase, settings
-from server.app.database.config import close_pool
+from server.app.database.config import CoreDatabaseUnavailable, close_pool
 from server.app.database.registry import init_core_database
 from server.app.database.schemas import DatabaseConfig
 from server.app.database.settings import (
@@ -142,10 +142,11 @@ async def test_persist_settings_upsert_updates(core_pool):
         settings.log_level = original_level
 
 
-async def test_persist_settings_no_pool_is_noop(no_core_pool):
-    """When the pool is removed, persist_settings() is a graceful no-op."""
+async def test_persist_settings_no_pool_raises(no_core_pool):
+    """persist_settings() requires CORE."""
     del no_core_pool
-    await persist_settings()
+    with pytest.raises(CoreDatabaseUnavailable):
+        await persist_settings()
 
 
 async def test_persist_settings_factory_row(core_pool):
@@ -239,11 +240,11 @@ async def test_load_settings_empty_table(core_pool):
     assert result is None
 
 
-async def test_load_settings_no_pool_returns_none(no_core_pool):
-    """load_settings() returns None when CORE pool is unavailable."""
+async def test_load_settings_no_pool_raises(no_core_pool):
+    """load_settings() distinguishes unavailable CORE from a missing row."""
     del no_core_pool
-    result = await load_settings()
-    assert result is None
+    with pytest.raises(CoreDatabaseUnavailable):
+        await load_settings()
 
 
 async def test_load_client_settings_round_trip(core_pool):
@@ -286,9 +287,10 @@ async def test_row_exists_false(core_pool):
 
 
 async def test_row_exists_no_pool(no_core_pool):
-    """row_exists() returns False when CORE pool is unavailable."""
+    """row_exists() distinguishes unavailable CORE from a missing row."""
     del no_core_pool
-    assert await row_exists("CONFIGURED") is False
+    with pytest.raises(CoreDatabaseUnavailable):
+        await row_exists("CONFIGURED")
 
 
 # ---------------------------------------------------------------------------
@@ -324,16 +326,17 @@ async def test_load_client_settings_empty_table(core_pool):
 
 
 async def test_load_client_settings_no_pool(no_core_pool):
-    """load_client_settings() returns None when CORE pool is unavailable."""
+    """load_client_settings() requires CORE."""
     del no_core_pool
-    result = await load_client_settings()
-    assert result is None
+    with pytest.raises(CoreDatabaseUnavailable):
+        await load_client_settings()
 
 
 async def test_delete_row_no_pool(no_core_pool):
-    """delete_row() is a graceful no-op when CORE pool is unavailable."""
+    """delete_row() requires CORE."""
     del no_core_pool
-    await delete_row("CONFIGURED")
+    with pytest.raises(CoreDatabaseUnavailable):
+        await delete_row("TEMP_CLIENT")
 
 
 # ---------------------------------------------------------------------------
@@ -840,7 +843,7 @@ async def test_load_oci_genai_overlay_preserves_omitted_fields(core_pool):
 
 
 async def test_load_oci_genai_overlay_no_pool(no_core_pool):
-    """load_oci_genai_overlay() returns an empty dict when the pool is unavailable."""
+    """load_oci_genai_overlay() requires CORE."""
     del no_core_pool
-    result = await load_oci_genai_overlay()
-    assert result == {}
+    with pytest.raises(CoreDatabaseUnavailable):
+        await load_oci_genai_overlay()

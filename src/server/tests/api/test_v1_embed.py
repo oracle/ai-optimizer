@@ -160,10 +160,8 @@ def _reset_embed_job_manager():
     from server.app.embed import jobs as jobs_mod
 
     jobs_mod.reset_embed_job_manager()
-    jobs_mod._PINNED_POOLS.clear()
     yield
     jobs_mod.reset_embed_job_manager()
-    jobs_mod._PINNED_POOLS.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -4860,19 +4858,19 @@ async def test_split_embed_pipeline_uses_submission_time_db_config(app_client, a
         return cfg, pool
 
     cfg_at_submit, pool_at_submit = _make_cfg("submission-time")
-    cfg_after_rotation, pool_after_rotation = _make_cfg("post-rotation")
+    cfg_after_update, pool_after_update = _make_cfg("post-update")
 
     def _evolving_db_config(client):
         # First two calls happen synchronously inside ``split_embed``:
         # an early DB-availability probe, then a re-snapshot under
-        # ``_settings_lock`` (the latter closes the rotation race).
+        # ``_settings_lock``.
         # Any *third* call would be the pipeline body re-resolving —
         # exactly what this test forbids: the pipeline must use the
         # snapshot it received as a parameter.
         db_config_calls.append(client)
         if len(db_config_calls) <= 2:
             return cfg_at_submit, pool_at_submit
-        return cfg_after_rotation, pool_after_rotation
+        return cfg_after_update, pool_after_update
 
     async def _capture_populate_vs(*, db_config, **_kwargs):
         populate_vs_db_configs.append(db_config)
@@ -4994,9 +4992,9 @@ async def test_split_embed_snapshots_db_config_against_in_place_mutation(app_cli
     pool_at_submit.acquire.return_value.__aenter__ = AsyncMock(return_value=AsyncMock())
     pool_at_submit.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
 
-    pool_after_rotation = MagicMock()
-    pool_after_rotation.acquire.return_value.__aenter__ = AsyncMock(return_value=AsyncMock())
-    pool_after_rotation.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
+    pool_after_update = MagicMock()
+    pool_after_update.acquire.return_value.__aenter__ = AsyncMock(return_value=AsyncMock())
+    pool_after_update.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
 
     # Build a real DatabaseConfig so model_copy semantics are exercised
     # (a MagicMock's attribute access doesn't reflect Pydantic copy
@@ -5042,7 +5040,7 @@ async def test_split_embed_snapshots_db_config_against_in_place_mutation(app_cli
                 "password_value": _reveal(db_config.password),
                 "dsn": db_config.dsn,
                 "pool_is_submit": db_config.pool is pool_at_submit,
-                "pool_is_rotated": db_config.pool is pool_after_rotation,
+                "pool_is_updated": db_config.pool is pool_after_update,
             }
         )
 
@@ -5123,7 +5121,7 @@ async def test_split_embed_snapshots_db_config_against_in_place_mutation(app_cli
             live_cfg.username = "user_after_rotation"
             live_cfg.password = SecretStr("password_after_rotation")
             live_cfg.dsn = "//rotated.example.com:1521/ROTATED"
-            live_cfg.pool = pool_after_rotation
+            live_cfg.pool = pool_after_update
 
             pipeline_can_finish.set()
             terminal = await _poll_until_terminal(
@@ -5136,25 +5134,23 @@ async def test_split_embed_snapshots_db_config_against_in_place_mutation(app_cli
     assert captured_credentials, "populate_vs was not invoked"
     seen = captured_credentials[0]
     assert seen["username"] == "user_at_submit", (
-        f"pipeline observed post-rotation username {seen['username']!r}; "
+        f"pipeline observed post-update username {seen['username']!r}; "
         "live mutation leaked into the supposedly captured snapshot"
     )
     assert seen["password_value"] == "password_at_submit", (
-        "pipeline observed post-rotation password; credentials must be snapshotted at submission time"
+        "pipeline observed post-update password; credentials must be snapshotted at submission time"
     )
-    assert seen["dsn"] == "//submit.example.com:1521/SUBMIT", "pipeline observed post-rotation DSN"
+    assert seen["dsn"] == "//submit.example.com:1521/SUBMIT", "pipeline observed post-update DSN"
     # Now verify the post-submit mutation went somewhere: the live
     # config must reflect the rotation (proves the mutation actually
     # happened — i.e. the test isn't passing trivially).
     assert live_cfg.username == "user_after_rotation"
-    assert live_cfg.pool is pool_after_rotation
+    assert live_cfg.pool is pool_after_update
     # And the pipeline must have used the submission-time pool, not
     # whatever ``.pool`` got rebound to mid-flight. ``populate_vs``
     # is mocked so this only asserts on the snapshot it received.
-    assert seen["pool_is_submit"], (
-        "pipeline saw the rotated pool reference; submission-time pool must travel with the snapshot"
-    )
-    assert not seen["pool_is_rotated"]
+    assert seen["pool_is_submit"], "submission-time pool must travel with the snapshot"
+    assert not seen["pool_is_updated"]
 
 
 @job_store_test
@@ -5601,19 +5597,7 @@ async def test_list_jobs_returns_503_when_core_read_fails(app_client, auth_heade
 
 @pytest.mark.anyio
 async def test_split_embed_submits_under_settings_lock(app_client, auth_headers):
-    """[P2] Submission must serialise with CORE rotation via ``_settings_lock``.
-
-    Reviewer concern: ``count_active_embed_jobs`` is a point-in-time
-    snapshot. If a POST /v1/embed/ runs concurrently with a CORE
-    rotation handler, the snapshot can return 0 *just before* the
-    POST inserts and pins a row in the old CORE pool. The rotation
-    then closes the old pool and the freshly-pinned row becomes
-    unreachable — its terminal writes target a closed pool and
-    pollers see CORE errors. Submissions must therefore hold
-    ``_settings_lock`` across the manager.submit() call so the
-    rotation handler's check + close happens atomically with respect
-    to any in-flight INSERT/pin.
-    """
+    """Submission serialises with additional database updates."""
     import tempfile
     import tempfile as _tf
     from pathlib import Path
@@ -5682,12 +5666,7 @@ async def test_split_embed_submits_under_settings_lock(app_client, auth_headers)
             )
 
     assert resp.status_code == 202, resp.json()
-    assert submit_lock_state["held"] is True, (
-        "manager.submit was called outside _settings_lock — a "
-        "concurrent CORE rotation could close the old pool between "
-        "the rotation guard's count check and the INSERT/pin, "
-        "stranding the accepted job"
-    )
+    assert submit_lock_state["held"] is True, "manager.submit was called outside _settings_lock"
 
 
 @pytest.mark.anyio
@@ -6004,40 +5983,19 @@ async def test_split_embed_db_unavailable_returns_503_synchronously(app_client, 
 @job_store_test
 @pytest.mark.anyio
 async def test_split_embed_resnapshots_db_config_under_settings_lock(app_client, auth_headers):
-    """[P2] DB snapshot must be captured under ``_settings_lock`` to close
-    the CORE-rotation race.
-
-    Reviewer concern: the early ``_get_client_db_config`` snapshot at
-    the top of ``split_embed`` is taken *outside* any lock. If a CORE
-    rotation runs between that snapshot and the ``_settings_lock``
-    that gates ``manager.submit``, the rotation handler observes zero
-    active job rows (no INSERT yet) and closes the captured pool. The
-    202 then returns a job pinned to a closed pool.
-
-    The fix re-resolves the DB config under ``_settings_lock`` so the
-    snapshot the pipeline runs against is whatever was live at submit
-    time — which the rotation handler held the same lock across, so
-    the two paths are mutually exclusive.
-
-    Test: serve ``_get_client_db_config`` with two distinct values for
-    the first vs second call. The first is the early probe (taken
-    pre-lock); the second is the under-lock snapshot. Assert the
-    pipeline received the second-call value — that's the under-lock
-    one. Without the fix only one call happens and the pipeline sees
-    the pre-lock value.
-    """
+    """The pipeline uses the additional database snapshot taken under the settings lock."""
     import tempfile
     import tempfile as _tf
     from pathlib import Path
     from unittest.mock import patch as _patch
 
-    pool_pre_rotation = MagicMock()
-    pool_pre_rotation.acquire.return_value.__aenter__ = AsyncMock(return_value=AsyncMock())
-    pool_pre_rotation.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
+    pool_before_update = MagicMock()
+    pool_before_update.acquire.return_value.__aenter__ = AsyncMock(return_value=AsyncMock())
+    pool_before_update.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
 
-    pool_post_rotation = MagicMock()
-    pool_post_rotation.acquire.return_value.__aenter__ = AsyncMock(return_value=AsyncMock())
-    pool_post_rotation.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
+    pool_after_update = MagicMock()
+    pool_after_update.acquire.return_value.__aenter__ = AsyncMock(return_value=AsyncMock())
+    pool_after_update.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
 
     def _make_cfg(label: str, pool):
         cfg = MagicMock()
@@ -6048,20 +6006,18 @@ async def test_split_embed_resnapshots_db_config_under_settings_lock(app_client,
         cfg.model_copy.return_value = cfg
         return cfg
 
-    cfg_pre = _make_cfg("pre-rotation", pool_pre_rotation)
-    cfg_post = _make_cfg("post-rotation", pool_post_rotation)
+    cfg_before = _make_cfg("before-update", pool_before_update)
+    cfg_after = _make_cfg("after-update", pool_after_update)
 
     db_config_calls: list[str] = []
     populate_db_configs: list[Any] = []
 
     def _evolving(_client):
         db_config_calls.append(_client)
-        # Call 1: early probe (pre-lock).
-        # Call 2: under-_settings_lock snapshot — modelling a rotation
-        # that landed between the probe and the lock acquire.
+        # Call 1: early probe. Call 2: snapshot under ``_settings_lock``.
         if len(db_config_calls) == 1:
-            return cfg_pre, pool_pre_rotation
-        return cfg_post, pool_post_rotation
+            return cfg_before, pool_before_update
+        return cfg_after, pool_after_update
 
     async def _capture_populate_vs(*, db_config, **_kwargs):
         populate_db_configs.append(db_config)
@@ -6138,13 +6094,11 @@ async def test_split_embed_resnapshots_db_config_under_settings_lock(app_client,
     assert terminal["status"] == "succeeded", terminal
     assert len(db_config_calls) >= 2, (
         f"_get_client_db_config called only {len(db_config_calls)} time(s); "
-        "the handler must re-resolve under _settings_lock so a rotation "
-        "between the early probe and submit cannot leak a stale pool"
+        "the handler must re-resolve under _settings_lock before submit"
     )
     assert populate_db_configs, "populate_vs was not invoked"
-    assert populate_db_configs[0] is cfg_post, (
+    assert populate_db_configs[0] is cfg_after, (
         f"pipeline used pre-lock snapshot (alias="
         f"{populate_db_configs[0].alias}); the snapshot must be taken "
-        "under _settings_lock so a rotation observed between the probe "
-        "and the lock acquire is captured"
+        "under _settings_lock"
     )
