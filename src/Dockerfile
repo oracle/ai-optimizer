@@ -4,7 +4,7 @@
 ##################################################
 # Stage 1: Base — shared by builder and runtime
 # Build from the project root directory:
-#  podman build -f src/Dockerfile -t ai-optimizer-aio:latest .
+#  podman build -f src/Dockerfile -t localhost/ai-optimizer-aio:dev .
 ##################################################
 FROM container-registry.oracle.com/os/oraclelinux:9-slim AS base
 
