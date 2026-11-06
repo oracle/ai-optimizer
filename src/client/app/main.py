@@ -19,6 +19,7 @@ from client.app.core.local_bootstrap import (
     IncompleteLocalCoreEnvironment,
     LocalCoreConfigurationError,
     LocalCoreSource,
+    local_core_config_path,
     persist_local_core,
     resolve_local_core,
 )
@@ -81,7 +82,7 @@ def _retry_or_edit_local_core(source: LocalCoreSource) -> None:
     if retry_column.button("Retry", type="primary"):
         state.pop("_local_core_startup_failed", None)
         st.rerun()
-    if source is LocalCoreSource.SAVED and edit_column.button("Edit CORE configuration"):
+    if source in (LocalCoreSource.MEMORY, LocalCoreSource.SAVED) and edit_column.button("Edit CORE configuration"):
         stop_server()
         state["_local_core_edit"] = True
         state.pop("_local_core_startup_failed", None)
@@ -91,7 +92,7 @@ def _retry_or_edit_local_core(source: LocalCoreSource) -> None:
 
 def _start_local_server() -> None:
     try:
-        resolved = resolve_local_core()
+        resolved = resolve_local_core(in_memory=state.get("_local_core_config"))
         load_error = None
     except IncompleteLocalCoreEnvironment as exc:
         st.error(str(exc))
@@ -133,14 +134,16 @@ def _start_local_server() -> None:
         )
         st.rerun()
 
-    try:
-        persist_local_core(candidate)
-    except OSError:
-        stop_server()
-        state["_local_core_edit"] = True
-        state["_local_core_setup_error"] = "CORE connected, but its local configuration could not be saved."
-        st.rerun()
-
+    state["_local_core_config"] = candidate
+    config_path = local_core_config_path()
+    if config_path is not None:
+        try:
+            persist_local_core(candidate, config_path)
+        except OSError:
+            stop_server()
+            state["_local_core_edit"] = True
+            state["_local_core_setup_error"] = "CORE connected, but its container configuration could not be saved."
+            st.rerun()
     state.pop("_local_core_edit", None)
     state.pop("_local_core_startup_failed", None)
     st.rerun()

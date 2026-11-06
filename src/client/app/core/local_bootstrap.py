@@ -27,6 +27,7 @@ class IncompleteLocalCoreEnvironment(LocalCoreConfigurationError):
 class LocalCoreSource(Enum):
     MISSING = "missing"
     ENVIRONMENT = "environment"
+    MEMORY = "memory"
     SAVED = "saved"
 
 
@@ -76,7 +77,7 @@ class LocalCoreConfig(BaseModel):
         return environment
 
     def persisted_payload(self) -> dict[str, str]:
-        """Return the JSON payload written to the protected local file."""
+        """Return the JSON payload written to container storage."""
         payload = {
             "username": self.username,
             "password": self.password.get_secret_value(),
@@ -96,14 +97,12 @@ class ResolvedLocalCore(BaseModel):
     source: LocalCoreSource
 
 
-def local_core_config_path(environ: Mapping[str, str] = os.environ) -> Path:
-    """Return the protected local CORE configuration path."""
+def local_core_config_path(environ: Mapping[str, str] = os.environ) -> Path | None:
+    """Return the explicitly configured container storage path."""
     configured_dir = environ.get("AIO_LOCAL_CONFIG_DIR", "").strip()
-    if configured_dir:
-        return Path(configured_dir).expanduser() / "core.json"
-    xdg_config = environ.get("XDG_CONFIG_HOME", "").strip()
-    root = Path(xdg_config).expanduser() if xdg_config else Path.home() / ".config"
-    return root / "ai-optimizer" / "core.json"
+    if not configured_dir:
+        return None
+    return Path(configured_dir).expanduser() / "core.json"
 
 
 def _environment_config(environ: Mapping[str, str]) -> LocalCoreConfig | None:
@@ -140,23 +139,23 @@ def load_saved_local_core(path: Path) -> LocalCoreConfig:
 
 def resolve_local_core(
     environ: Mapping[str, str] = os.environ,
-    path: Path | None = None,
+    in_memory: LocalCoreConfig | None = None,
 ) -> ResolvedLocalCore:
-    """Resolve environment configuration before the saved local file."""
+    """Resolve environment configuration, session memory, then configured storage."""
     environment_config = _environment_config(environ)
     if environment_config is not None:
         return ResolvedLocalCore(config=environment_config, source=LocalCoreSource.ENVIRONMENT)
-
-    config_path = path or local_core_config_path(environ)
-    if config_path.is_file():
+    if in_memory is not None:
+        return ResolvedLocalCore(config=in_memory, source=LocalCoreSource.MEMORY)
+    config_path = local_core_config_path(environ)
+    if config_path is not None and config_path.is_file():
         return ResolvedLocalCore(config=load_saved_local_core(config_path), source=LocalCoreSource.SAVED)
     return ResolvedLocalCore(config=None, source=LocalCoreSource.MISSING)
 
 
-def persist_local_core(config: LocalCoreConfig, path: Path | None = None) -> Path:
+def persist_local_core(config: LocalCoreConfig, path: Path) -> None:
     """Atomically save CORE credentials with owner-only permissions."""
-    config_path = path or local_core_config_path()
-    config_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     temporary_path: Path | None = None
     try:
         with tempfile.NamedTemporaryFile(
@@ -164,7 +163,7 @@ def persist_local_core(config: LocalCoreConfig, path: Path | None = None) -> Pat
             encoding="utf-8",
             prefix=".core-",
             suffix=".tmp",
-            dir=config_path.parent,
+            dir=path.parent,
             delete=False,
         ) as stream:
             temporary_path = Path(stream.name)
@@ -174,10 +173,9 @@ def persist_local_core(config: LocalCoreConfig, path: Path | None = None) -> Pat
             stream.write("\n")
             stream.flush()
             os.fsync(stream.fileno())
-        os.replace(temporary_path, config_path)
+        os.replace(temporary_path, path)
         if os.name != "nt":
-            config_path.chmod(0o600)
+            path.chmod(0o600)
     finally:
         if temporary_path is not None:
             temporary_path.unlink(missing_ok=True)
-    return config_path

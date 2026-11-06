@@ -8,6 +8,7 @@ Unit tests for client.app.main — server connection and initialization logic.
 
 import contextlib
 import sys
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -40,7 +41,15 @@ def _core_config() -> LocalCoreConfig:
     )
 
 
-def _import_main(state, get_settings_side_effect, *, resolved=None, submitted=None, server_started=True):
+def _import_main(
+    state,
+    get_settings_side_effect,
+    *,
+    resolved=None,
+    submitted=None,
+    server_started=True,
+    config_path=None,
+):
     """Import client.app.main with all module-level dependencies mocked.
 
     Mock target *source* modules so that ``from X import Y`` picks up mocks
@@ -69,6 +78,7 @@ def _import_main(state, get_settings_side_effect, *, resolved=None, submitted=No
         patch(f"{API_MODULE}.api_get", mock_api_get),
         patch(f"{API_MODULE}.stop_server", mock_stop),
         patch("client.app.core.local_bootstrap.resolve_local_core", return_value=resolved),
+        patch("client.app.core.local_bootstrap.local_core_config_path", return_value=config_path),
         patch("client.app.core.local_bootstrap.persist_local_core", mock_persist),
         patch("client.app.content.local_database_setup.display_local_database_setup", mock_display_setup),
         patch.object(real_st, "stop", side_effect=SystemExit),
@@ -167,7 +177,7 @@ class TestMainConnectionLogic:
         assert state.get("settings") is None
         assert "optimizer_help" not in state
 
-    def test_valid_setup_starts_then_persists(self):
+    def test_valid_setup_starts_then_retains_in_memory(self):
         state = AttrDict({"optimizer_client": "test-setup-valid"})
         missing = ResolvedLocalCore(config=None, source=LocalCoreSource.MISSING)
         submitted = _core_config()
@@ -180,10 +190,28 @@ class TestMainConnectionLogic:
         )
 
         mock_start.assert_called_once_with(submitted.child_environment())
-        mock_persist.assert_called_once_with(submitted)
+        assert state.get("_local_core_config") is submitted
+        mock_persist.assert_not_called()
         assert state.get("_clear_local_core_secrets") is True
 
-    def test_failed_setup_is_not_persisted(self):
+    def test_valid_container_setup_persists_to_configured_volume(self):
+        state = AttrDict({"optimizer_client": "test-container-valid"})
+        missing = ResolvedLocalCore(config=None, source=LocalCoreSource.MISSING)
+        submitted = _core_config()
+        config_path = Path("/app/data/core.json")
+
+        _, mock_start, _, mock_persist, _ = _import_main(
+            state,
+            get_settings_side_effect=[None],
+            resolved=missing,
+            submitted=submitted,
+            config_path=config_path,
+        )
+
+        mock_start.assert_called_once_with(submitted.child_environment())
+        mock_persist.assert_called_once_with(submitted, config_path)
+
+    def test_failed_setup_is_not_retained(self):
         state = AttrDict({"optimizer_client": "test-setup-invalid"})
         missing = ResolvedLocalCore(config=None, source=LocalCoreSource.MISSING)
 
@@ -198,18 +226,19 @@ class TestMainConnectionLogic:
         mock_start.assert_called_once()
         mock_stop.assert_called_once_with()
         mock_persist.assert_not_called()
+        assert state.get("_local_core_config") is None
         assert state.get("_local_core_edit") is True
         assert "failed" in state.get("_local_core_setup_error", "").lower()
 
-    def test_saved_configuration_restarts_without_setup_form(self):
-        state = AttrDict({"optimizer_client": "test-saved"})
+    def test_memory_configuration_restarts_without_setup_form(self):
+        state = AttrDict({"optimizer_client": "test-memory"})
         valid_settings = {"database_configs": [], "model_configs": [], "client_settings": {}}
-        saved = ResolvedLocalCore(config=_core_config(), source=LocalCoreSource.SAVED)
+        retained = ResolvedLocalCore(config=_core_config(), source=LocalCoreSource.MEMORY)
 
         mock_get, mock_start, _, mock_persist, mock_display = _import_main(
             state,
             get_settings_side_effect=[None, valid_settings],
-            resolved=saved,
+            resolved=retained,
         )
 
         mock_start.assert_called_once_with(_core_config().child_environment())
@@ -217,17 +246,17 @@ class TestMainConnectionLogic:
         mock_persist.assert_not_called()
         assert mock_get.call_count == 2
 
-    def test_saved_configuration_can_be_explicitly_edited(self):
+    def test_memory_configuration_can_be_explicitly_edited(self):
         state = AttrDict({"optimizer_client": "test-edit", "_local_core_edit": True})
-        saved = ResolvedLocalCore(config=_core_config(), source=LocalCoreSource.SAVED)
+        retained = ResolvedLocalCore(config=_core_config(), source=LocalCoreSource.MEMORY)
 
         _, mock_start, _, mock_persist, mock_display = _import_main(
             state,
             get_settings_side_effect=[None],
-            resolved=saved,
+            resolved=retained,
         )
 
         mock_display.assert_called_once()
-        assert mock_display.call_args.kwargs["current"] == saved.config
+        assert mock_display.call_args.kwargs["current"] == retained.config
         mock_start.assert_not_called()
         mock_persist.assert_not_called()

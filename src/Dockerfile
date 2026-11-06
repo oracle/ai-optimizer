@@ -73,7 +73,7 @@ COPY --chown=$RUNUSER:$RUNUSER src /app/src
 # Mount points (supply via -v at runtime):
 # - /app/.oci      — OCI config (read-only); entrypoint copies to /app/runtime/.oci
 # - /app/tns_admin — Oracle TNS admin directory
-# - /app/data      — protected local CORE configuration created by first-run setup
+# - /app/data      — protected Oracle AI Database configuration
 VOLUME ["/app/data"]
 
 # Set user and working directory

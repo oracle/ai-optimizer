@@ -98,7 +98,7 @@ To run the application in a container, download the [source](https://github.com/
 
 1. Navigate to `http://localhost:8501`.
 
-1. Complete the required Oracle AI Database setup page. A successful configuration is stored in the `ai-optimizer-data` volume.
+1. Complete the required Oracle AI Database setup page. A successful configuration is stored in the `ai-optimizer-data` container volume.
 
 1. [Configure](https://oracle.github.io/ai-optimizer/docs/client/configuration/) the **AI Optimizer**.
 
