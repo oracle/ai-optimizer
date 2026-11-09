@@ -7,23 +7,23 @@ sidebar_position: 20
 {/* Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl. */}
 
-The **AI Optimizer Server** and **AI Optimizer Client** can serve HTTPS instead of HTTP. Configure TLS with `AIO_*_SSL_*` [environment variables](../guides/env-vars) before starting the component.
+The **AI Optimizer Server** and **AI Optimizer Client** can serve HTTPS. Enable TLS with `AIO_SERVER_SSL` or `AIO_CLIENT_SSL`, then use the corresponding `*_SSL_CERT_FILE` and `*_SSL_KEY_FILE` [environment variables](../guides/env-vars) for provided certificates.
 
-You can choose one certificate option for each component:
+Choose one HTTP/TLS option for each component:
 
-- **No TLS:** The default. Use HTTP for local desktop experimentation.
-- **Generated self-signed certificate:** Encrypts local development traffic, but browsers do not trust the certificate by default.
+- **HTTP:** The default for local desktop experimentation.
+- **Generated self-signed certificate:** Encrypts local development traffic and prompts a browser trust warning.
 - **Provided certificate:** Use a certificate and key issued or managed by your organization for deployments reached by other users.
 
 ## Generated Self-Signed Certificates
 
-The **AI Optimizer** can automatically generate self-signed certificates for local deployments. The generated certificate is valid for `localhost` and the machine's hostname. 
+The **AI Optimizer** can automatically generate self-signed certificates for local deployments. The generated certificate is valid for `localhost`.
 
 :::note[Browser warning]
 Browsers show a warning for a self-signed certificate. It is intended for local development; use a certificate trusted by the browser or operating system for a shared deployment.
 :::
 
-To have the certificcates automatically generated, set one SSL variable for the component you want to secure, without setting certificate paths:
+To generate certificates automatically, set one SSL variable for the component and leave its certificate paths unset:
 
 ```dotenv
 # API Server
@@ -44,8 +44,6 @@ uv run python src/entrypoint.py client
 ```
 
 A localhost certificate and key will be placed at `<project-root>/tmp/ssl/` for bare-metal installations and `/app/tmp/ssl/` in the container image.
-
-
 
 ## Provided Certificates
 
@@ -78,7 +76,7 @@ podman run \
   --env-file src/.env.dev \
   -v /path/to/tls:/app/tls:ro \
   -p 8501:8501 \
-  -it --rm localhost/ai-optimizer-aio:latest
+  -it --rm localhost/ai-optimizer-aio:dev
 ```
 
 In the environment file, use the mounted paths, for example:

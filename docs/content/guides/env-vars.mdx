@@ -9,7 +9,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 ## Getting Started
 
-Most settings can be configured in the [AI Optimizer interface](../client/configuration), however, you can use environment variables to pre-configure a deployment and enable operational integrations. You can provide them in two ways:
+Most application settings can be configured in the [AI Optimizer interface](../client/configuration). The required database connection is startup configuration. You can provide environment variables in two ways:
 
 - Create an environment file. This is the **preferred approach** for reusable local configuration because it keeps related settings together.
 - Export values in the shell before starting the application. This is useful for temporary configuration and deployment platforms that inject environment variables.
@@ -20,7 +20,7 @@ To create the recommended environment file for local use, copy the example:
 cp src/.env.example src/.env.dev
 ```
 
-Then edit `src/.env.dev` and uncomment or add the settings your deployment needs:
+Then edit `src/.env.dev`. A direct Server process requires these database settings:
 
 ```dotenv
 AIO_DB_USERNAME=demo
@@ -36,8 +36,8 @@ export AIO_DB_PASSWORD=replace-with-your-password
 export AIO_DB_DSN=localhost:1521/FREEPDB1
 ```
 
-:::note[Database at the Core]
-A valid CORE database configuration (`AIO_DB_USERNAME`, `AIO_DB_PASSWORD`, and `AIO_DB_DSN`) enables settings persistence and provides the database access required by Vector Search, NL2SQL, and Testbed. Settings configured in the interface are restored from the CORE database after a restart.
+:::note[Required database connection]
+A valid database configuration (`AIO_DB_USERNAME`, `AIO_DB_PASSWORD`, and `AIO_DB_DSN`) is required before the Server can start. The Server uses this database for application settings, Testbed data, and background job state. The bare-metal client launcher can retain setup-page values in memory for the current process; the all-in-one container stores them in its configured application-data volume.
 :::
 
 ### Common Starting Configurations
@@ -48,7 +48,7 @@ To use a hosted model, configure its provider key. For example:
 AIO_OPENAI_API_KEY=replace-with-your-api-key
 ```
 
-To use database-backed features, add the CORE database settings shown above. To use a local Ollama model instead of a hosted model provider, set its URL:
+To use a local Ollama model, set its URL:
 
 ```dotenv
 AIO_ON_PREM_OLLAMA_URL=http://127.0.0.1:11434
@@ -57,7 +57,7 @@ AIO_ON_PREM_OLLAMA_URL=http://127.0.0.1:11434
 See [AI Models](./ai-models) for model-provider setup and [Oracle AI Database](./database) for database connection details.
 
 :::warning[Secrets inside]
-Environment files can contain API keys, database credentials, wallet passwords, private-key material, and telemetry headers. Do not commit a populated environment file. For shared or hosted deployments, use the platform's secret-management facilities.
+Environment files can contain API keys, database credentials, wallet passwords, private-key material, and telemetry headers. Keep populated environment files out of source control. For shared or hosted deployments, use the platform's secret-management facilities.
 :::
 
 ## How Configuration Works
@@ -66,17 +66,17 @@ At startup, the application uses the following precedence:
 
 ```mermaid
 flowchart TD
-    exported["Shell, container, or pod AIO_* variables"] -->|"Highest precedence"| settings["AI Optimizer settings"]
-    envfile["src/.env.{AIO_ENV}"] -->|"Used when not already set"| settings
-    persisted["CORE database<br/>Previously saved settings"] -->|"Loaded when not overridden"| settings
-    defaults["Application defaults"] -->|"Used when unset"| settings
-    interface["AI Optimizer interface"] -->|"Updates settings"| settings
-    settings -->|"Saved when CORE is configured"| persisted
+    exported["1. Shell, container, or pod AIO_* variables"] --> settings["AI Optimizer settings"]
+    envfile["2. src/.env.{AIO_ENV}"] --> settings
+    persisted["3. Oracle AI Database<br/>Previously saved settings"] --> settings
+    defaults["4. Application defaults"] --> settings
+    interface["AI Optimizer interface"] -->|"Updates runtime settings"| settings
+    settings -->|"Persisted to database"| persisted
 ```
 
 ## Environment Files
 
-The entrypoint reads `AIO_*` variables from the process environment and then loads `src/.env.{AIO_ENV}` without replacing values already present in the process environment. In a POSIX shell, use `export` so the application inherits the variables.
+The entrypoint reads `AIO_*` variables from the process environment, then fills the remaining settings from `src/.env.{AIO_ENV}`. In a POSIX shell, use `export` so the application inherits the variables.
 
 Set `AIO_ENV` before startup to select an environment file. If it is unset, the application uses `dev`.
 
@@ -90,7 +90,7 @@ Restart the affected component after changing an environment variable.
 
 `AIO_*` variables are specific to the **AI Optimizer**. Integrations such as OpenTelemetry and OpenInference use their own variables. See [Database Configuration](./database#using-a-wallettns_admin) for `TNS_ADMIN`.
 
-Values supplied through `AIO_*` variables are reapplied at startup. You can change a matching setting in the interface while the application is running, but the environment value takes effect again after a restart. For the CORE database, `DB_*` environment variables take precedence over `AIO_DB_*`; for OCI profiles, `OCI_CLI_*` variables take precedence over `AIO_OCI_CLI_*`.
+Values supplied through `AIO_*` variables are reapplied at startup. Interface changes to matching application settings apply to the running process until the next restart. The required database connection is startup configuration. For this connection, `DB_*` environment variables take precedence over `AIO_DB_*`; for OCI profiles, `OCI_CLI_*` variables take precedence over `AIO_OCI_CLI_*`.
 
 ## Environment Variables
 
@@ -105,7 +105,7 @@ Values supplied through `AIO_*` variables are reapplied at startup. You can chan
 
 | Variable      | Description                                                                                                                                                                                      | Default       |
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------- |
-| `AIO_API_KEY` | API key for authenticating requests to the [**AI Optimizer Server**](../server/intro.mdx). If unset, a key is generated at startup and displayed on the [API Server](../client/api_server) page. | _(generated)_ |
+| `AIO_API_KEY` | API key for authenticating requests to the [**AI Optimizer Server**](../server/intro.mdx). In an all-in-one deployment, the Client generates and displays a shared key when this variable is unset. Set it explicitly for a standalone Server. | _(generated)_ |
 
 ### Client
 
@@ -113,8 +113,8 @@ Values supplied through `AIO_*` variables are reapplied at startup. You can chan
 | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
 | `AIO_CLIENT_ADDRESS`       | Client listen address                                                                                                                                                                                          | `localhost` |
 | `AIO_CLIENT_PORT`          | Client listen port                                                                                                                                                                                             | `8501`      |
-| `AIO_CLIENT_COOKIE_SECRET` | Signing key for the client's XSRF cookies. Multi-replica deployments must provide the same value to every replica.                                                                                             | _(none)_    |
-| `AIO_CLIENT_PASSWORD`      | Shared password gating configuration and shared-state controls in the web client. This does not replace [**AI Optimizer Server**](../server/intro.mdx) authentication. See [Access Control](./access-control). | _(none)_    |
+| `AIO_CLIENT_COOKIE_SECRET` | Signing key for Streamlit's signed cookies. Multi-replica deployments must provide the same value to every replica.                                                                                             | _(none)_    |
+| `AIO_CLIENT_PASSWORD`      | Shared password gating configuration and shared-state controls in the web client. Configure [**AI Optimizer Server**](../server/intro.mdx) authentication separately. See [Access Control](./access-control). | _(none)_    |
 | `AIO_CLIENT_SSL`           | Enables TLS for the Client                                                                                                                                                                                     | `false`     |
 | `AIO_CLIENT_SSL_CERT_FILE` | Path to a TLS certificate in PEM format                                                                                                                                                                        | _(none)_    |
 | `AIO_CLIENT_SSL_KEY_FILE`  | Path to a TLS private key in PEM format                                                                                                                                                                        | _(none)_    |
@@ -123,12 +123,12 @@ Values supplied through `AIO_*` variables are reapplied at startup. You can chan
 
 | Variable                   | Description                                                                                                                                                                            | Default            |
 | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ |
-| `AIO_SERVER_URL`           | URL the client uses to reach the [**AI Optimizer Server**](../server/intro.mdx). Set it when the client connects to a separately deployed, remote, or reverse-proxied instance.        | _(auto-detected)_  |
+| `AIO_SERVER_URL`           | URL the client uses to reach the [**AI Optimizer Server**](../server/intro.mdx). Set it when the client connects to a separately deployed, remote, or reverse-proxied instance.        | `http://localhost` |
 | `AIO_SERVER_URL_PREFIX`    | URL path prefix for the [**AI Optimizer Server**](../server/intro.mdx), such as `/optimizer`                                                                                           | _(none)_           |
 | `AIO_SERVER_ADDRESS`       | [**AI Optimizer Server**](../server/intro.mdx) bind address. A standalone instance uses `0.0.0.0`; client autostart uses `127.0.0.1`. Clients should connect through `AIO_SERVER_URL`. | component-specific |
 | `AIO_SERVER_PORT`          | [**AI Optimizer Server**](../server/intro.mdx) listen port                                                                                                                             | `8000`             |
 | `AIO_SERVER_SSL`           | Enables TLS for the [**AI Optimizer Server**](../server/intro.mdx)                                                                                                                     | `false`            |
-| `AIO_SERVER_SSL_CERT_FILE` | Path to a TLS certificate in PEM format. When TLS is enabled without a certificate, a self-signed certificate is generated.                                                            | _(none)_           |
+| `AIO_SERVER_SSL_CERT_FILE` | Path to a TLS certificate in PEM format. Set only `AIO_SERVER_SSL` to generate a self-signed certificate.                                                                                      | _(none)_           |
 | `AIO_SERVER_SSL_KEY_FILE`  | Path to the TLS private key in PEM format                                                                                                                                              | _(none)_           |
 | `AIO_SERVER_READY_TIMEOUT` | Seconds the client waits for the [**AI Optimizer Server**](../server/intro.mdx) to become ready at startup                                                                             | `180`              |
 | `AIO_MAX_CLIENTS`          | Maximum number of distinct client sessions cached in memory                                                                                                                            | `64`               |
@@ -136,7 +136,7 @@ Values supplied through `AIO_*` variables are reapplied at startup. You can chan
 
 ### Database
 
-These variables configure the CORE database connection. See [Database Configuration](./database) for connection formats, wallet setup, and required privileges.
+These variables configure the required database connection. Username, password, and DSN must be supplied together. See [Database Configuration](./database) for connection formats, wallet setup, and required privileges.
 
 | Variable                 | Description                                       | Default  |
 | ------------------------ | ------------------------------------------------- | -------- |
@@ -172,12 +172,12 @@ These settings populate the DEFAULT OCI profile. See [OCI Configuration](./oracl
 
 #### OCI Object Storage Source Lock
 
-Pin the Split & Embed tab's OCI source compartment and, optionally, its bucket for every user of the deployment. The compartment must resolve against the active OCI profile. The bucket is only applied when the compartment resolves and the bucket exists in that compartment.
+Pin the Split & Embed tab's OCI source compartment and, optionally, its bucket for every user of the deployment. The compartment must resolve against the active OCI profile. The bucket applies when it exists in the resolved compartment.
 
 | Variable                               | Description                                                                                                                                            | Default  |
 | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | -------- |
 | `AIO_OCI_SOURCE_BUCKET_COMPARTMENT_ID` | Compartment OCID pinned as the Split & Embed source compartment. When the OCID resolves, the compartment selector is locked for all users.             | _(none)_ |
-| `AIO_OCI_SOURCE_BUCKET_NAME`           | Bucket pinned within the configured source compartment. If the compartment does not resolve or the bucket does not exist there, this value is ignored. | _(none)_ |
+| `AIO_OCI_SOURCE_BUCKET_NAME`           | Bucket pinned within the configured source compartment when the compartment resolves and contains the bucket. | _(none)_ |
 
 ### Models
 
@@ -217,7 +217,7 @@ The **AI Optimizer** honors the standard [OpenTelemetry SDK environment variable
 | `OTEL_EXPORTER_OTLP_PROTOCOL`        | `grpc` or `http/protobuf` (all signals)                                  | `grpc`                    |
 | `OTEL_EXPORTER_OTLP_TRACES_PROTOCOL` | Trace-specific protocol (overrides the generic one)                      | _(unset)_                 |
 | `OTEL_EXPORTER_OTLP_LOGS_PROTOCOL`   | Log-specific protocol (overrides the generic one)                        | _(unset)_                 |
-| `OTEL_EXPORTER_OTLP_INSECURE`        | If `true`, skips TLS for gRPC OTLP. Required for plaintext local SigNoz. | `false`                   |
+| `OTEL_EXPORTER_OTLP_INSECURE`        | Forces plaintext gRPC transport. An `http://` endpoint selects plaintext automatically. | `false`                   |
 | `OTEL_EXPORTER_OTLP_HEADERS`         | Comma-separated `k=v` headers (for example, vendor authentication)       | _(unset)_                 |
 
 #### Exporter selection
@@ -258,7 +258,7 @@ For more information on observability in the **AI Optimizer**, see the [advanced
 Pass an environment file when starting a container:
 
 ```bash
-podman run --env-file src/.env.dev -p 8501:8501 -it --rm localhost/ai-optimizer-aio:latest
+podman run --env-file src/.env.dev -p 8501:8501 -it --rm localhost/ai-optimizer-aio:dev
 ```
 
 ### Kubernetes
