@@ -10,7 +10,7 @@ import LanguageParametersImage from '../_assets/images/chatbot-lm-params.png';
 import ToolkitImage from '../_assets/images/chatbot-toolkit.png';
 import VectorSearchOptionsImage from '../_assets/images/chatbot-vs-options.png';
 
-The **Oracle AI Optimizer and Toolkit** (the **AI Optimizer**) provides an interactive workbench for exercising its agents, flows, and AI tools. Use the Chatbot to compare model settings, prompts, and tool configurations before deploying an application.
+The **Oracle AI Optimizer and Toolkit** (the **AI Optimizer**) provides an interactive client for exercising its agents, flows, and AI tools. Use the Chatbot to compare model settings, prompts, and tool configurations before deploying an application.
 
 Each Chatbot turn follows the runtime route selected by **Tool Selection**. The selected language model may generate the answer directly, choose tool calls as an agent, or participate in a Vector Search flow.
 
@@ -27,11 +27,11 @@ For implementation details, see [Agents and Flows](../advanced-guides/agents/int
 
 ## History and Context
 
-Interactions with the AI models are stored as conversation history in the model's **context window**. When _History and Context_ is enabled, previous interactions from enabled turns are provided to the model so that it can use them to guide the next response. When _History and Context_ is disabled, only the current user input is provided.
+The Server stores each client's conversation history. When _History and Context_ is enabled, previous interactions from enabled turns are provided to the model with the next request. When _History and Context_ is disabled, only the current user input is provided.
 
 ![History and Context](../_assets/images/chatbot-history-context.png)
 
-Use the "Clear" button to reset the "context window" and start a fresh interaction with a model.
+Use the **Clear** button to remove the stored conversation history and start a fresh interaction with the model.
 
 ## Language Model Parameters
 
@@ -100,7 +100,7 @@ The **AI Optimizer** provides MCP tools and runtime routes that ground model res
     <ul>
       <li><strong>Store Discovery:</strong> Dynamically discover vector stores for Retrieval-Augmented Generation.</li>
       <li><strong>Prompt Rephrase:</strong> Rephrase the user prompt, based on context and history, for a more meaningful vector search.</li>
-      <li><strong>Document Grading:</strong> Grade vector search results to determine their relevance. Results judged irrelevant are not used to generate the response.</li>
+      <li><strong>Document Grading:</strong> Grade vector search results and pass relevant results to response generation.</li>
     </ul>
 
   </div>
@@ -122,7 +122,7 @@ The **AI Optimizer** uses a local [SQLcl MCP proxy](../guides/sqlcl-mcp-server) 
 
 ⭐️ For more information about SQLcl and its MCP capabilities, see the [Oracle SQLcl MCP server documentation](https://docs.oracle.com/en/database/oracle/sql-developer-command-line/25.2/sqcug/using-oracle-sqlcl-mcp-server.html).
 
-To enable NL2SQL, configure and select a database with valid credentials in [Configuration → Databases](configuration/databases). The NL2SQL agent becomes available when both the database connection and SQLcl proxy are available. You can then issue natural language queries against structured data, such as the dataset shown in the example below:
+To enable NL2SQL, select a configured database in [Configuration → Databases](configuration/databases). The NL2SQL agent becomes available when the selected connection and SQLcl proxy are available. You can then issue natural language queries against structured data, such as the dataset shown in the example below:
 
 ![Customer Data](../_assets/images/vscode-customer-table.png)
 
@@ -135,7 +135,3 @@ Can you give me the list of customers?
 The agent's answer is based on a SQL query executed against the database:
 
 ![NL2SQL Example](../_assets/images/chatbot-nl2sql-output.png)
-
-By using this agent, the **AI Optimizer** allows users to query structured data without writing any SQL code, simplifying data access and exploration.
-
-You can experiment freely with your own structured datasets and progressively issue more complex natural language queries to explore the full capabilities of the NL2SQL agent.
