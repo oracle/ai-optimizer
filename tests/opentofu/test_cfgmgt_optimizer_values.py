@@ -21,6 +21,8 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 TEMPLATE_PATH = REPO_ROOT / "opentofu" / "modules" / "kubernetes" / "templates" / "ai-optimizer-values.yaml"
 CHART_DIR = REPO_ROOT / "helm"
+ROOT_MAIN_PATH = REPO_ROOT / "opentofu" / "main.tf"
+ROOT_PROVIDER_PATH = REPO_ROOT / "opentofu" / "provider.tf"
 ROOT_VARIABLES_PATH = REPO_ROOT / "opentofu" / "variables.tf"
 K8S_VARIABLES_PATH = REPO_ROOT / "opentofu" / "modules" / "kubernetes" / "variables.tf"
 VM_VARIABLES_PATH = REPO_ROOT / "opentofu" / "modules" / "vm" / "variables.tf"
@@ -128,13 +130,24 @@ def _helm_template(values_path: Path) -> str:
 
 def test_byo_database_paths_validate_complete_core_connection():
     """Root BYO inputs fail before rendering an empty CORE connection."""
-    variables = ROOT_VARIABLES_PATH.read_text()
+    main = ROOT_MAIN_PATH.read_text()
 
-    assert 'var.byo_db_type != "ADB-S"' in variables
-    assert "trimspace(var.byo_adb_ocid)" in variables
-    assert 'var.byo_db_type != "OTHER"' in variables
+    assert 'var.byo_db_type != "ADB-S"' in main
+    assert "trimspace(var.byo_adb_ocid)" in main
+    assert 'var.byo_db_type != "OTHER"' in main
     for variable in ("byo_odb_host", "byo_odb_service", "byo_db_password"):
-        assert f"trimspace(var.{variable})" in variables
+        assert f"trimspace(var.{variable})" in main
+
+
+def test_byo_type_variable_validation_supports_opentofu_1_5():
+    provider = ROOT_PROVIDER_PATH.read_text()
+    variables = ROOT_VARIABLES_PATH.read_text()
+    start = variables.index('variable "byo_db_type"')
+    end = variables.index('variable "byo_db_password"', start)
+    referenced_variables = set(re.findall(r"\bvar\.(\w+)", variables[start:end]))
+
+    assert 'required_version = ">= 1.5"' in provider
+    assert referenced_variables == {"byo_db_type"}
     assert "var.byo_odb_port >= 1 && var.byo_odb_port <= 65535" in variables
 
 

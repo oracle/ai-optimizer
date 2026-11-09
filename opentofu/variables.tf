@@ -112,20 +112,6 @@ variable "byo_db_type" {
     condition     = contains(["", "ADB-S", "OTHER"], var.byo_db_type)
     error_message = "Must be either ADB-S or OTHER."
   }
-  validation {
-    condition = var.byo_db_type != "ADB-S" || (
-      trimspace(var.byo_adb_ocid) != "" && trimspace(var.byo_db_password) != ""
-    )
-    error_message = "BYO ADB-S requires non-empty byo_adb_ocid and byo_db_password values."
-  }
-  validation {
-    condition = var.byo_db_type != "OTHER" || (
-      trimspace(var.byo_odb_host) != "" &&
-      trimspace(var.byo_odb_service) != "" &&
-      trimspace(var.byo_db_password) != ""
-    )
-    error_message = "BYO OTHER requires non-empty byo_odb_host, byo_odb_service, and byo_db_password values."
-  }
 }
 
 variable "byo_db_password" {
