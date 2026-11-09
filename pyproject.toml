@@ -28,26 +28,26 @@ dependencies = [
 # Server component dependencies
 # - server: server side only
 server = [
-    "docling==2.147.0",
+    "docling==2.149.0",
     "faiss-cpu==1.15.1",
-    "fastapi==0.162.0",
+    "fastapi==0.162.2",
     "fastmcp==4.1.6",
     "giskard==3.0.1",
     "langchain-litellm==0.11.2",
     "langchain-oracledb==1.6.0",
-    "litellm==1.108.0",
+    "litellm==1.108.3",
     "llama-index-core==0.14.25",
     "oci~=2.0",
     #"oracleagentmemory==26.8.0",
     "pyagentspec==26.3.1",
-    "pypdf==6.21.4",
+    "pypdf==7.0.0",
     "torch", # Direct requirement to select the CPU-only PyTorch distribution for Docling.
     "torchvision", # Direct requirement to select the CPU-only PyTorch distribution for Docling.
 ]
 
 # - client: client side only
 client = [
-    "streamlit==1.66.1",
+    "streamlit==1.67.0",
 ]
 
 # - otel: opentelemetry collector for server-side observability
