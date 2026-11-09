@@ -90,7 +90,7 @@ Restart the affected component after changing an environment variable.
 
 `AIO_*` variables are specific to the **AI Optimizer**. Integrations such as OpenTelemetry and OpenInference use their own variables. See [Database Configuration](./database#using-a-wallettns_admin) for `TNS_ADMIN`.
 
-Values supplied through `AIO_*` variables are reapplied at startup. Interface changes to matching application settings apply to the running process until the next restart. The required database connection is startup configuration. For this connection, `DB_*` environment variables take precedence over `AIO_DB_*`; for OCI profiles, `OCI_CLI_*` variables take precedence over `AIO_OCI_CLI_*`.
+Values supplied through `AIO_*` variables are reapplied at startup. Interface changes to matching application settings apply to the running process until the next restart. The required database connection is startup configuration. For OCI profiles, `OCI_CLI_*` variables take precedence over `AIO_OCI_CLI_*`.
 
 ## Environment Variables
 

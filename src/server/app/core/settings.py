@@ -94,18 +94,7 @@ class Settings(SettingsBase, BaseSettings):
 
     @model_validator(mode="after")
     def _build_core_database_config(self) -> "Settings":
-        """Create the CORE database config from DB_* / AIO_DB_* env vars.
-
-        Precedence: DB_* env var > AIO_DB_* (.env / export).
-        """
-        self.db_username = os.environ.get("DB_USERNAME") or self.db_username
-        db_password_env = os.environ.get("DB_PASSWORD")
-        if db_password_env:
-            self.db_password = SecretStr(db_password_env)
-        self.db_dsn = os.environ.get("DB_DSN") or self.db_dsn
-        wallet_password_env = os.environ.get("DB_WALLET_PASSWORD")
-        if wallet_password_env:
-            self.db_wallet_password = SecretStr(wallet_password_env)
+        """Create the CORE database config from AIO_DB_* environment settings."""
         self.db_wallet_location = os.environ.get("DB_WALLET_LOCATION") or self.db_wallet_location
         pool_size_env = os.environ.get("DB_POOL_SIZE")
         if pool_size_env:
@@ -152,12 +141,12 @@ settings = Settings()
 def require_core_database_config(app_settings: Settings = settings) -> DatabaseConfig:
     """Return the deployment-owned CORE config or raise a sanitized error."""
     missing_checks = (
-        ("DB_USERNAME/AIO_DB_USERNAME", not app_settings.db_username),
+        ("AIO_DB_USERNAME", not app_settings.db_username),
         (
-            "DB_PASSWORD/AIO_DB_PASSWORD",
+            "AIO_DB_PASSWORD",
             app_settings.db_password is None or not app_settings.db_password.get_secret_value(),
         ),
-        ("DB_DSN/AIO_DB_DSN", not app_settings.db_dsn),
+        ("AIO_DB_DSN", not app_settings.db_dsn),
     )
     missing = [name for name, is_missing in missing_checks if is_missing]
     if missing:

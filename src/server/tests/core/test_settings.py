@@ -110,9 +110,6 @@ class TestSettingsValidators:
             Settings.model_validate({"mcp_cache_ttl_seconds": -1})
 
     def test_requires_complete_core_bootstrap_settings(self, monkeypatch):
-        monkeypatch.delenv("DB_USERNAME", raising=False)
-        monkeypatch.delenv("DB_PASSWORD", raising=False)
-        monkeypatch.delenv("DB_DSN", raising=False)
         monkeypatch.setenv("AIO_DB_DSN", "")
 
         app_settings = Settings(db_username="core_user", db_password=SecretStr("secret-value"))
@@ -120,13 +117,10 @@ class TestSettingsValidators:
         with pytest.raises(CoreDatabaseConfigurationError) as exc_info:
             require_core_database_config(app_settings)
 
-        assert "DB_DSN/AIO_DB_DSN" in str(exc_info.value)
+        assert "AIO_DB_DSN" in str(exc_info.value)
         assert "secret-value" not in str(exc_info.value)
 
     def test_rejects_core_supplied_only_as_database_config(self, monkeypatch):
-        monkeypatch.delenv("DB_USERNAME", raising=False)
-        monkeypatch.delenv("DB_PASSWORD", raising=False)
-        monkeypatch.delenv("DB_DSN", raising=False)
         monkeypatch.setenv("AIO_DB_USERNAME", "")
         monkeypatch.setenv("AIO_DB_PASSWORD", "")
         monkeypatch.setenv("AIO_DB_DSN", "")
@@ -145,15 +139,12 @@ class TestSettingsValidators:
             require_core_database_config(app_settings)
 
         message = str(exc_info.value)
-        assert "DB_USERNAME/AIO_DB_USERNAME" in message
-        assert "DB_PASSWORD/AIO_DB_PASSWORD" in message
-        assert "DB_DSN/AIO_DB_DSN" in message
+        assert "AIO_DB_USERNAME" in message
+        assert "AIO_DB_PASSWORD" in message
+        assert "AIO_DB_DSN" in message
         assert "file_secret" not in message
 
-    def test_builds_canonical_core_from_aio_settings(self, monkeypatch):
-        monkeypatch.delenv("DB_USERNAME", raising=False)
-        monkeypatch.delenv("DB_PASSWORD", raising=False)
-        monkeypatch.delenv("DB_DSN", raising=False)
+    def test_builds_canonical_core_from_aio_settings(self):
         app_settings = Settings(
             db_username="aio_user",
             db_password=SecretStr("aio_secret"),
@@ -174,22 +165,26 @@ class TestSettingsValidators:
         assert core.wallet_location == "/wallet"
         assert app_settings.database_configs == [core]
 
-    def test_db_settings_take_precedence_over_aio_settings(self, monkeypatch):
+    def test_unprefixed_db_settings_are_ignored(self, monkeypatch):
         monkeypatch.setenv("DB_USERNAME", "db_user")
         monkeypatch.setenv("DB_PASSWORD", "db_secret")
         monkeypatch.setenv("DB_DSN", "db_dsn")
+        monkeypatch.setenv("DB_WALLET_PASSWORD", "db_wallet_secret")
         app_settings = Settings(
             db_username="aio_user",
             db_password=SecretStr("aio_secret"),
             db_dsn="aio_dsn",
+            db_wallet_password=SecretStr("aio_wallet_secret"),
         )
 
         core = require_core_database_config(app_settings)
 
-        assert core.username == "db_user"
+        assert core.username == "aio_user"
         assert core.password is not None
-        assert core.password.get_secret_value() == "db_secret"
-        assert core.dsn == "db_dsn"
+        assert core.password.get_secret_value() == "aio_secret"
+        assert core.dsn == "aio_dsn"
+        assert core.wallet_password is not None
+        assert core.wallet_password.get_secret_value() == "aio_wallet_secret"
 
     def test_db_pool_size_takes_precedence_over_aio_setting(self, monkeypatch):
         monkeypatch.setenv("DB_POOL_SIZE", "9")

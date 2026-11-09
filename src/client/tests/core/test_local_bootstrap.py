@@ -36,9 +36,9 @@ def _config() -> LocalCoreConfig:
 
 def test_environment_configuration_precedes_session_memory():
     environment = {
-        "DB_USERNAME": "environment-user",
-        "DB_PASSWORD": "environment-password",
-        "DB_DSN": "environment-dsn",
+        "AIO_DB_USERNAME": "environment-user",
+        "AIO_DB_PASSWORD": "environment-password",
+        "AIO_DB_DSN": "environment-dsn",
     }
 
     resolved = resolve_local_core(environment, _config())
@@ -49,23 +49,26 @@ def test_environment_configuration_precedes_session_memory():
     assert resolved.config.password.get_secret_value() == "environment-password"
 
 
-def test_db_environment_names_precede_aio_names():
+def test_unprefixed_db_environment_names_are_ignored():
     environment = {
         "DB_USERNAME": "db-user",
         "DB_PASSWORD": "db-password",
         "DB_DSN": "db-dsn",
+        "DB_WALLET_PASSWORD": "db-wallet-password",
         "AIO_DB_USERNAME": "aio-user",
         "AIO_DB_PASSWORD": "aio-password",
         "AIO_DB_DSN": "aio-dsn",
+        "AIO_DB_WALLET_PASSWORD": "aio-wallet-password",
     }
 
     resolved = resolve_local_core(environment)
 
     assert resolved.config is not None
     assert resolved.config.child_environment() == {
-        "AIO_DB_USERNAME": "db-user",
-        "AIO_DB_PASSWORD": "db-password",
-        "AIO_DB_DSN": "db-dsn",
+        "AIO_DB_USERNAME": "aio-user",
+        "AIO_DB_PASSWORD": "aio-password",
+        "AIO_DB_DSN": "aio-dsn",
+        "AIO_DB_WALLET_PASSWORD": "aio-wallet-password",
     }
 
 

@@ -79,8 +79,8 @@ jobs:
         run: |
           DB_NAME="test-${{ matrix.build.name }}-oracle"
           DB_NETWORK="test-${{ matrix.build.name }}-network"
-          DB_USERNAME="SMOKE"
-          DB_PASSWORD="OrA_41_3xPl0d3r"
+          SMOKE_DB_USERNAME="SMOKE"
+          SMOKE_DB_PASSWORD="OrA_41_3xPl0d3r"
 
           fail() {
             echo "❌ $NAME: $1"
@@ -102,7 +102,7 @@ jobs:
             docker run -d --name "$DB_NAME" \
               --network "$DB_NETWORK" \
               --network-alias core-db \
-              -e ORACLE_PWD="$DB_PASSWORD" \
+              -e ORACLE_PWD="$SMOKE_DB_PASSWORD" \
               -e ORACLE_PDB=FREEPDB1 \
               container-registry.oracle.com/database/free:latest-lite
 
@@ -151,8 +151,8 @@ jobs:
             DATABASE_ENV=()
             if [ "$COMPONENT" = server ]; then
               DATABASE_ENV=(
-                -e "AIO_DB_USERNAME=$DB_USERNAME"
-                -e "AIO_DB_PASSWORD=$DB_PASSWORD"
+                -e "AIO_DB_USERNAME=$SMOKE_DB_USERNAME"
+                -e "AIO_DB_PASSWORD=$SMOKE_DB_PASSWORD"
                 -e AIO_DB_DSN=core-db:1521/FREEPDB1
               )
             fi

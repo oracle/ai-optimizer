@@ -107,10 +107,10 @@ def local_core_config_path(environ: Mapping[str, str] = os.environ) -> Path | No
 
 def _environment_config(environ: Mapping[str, str]) -> LocalCoreConfig | None:
     values = {
-        "username": environ.get("DB_USERNAME") or environ.get("AIO_DB_USERNAME"),
-        "password": environ.get("DB_PASSWORD") or environ.get("AIO_DB_PASSWORD"),
-        "dsn": environ.get("DB_DSN") or environ.get("AIO_DB_DSN"),
-        "wallet_password": environ.get("DB_WALLET_PASSWORD") or environ.get("AIO_DB_WALLET_PASSWORD"),
+        "username": environ.get("AIO_DB_USERNAME"),
+        "password": environ.get("AIO_DB_PASSWORD"),
+        "dsn": environ.get("AIO_DB_DSN"),
+        "wallet_password": environ.get("AIO_DB_WALLET_PASSWORD"),
         "wallet_location": environ.get("DB_WALLET_LOCATION") or environ.get("AIO_DB_WALLET_LOCATION"),
     }
     required = ("username", "password", "dsn")

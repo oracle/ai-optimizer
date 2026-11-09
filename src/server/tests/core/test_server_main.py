@@ -186,14 +186,14 @@ class TestLifespan:
 
     async def test_incomplete_core_config_stops_before_initialization(self):
         """Bootstrap validation fails before the database initializer runs."""
-        error = CoreDatabaseConfigurationError("CORE database configuration is incomplete; missing DB_DSN/AIO_DB_DSN")
+        error = CoreDatabaseConfigurationError("CORE database configuration is incomplete; missing AIO_DB_DSN")
         with (
             patch(f"{MODULE}.require_core_database_config", side_effect=error),
             patch(f"{MODULE}.init_core_database", new_callable=AsyncMock) as mock_init,
         ):
             from server.app.main import lifespan
 
-            with pytest.raises(CoreDatabaseConfigurationError, match="DB_DSN/AIO_DB_DSN"):
+            with pytest.raises(CoreDatabaseConfigurationError, match="AIO_DB_DSN"):
                 async with lifespan(MagicMock()):
                     pass
 
