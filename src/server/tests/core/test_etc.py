@@ -12,12 +12,10 @@ import pytest
 
 from server.app.core.etc import (
     apply_overlay,
-    ensure_core_alias,
     load_config_file,
     migrate_legacy_settings,
     upsert_list_field,
 )
-from server.app.core.schemas import ClientSettings, DatabaseSettings
 from server.app.core.settings import SettingsBase, settings
 from server.app.database.schemas import DatabaseConfig
 from server.app.models.schemas import ModelConfig
@@ -308,6 +306,16 @@ def test_merge_database_configs_existing_wins():
     assert settings.database_configs[0].dsn == "env_dsn"
 
 
+def test_merge_database_configs_cannot_supply_core():
+    """A post-bootstrap overlay cannot introduce the CORE definition."""
+    settings.database_configs = []
+    source = SettingsBase.model_validate({"database_configs": [{"alias": "core", "dsn": "file_dsn"}]})
+
+    apply_overlay(source, protected=set())
+
+    assert settings.database_configs == []
+
+
 def test_merge_model_configs_by_composite_key():
     """Model configs are merged by (provider, id) composite key."""
     settings.model_configs = [ModelConfig(id="existing", type="ll", provider="openai")]
@@ -564,60 +572,3 @@ def test_upsert_model_folds_ollama_latest_tag():
     # Existing row updated in place; its original id is preserved.
     assert settings.model_configs[0].id == "mistral:latest"
     assert settings.model_configs[0].enabled is True
-
-
-# ---------------------------------------------------------------------------
-# ensure_core_alias
-# ---------------------------------------------------------------------------
-
-
-def test_ensure_core_alias_noop_when_exact_core():
-    """No change when CORE already exists with exact casing."""
-    db_configs = [DatabaseConfig(alias="CORE", dsn="x"), DatabaseConfig(alias="OTHER")]
-    ensure_core_alias(db_configs)
-    assert db_configs[0].alias == "CORE"
-    assert db_configs[1].alias == "OTHER"
-
-
-def test_ensure_core_alias_normalizes_lowercase():
-    """A lowercase 'core' is normalized to exact 'CORE'."""
-    db_configs = [DatabaseConfig(alias="core", dsn="x")]
-    cs = ClientSettings(database=DatabaseSettings(alias="core"))
-    store = {"sess1": ClientSettings(database=DatabaseSettings(alias="core"))}
-    ensure_core_alias(db_configs, client_settings=cs, client_store=store)
-    assert db_configs[0].alias == "CORE"
-    assert cs.database.alias == "CORE"
-    assert store["sess1"].database.alias == "CORE"
-
-
-def test_ensure_core_alias_promotes_first_entry():
-    """When no CORE variant exists, the first entry is promoted."""
-    db_configs = [DatabaseConfig(alias="DEFAULT", dsn="x")]
-    ensure_core_alias(db_configs)
-    assert db_configs[0].alias == "CORE"
-
-
-def test_ensure_core_alias_noop_on_empty_list():
-    """An empty list is a no-op — no IndexError."""
-    db_configs: list[DatabaseConfig] = []
-    ensure_core_alias(db_configs)
-
-
-def test_ensure_core_alias_syncs_client_settings():
-    """Client settings referencing the old alias are updated to CORE."""
-    db_configs = [DatabaseConfig(alias="LEGACY", dsn="x")]
-    cs = ClientSettings(database=DatabaseSettings(alias="LEGACY"))
-    store = {"sess1": ClientSettings(database=DatabaseSettings(alias="LEGACY"))}
-    ensure_core_alias(db_configs, client_settings=cs, client_store=store)
-    assert db_configs[0].alias == "CORE"
-    assert cs.database.alias == "CORE"
-    assert store["sess1"].database.alias == "CORE"
-
-
-def test_ensure_core_alias_leaves_unrelated_clients():
-    """Client settings referencing a different alias are left unchanged."""
-    db_configs = [DatabaseConfig(alias="LEGACY", dsn="x")]
-    cs = ClientSettings(database=DatabaseSettings(alias="OTHER"))
-    ensure_core_alias(db_configs, client_settings=cs)
-    assert db_configs[0].alias == "CORE"
-    assert cs.database.alias == "OTHER"

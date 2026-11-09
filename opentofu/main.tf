@@ -36,6 +36,27 @@ resource "random_password" "client_cookie" {
   }
 }
 
+resource "terraform_data" "byo_db_validation" {
+  count = var.byo_db_type == "" ? 0 : 1
+
+  lifecycle {
+    precondition {
+      condition = var.byo_db_type != "ADB-S" || (
+        trimspace(var.byo_adb_ocid) != "" && trimspace(var.byo_db_password) != ""
+      )
+      error_message = "BYO ADB-S requires non-empty byo_adb_ocid and byo_db_password values."
+    }
+    precondition {
+      condition = var.byo_db_type != "OTHER" || (
+        trimspace(var.byo_odb_host) != "" &&
+        trimspace(var.byo_odb_service) != "" &&
+        trimspace(var.byo_db_password) != ""
+      )
+      error_message = "BYO OTHER requires non-empty byo_odb_host, byo_odb_service, and byo_db_password values."
+    }
+  }
+}
+
 // Load Balancer
 resource "oci_load_balancer_load_balancer" "lb" {
   compartment_id = local.compartment_ocid

@@ -10,16 +10,16 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
-The **AI Optimizer** natively supports the [Oracle SQLcl MCP Server](https://docs.oracle.com/en/database/oracle/sql-developer-command-line/25.2/sqcug/using-oracle-sqlcl-mcp-server.html) for Natural Language to SQL (NL2SQL) capabilities.
+The **AI Optimizer** natively supports the [Oracle SQLcl MCP Server](https://docs.oracle.com/en/database/oracle/sql-developer-command-line/26.3/sqcug/using-oracle-sqlcl-mcp-server.html) for Natural Language to SQL (NL2SQL) capabilities.
 
-When SQLcl is available and databases are configured, the SQLcl MCP server is **automatically registered** at startup as a proxy under the `sqlcl` namespace.
+When SQLcl is available, its MCP server is **automatically registered** at startup as a proxy under the `sqlcl` namespace for the configured database aliases.
 
-### Requirements
+## Requirements
 
 1. **SQLcl must be installed** and the `sql` binary must be on the system `PATH`
 2. At least one [database](./database) must be configured with valid credentials (username, password, and DSN)
 
-### SQLcl Installation
+## SQLcl Installation
 
 <Tabs groupId="sqlcl-installation">
 <TabItem value="containers" label="Containers">
@@ -55,7 +55,7 @@ Start or restart the **AI Optimizer** from an environment that inherits this `PA
 </TabItem>
 </Tabs>
 
-### How It Works
+## How It Works
 
 At startup, the **AI Optimizer**:
 
@@ -64,30 +64,26 @@ At startup, the **AI Optimizer**:
 3. Launches SQLcl as a child process on the [AI Optimizer Server](../server/intro.mdx) using stdio transport
 4. Mounts the SQLcl MCP server as a proxy, making NL2SQL tools available alongside the built-in tools
 
-SQLcl commands run on the AI Optimizer Server. External MCP clients send requests to that server and do not run the `sql` binary themselves.
+SQLcl commands run on the AI Optimizer Server. External MCP clients send requests to that server.
 
-### SQLcl Home Directory
+## SQLcl Home Directory
 
-The SQLcl connection store is created in a temporary directory unless a SQLcl home is configured. The **AI Optimizer** uses [`AIO_SQLCL_HOME`](./env-vars#nl2sql) first, then `SQLCL_HOME`.
+The SQLcl connection store is created in a temporary directory by default. The **AI Optimizer** uses [`AIO_SQLCL_HOME`](./env-vars#nl2sql) first, then `SQLCL_HOME`.
 
-To choose the location explicitly, set `AIO_SQLCL_HOME` to a writable directory before starting the **AI Optimizer**:
+Set `AIO_SQLCL_HOME` to a dedicated writable directory before starting the **AI Optimizer**. The Server rebuilds this directory when it registers or refreshes the SQLcl connections:
 
 ```bash
-export AIO_SQLCL_HOME=/path/to/sqlcl/home
+export AIO_SQLCL_HOME=/path/to/ai-optimizer/sqlcl
 ```
 
-### SQLcl Restrict Level
+## SQLcl Restrict Level
 
-The AI Optimizer Server starts SQLcl with `-R` and the resolved `AIO_SQLCL_MCP_LEVEL` value. The default restrict level is `4`, which blocks host commands, scripts, and configuration-changing SQLcl commands.
+The AI Optimizer Server starts SQLcl with `-R` and the resolved `AIO_SQLCL_MCP_LEVEL` value. The default level, `4`, applies SQLcl's strongest restrictions to host commands, scripts, and configuration-changing commands.
 
-Set `AIO_SQLCL_MCP_LEVEL` to an integer from `0` to `4` before starting the server when a lower level is required:
+Set `AIO_SQLCL_MCP_LEVEL` to an integer from `0` to `4` before starting the Server. Use the highest level that supports the required SQLcl commands:
 
 ```bash
 export AIO_SQLCL_MCP_LEVEL=4
 ```
 
-Values outside this range prevent the server from starting. The restrict level does not change Oracle Database privileges. Configure NL2SQL connections with database accounts that have only the required permissions.
-
-:::note[SQLcl Not Found?]
-If SQLcl is not installed or the `sql` binary is not on the system path, the NL2SQL functionality will be unavailable. The **AI Optimizer** will log a warning and continue without it.
-:::
+The Server validates this range at startup. Oracle Database privileges continue to control the SQL statements available to the connection. Configure NL2SQL connections with database accounts that have the required permissions.

@@ -61,9 +61,7 @@ def test_safe_filename_confines_path_to_temp_directory(tmp_path, payload):
     temp_directory = tmp_path / "client" / "embedding"
     temp_directory.mkdir(parents=True)
     resolved = (temp_directory / safe_filename(payload)).resolve()
-    assert resolved.is_relative_to(temp_directory.resolve()), (
-        f"Payload {payload!r} escaped temp_directory: {resolved}"
-    )
+    assert resolved.is_relative_to(temp_directory.resolve()), f"Payload {payload!r} escaped temp_directory: {resolved}"
 
 
 # ---------------------------------------------------------------------------

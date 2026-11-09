@@ -447,5 +447,3 @@ class TestBuildVecsearchFlowRephraseGrade:
         assert end_nodes[0].outputs is not None
         output_names = [o.title for o in end_nodes[0].outputs]
         assert "grade_relevant" in output_names
-
-

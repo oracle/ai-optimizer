@@ -9,7 +9,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 import {GitHubSourceExtract, GitHubSourceLink} from '@site/src/components/GitHubSourceLink';
 
-The **AI Optimizer** is designed to run in container orchestration environments such as [Kubernetes](https://kubernetes.io/), including managed [Oracle Kubernetes Engine (OKE)](https://www.oracle.com/uk/cloud/cloud-native/kubernetes-engine/). The Helm chart deploys separate Server and Client workloads, with optional Ollama and Oracle AI Database resources. For `ADB-S` deployments, the chart can use the [Oracle Database Operator](https://github.com/oracle/oracle-database-operator).
+The **AI Optimizer** is designed to run in container orchestration environments such as [Kubernetes](https://kubernetes.io/), including managed [Oracle Kubernetes Engine (OKE)](https://www.oracle.com/uk/cloud/cloud-native/kubernetes-engine/). The Helm chart deploys separate Server and Client workloads, connects the Server to a required Oracle AI Database, and can also deploy Ollama or chart-managed database resources. For `ADB-S` deployments, the chart can use the [Oracle Database Operator](https://github.com/oracle/oracle-database-operator).
 
 ![OCI OKE deployment](../_assets/images/k8s-infra-oci.png)
 
@@ -96,12 +96,17 @@ podman push ${REGISTRY}/ai-optimizer-server:${APP_VERSION}
 
 ### Create Kubernetes Secrets
 
-Create a namespace, the API key used by the Client and Server, and the Client cookie-signing key:
+Create a namespace and the API key used by the Client and Server:
 
 ```bash
 kubectl create namespace ai-optimizer
 kubectl -n ai-optimizer create secret generic optimizer-api-key \
   --from-literal=apiKey="$(openssl rand -base64 32)"
+```
+
+The chart generates the Client cookie-signing Secret on first install and reuses it during live Helm upgrades. For offline `helm template` or client-side GitOps rendering, create an external Secret to keep the value stable across deployments:
+
+```bash
 kubectl -n ai-optimizer create secret generic optimizer-cookie-key \
   --from-literal=cookieSecret="$(openssl rand -base64 32)"
 ```
@@ -142,8 +147,9 @@ client:
   image:
     repository: <registry-host>/<registry-namespace>/ai-optimizer-client
     tag: "<version>"
-  cookieSecretName: optimizer-cookie-key
 ```
+
+Add `client.cookieSecretName: optimizer-cookie-key` only when using the external Secret workflow described above.
 
 For a private registry, add the pull Secret to the existing `global:` section:
 
@@ -155,13 +161,15 @@ global:
 
 When two examples use the same top-level key, such as `server:`, add their settings to the existing section rather than duplicating the key. The chart's complete <GitHubSourceLink path="helm/values.yaml"><code>values.yaml</code></GitHubSourceLink> lists every available option.
 
+Complete the starter values by adding one of the database modes below.
+
 :::danger[Keep secrets out of values files]
 Use Kubernetes Secrets rather than committing credentials to a values file.
 :::
 
 ### Configure the Database
 
-Choose a database mode when the deployment needs a chart-managed or external Oracle database. To run the Server without a database configuration, leave `server.database.type` empty. The chart then omits database resources and database environment variables; database-backed features such as RAG and NL2SQL are unavailable.
+Choose one database mode for every deployment and set `server.database.type` to the corresponding value.
 
 | Mode | Use when | Notes |
 | --- | --- | --- |
@@ -247,8 +255,7 @@ server:
 
 When AI Optimizer is installed as an OBaaS subchart and both applications use
 the same `ADB-S`, OBaaS owns the `AutonomousDatabase` resource and its wallet
-Secrets. Configure AI Optimizer to reuse those resources instead of creating
-another set. In the OBaaS values file, set both `useExisting: true` and
+Secrets. Configure AI Optimizer to use those resources. In the OBaaS values file, set both `useExisting: true` and
 `existingWalletSource: obaas`:
 
 ```yaml
@@ -285,7 +292,7 @@ For database connection requirements, see [Database](../guides/database).
 
 #### OCI and Model Credentials
 
-For a non-OKE installation, the packaged helper generates an `oci-config-file` Kubernetes Secret from your OCI config file. It requires Python 3 but no third-party Python packages.
+For a non-OKE installation, the packaged helper generates an `oci-config-file` Kubernetes Secret from your OCI config file. It requires Python 3 and uses the standard library.
 
 ```bash
 python3 helm/scripts/oci_config.py \
@@ -302,7 +309,7 @@ server:
     fileSecretName: oci-config-file
 ```
 
-This Secret does not configure OraOperator for an `ADB-S` deployment; use the OraOperator guidance above for that case. See [Oracle Cloud Infrastructure](../guides/oracle-cloud-infra) for Server authentication methods.
+For an `ADB-S` deployment, configure OraOperator using the guidance above. See [Oracle Cloud Infrastructure](../guides/oracle-cloud-infra) for Server authentication methods.
 
 To use a third-party model provider, create its API-key Secret and reference it in the existing `server:` section. For example:
 
@@ -333,18 +340,18 @@ server:
       AIO_GENAI_REGION: us-chicago-1
 ```
 
-Values in `server.envSecret.content` override chart-generated dotenv settings. Process environment values injected into the pod take precedence over the dotenv file. See [Environment Variables](../guides/env-vars) for application settings.
+Values in `server.envSecret.content` override chart-generated dotenv settings. Process environment values injected into the pod take precedence over the dotenv file. Configure database credentials under `server.database.authn`. See [Environment Variables](../guides/env-vars) for application settings.
 
 #### Client and Ollama
 
-The Client is enabled by default. Disable it only when another client will connect to the Server:
+For a Server-only deployment, disable the Client:
 
 ```yaml
 client:
   enabled: false
 ```
 
-Ollama is disabled by default. Enable it only on a cluster with suitable CPU, memory, and—where required by the selected models—GPU scheduling:
+Enable the bundled Ollama deployment on a cluster with suitable CPU, memory, and GPU scheduling where required by the selected models:
 
 ```yaml
 ollama:
@@ -384,7 +391,7 @@ server:
 
 The published image already includes the `[otel]` extra, so `enabled: true` works with the default image. Within Kubernetes, `service.instance.id` uses `HOSTNAME` (the pod name), and `deployment.environment` uses the chart's `global.env` value.
 
-When tracing is enabled, the chart requires an endpoint unless `tracesExporter: console` is configured for local debugging or `signoz.enabled=true` provides the in-chart collector. `helm template` and `helm install` fail fast when no usable tracing endpoint is available.
+When tracing is enabled, configure an endpoint, use `tracesExporter: console` for local debugging, or set `signoz.enabled=true` to use the in-chart collector. Helm validates this configuration during template rendering and installation.
 
 :::note[SigNoz storage]
 The bundled observability components require substantial memory and retain their persistent volumes after uninstall. Set `global.cleanupPVCs=true` only when you intend to delete the chart-managed database and telemetry storage.
@@ -418,7 +425,7 @@ Open `http://localhost:8501` in a browser.
 
 For public Kubernetes access, terminate TLS at an ingress or gateway. The <GitHubSourceLink path="helm#example-6-ingress-with-tls" type="tree">Helm chart ingress TLS example</GitHubSourceLink> shows how to create a Kubernetes TLS Secret and reference it from the Server and Client ingress values.
 
-You can enable TLS directly on a Client pod when it is accessed without ingress or gateway TLS. Set `client.ssl.enabled` to `true`; this also configures the Client health probes for HTTPS. To use a certificate stored in a Secret, mount it and supply its paths:
+For direct access to a Client pod, set `client.ssl.enabled` to `true`; this also configures the Client health probes for HTTPS. To use a certificate stored in a Secret, mount it and supply its paths:
 
 ```yaml
 client:
@@ -471,19 +478,17 @@ kind load docker-image localhost/ai-optimizer-client:${APP_VERSION} -n ai-optimi
 kind load docker-image localhost/ai-optimizer-server:${APP_VERSION} -n ai-optimizer
 ```
 
-:::note[Local Kind credentials]
-The following command generates temporary inline API and cookie secrets for local evaluation. For a shared or persistent deployment, use Kubernetes Secrets as described in [Create Kubernetes Secrets](#create-kubernetes-secrets).
-:::
-
 ### Install the Chart
 
 ```bash
+kubectl create namespace ai-optimizer
+kubectl create secret generic ai-optimizer-api \
+  --namespace ai-optimizer \
+  --from-literal=apiKey="$(openssl rand -base64 32)"
+
 helm upgrade --install ai-optimizer ai-optimizer/ai-optimizer \
   --version "${APP_VERSION}" \
   --namespace ai-optimizer \
-  --create-namespace \
-  --set-string global.api.apiKey="$(openssl rand -base64 32)" \
-  --set-string client.cookieSecret="$(openssl rand -base64 32)" \
   --set-string server.image.tag="${APP_VERSION}" \
   --set-string client.image.tag="${APP_VERSION}" \
   --values helm/examples/values-kind-sidb-free.yaml

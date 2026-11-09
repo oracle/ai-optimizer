@@ -34,14 +34,14 @@ done
 # env_vars
 export SPRING_AI_OPENAI_API_KEY=${{OPENAI_API_KEY}}
 export AI_SERVICE_API_KEY=${{AI_SERVICE_API_KEY}}
-export DB_DSN="jdbc:oracle:thin:@{database_config[dsn]}"
-export DB_USERNAME="{database_config[username]}"
-export DB_PASSWORD="{database_config[password]}"
+export AIO_DB_DSN="jdbc:oracle:thin:@{database_config[dsn]}"
+export AIO_DB_USERNAME="{database_config[username]}"
+export AIO_DB_PASSWORD="{database_config[password]}"
 export DISTANCE_TYPE="{vector_search[distance_strategy]}"
 export INDEX_TYPE="{vector_search[index_type]}"
 export SYS_INSTR="{sys_prompt}"
 export TOP_K="{vector_search[top_k]}"
 
 export VECTOR_STORE="{vector_search[vector_store]}"
-export USER_TABLE=$DB_USERNAME
+export USER_TABLE=$AIO_DB_USERNAME
 mvn spring-boot:run -P {provider}

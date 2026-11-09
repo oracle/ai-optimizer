@@ -154,31 +154,29 @@ def _render_databases(database_lookup: dict, database_aliases: list, current_ali
     else:
         db_config = {}
 
-    # CORE database is locked when connected (persistence database)
+    # CORE settings are loaded at server startup and are read-only here.
     is_core = not is_new and (selected or "").upper() == "CORE"
-    fields_disabled = is_core and db_config.get("usable", False)
+    fields_disabled = is_core
 
     # Suffix widget keys with the selection and use the "runtime_" prefix so
     # helpers.clear_runtime_state() (fired on every selection change) resets the
     # fields and a prior — or just-created — config can't leak into a fresh form.
     key_suffix = selected or "new"
 
-    # When adding a new database and CORE doesn't exist, force alias to CORE
-    core_exists = any(a.upper() == "CORE" for a in database_aliases)
-    force_core = is_new and not core_exists
-
     # Configuration Form
     with st.container(border=True):
         if (connect_warning := state.pop("_db_connect_warning", None)) is not None:
             st.warning(helpers.format_error(connect_warning, context="Saved, but connection failed"))
         if fields_disabled:
-            st.info("CORE is the persistence database and cannot be modified while connected.", icon="ℹ️")
-        if force_core:
-            st.info("The first database must be configured as CORE.", icon="ℹ️")
+            st.info(
+                "CORE database settings cannot be changed here. Ask your administrator to update the server "
+                "environment or deployment secret, then restart the server.",
+                icon="ℹ️",
+            )
         alias = st.text_input(
             "Alias:",
-            value="CORE" if force_core else ("" if is_new else db_config.get("alias", "")),
-            disabled=force_core or not is_new or not authenticated,
+            value="" if is_new else db_config.get("alias", ""),
+            disabled=not is_new or not authenticated,
             key=f"runtime_db_alias_{key_suffix}",
         )
         form_data: dict = {
@@ -190,12 +188,15 @@ def _render_databases(database_lookup: dict, database_aliases: list, current_ali
             )
             or None,
         }
-        form_data["password"] = redacted_password_input(
-            "Password:",
-            value=db_config.get("password", "") or "",
-            key=f"runtime_db_password_{key_suffix}",
-            disabled=fields_disabled,
-        ) or None
+        form_data["password"] = (
+            redacted_password_input(
+                "Password:",
+                value=db_config.get("password", "") or "",
+                key=f"runtime_db_password_{key_suffix}",
+                disabled=fields_disabled,
+            )
+            or None
+        )
         form_data["dsn"] = (
             st.text_input(
                 "DSN (Connect String):",
@@ -205,12 +206,15 @@ def _render_databases(database_lookup: dict, database_aliases: list, current_ali
             )
             or None
         )
-        form_data["wallet_password"] = redacted_password_input(
-            "Wallet Password:",
-            value=db_config.get("wallet_password", "") or "",
-            key=f"runtime_db_wallet_password_{key_suffix}",
-            disabled=fields_disabled,
-        ) or None
+        form_data["wallet_password"] = (
+            redacted_password_input(
+                "Wallet Password:",
+                value=db_config.get("wallet_password", "") or "",
+                key=f"runtime_db_wallet_password_{key_suffix}",
+                disabled=fields_disabled,
+            )
+            or None
+        )
 
         # Connection status
         if not is_new:
@@ -233,7 +237,7 @@ def _render_databases(database_lookup: dict, database_aliases: list, current_ali
             save_clicked = st.button(
                 "Create" if is_new else "Save",
                 key=f"runtime_db_save_{key_suffix}",
-                disabled=fields_disabled or not authenticated or create_disabled,
+                disabled=is_core or not authenticated or create_disabled,
                 type="primary",
                 width="stretch",
             )

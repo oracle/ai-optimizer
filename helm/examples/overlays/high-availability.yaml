@@ -1,0 +1,22 @@
+## Copyright (c) 2024, 2026, Oracle and/or its affiliates.
+## Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/upl.
+
+# Horizontal autoscaling and resource configuration for a production release.
+server:
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+  resources:
+    requests:
+      cpu: 1000m
+      memory: 2Gi
+    limits:
+      cpu: 2000m
+      memory: 4Gi
+
+client:
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 5

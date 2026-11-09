@@ -19,15 +19,13 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-TEMPLATE_PATH = (
-    REPO_ROOT
-    / "opentofu"
-    / "modules"
-    / "kubernetes"
-    / "templates"
-    / "ai-optimizer-values.yaml"
-)
+TEMPLATE_PATH = REPO_ROOT / "opentofu" / "modules" / "kubernetes" / "templates" / "ai-optimizer-values.yaml"
 CHART_DIR = REPO_ROOT / "helm"
+ROOT_MAIN_PATH = REPO_ROOT / "opentofu" / "main.tf"
+ROOT_PROVIDER_PATH = REPO_ROOT / "opentofu" / "provider.tf"
+ROOT_VARIABLES_PATH = REPO_ROOT / "opentofu" / "variables.tf"
+K8S_VARIABLES_PATH = REPO_ROOT / "opentofu" / "modules" / "kubernetes" / "variables.tf"
+VM_VARIABLES_PATH = REPO_ROOT / "opentofu" / "modules" / "vm" / "variables.tf"
 BYO_URL = "iad.ocir.io/byo-namespace"
 COOKIE_SECRET = "cccccccccccccccccccccccccccccccc"
 
@@ -121,9 +119,6 @@ def _helm_template(values_path: Path) -> str:
             str(values_path),
             "--set",
             f"client.cookieSecret={COOKIE_SECRET}",
-            # _render's db_type=ADB-S needs serviceName separately.
-            "--set",
-            "server.database.adb.serviceName=test_low",
             "--set",
             "server.database.adb.skipCrdCheck=true",
         ],
@@ -131,6 +126,39 @@ def _helm_template(values_path: Path) -> str:
         text=True,
         check=True,
     ).stdout
+
+
+def test_byo_database_paths_validate_complete_core_connection():
+    """Root BYO inputs fail before rendering an empty CORE connection."""
+    main = ROOT_MAIN_PATH.read_text()
+
+    assert 'var.byo_db_type != "ADB-S"' in main
+    assert "trimspace(var.byo_adb_ocid)" in main
+    assert 'var.byo_db_type != "OTHER"' in main
+    for variable in ("byo_odb_host", "byo_odb_service", "byo_db_password"):
+        assert f"trimspace(var.{variable})" in main
+
+
+def test_byo_type_variable_validation_supports_opentofu_1_5():
+    provider = ROOT_PROVIDER_PATH.read_text()
+    variables = ROOT_VARIABLES_PATH.read_text()
+    start = variables.index('variable "byo_db_type"')
+    end = variables.index('variable "byo_db_password"', start)
+    referenced_variables = set(re.findall(r"\bvar\.(\w+)", variables[start:end]))
+
+    assert 'required_version = ">= 1.5"' in provider
+    assert referenced_variables == {"byo_db_type"}
+    assert "var.byo_odb_port >= 1 && var.byo_odb_port <= 65535" in variables
+
+
+@pytest.mark.parametrize("path", [K8S_VARIABLES_PATH, VM_VARIABLES_PATH])
+def test_deployment_modules_reject_incomplete_db_conn(path: Path):
+    """Both deployment modules validate the final generated connection."""
+    variables = path.read_text()
+
+    for field in ("username", "password", "service"):
+        assert f"trimspace(var.db_conn.{field})" in variables
+    assert "db_conn must provide a non-empty username, password, and service" in variables
 
 
 @pytest.fixture(scope="module")
@@ -154,9 +182,7 @@ def test_ocir_url_set_when_byo_ocir_set(tmp_path):
     rendered = _render(tmp_path, is_obs=True, byo_url=BYO_URL)
     # Extract the top-level `global:` block (its child lines are indented;
     # the block ends at the first non-indented line).
-    block_match = re.search(
-        r"^global:\n((?:[ \t][^\n]*\n)+)", rendered, re.MULTILINE
-    )
+    block_match = re.search(r"^global:\n((?:[ \t][^\n]*\n)+)", rendered, re.MULTILINE)
     assert block_match, "no top-level `global:` block found:\n" + rendered
     global_block = block_match.group(1)
     assert f'imageRegistry: "{BYO_URL}"' in global_block, (
@@ -171,14 +197,11 @@ def test_ocir_url_omitted_when_no_byo(tmp_path):
     `/<owner>/<image>` paths instead of using upstream defaults)."""
     rendered = _render(tmp_path, is_obs=True, byo_url="")
     assert "signoz:\n  enabled: true" in rendered, (
-        "signoz.enabled should be true when observability is on and no "
-        "BYO OCIR is configured. Rendered:\n" + rendered
+        "signoz.enabled should be true when observability is on and no BYO OCIR is configured. Rendered:\n" + rendered
     )
     # Strip comment lines so an explanatory comment that mentions
     # imageRegistry doesn't accidentally pass for a real value.
-    payload = "\n".join(
-        line for line in rendered.splitlines() if not line.lstrip().startswith("#")
-    )
+    payload = "\n".join(line for line in rendered.splitlines() if not line.lstrip().startswith("#"))
     assert "imageRegistry" not in payload, (
         "global.imageRegistry must be omitted when byo_ocir_url is empty so "
         "the chart's per-image registry defaults apply. Rendered:\n" + rendered
@@ -190,9 +213,7 @@ def test_signoz_block_omitted_when_observability_off(tmp_path):
     the values file. The umbrella chart's default (signoz.enabled=false)
     then applies, leaving the subchart disabled."""
     rendered = _render(tmp_path, is_obs=False, byo_url="")
-    payload = "\n".join(
-        line for line in rendered.splitlines() if not line.lstrip().startswith("#")
-    )
+    payload = "\n".join(line for line in rendered.splitlines() if not line.lstrip().startswith("#"))
     assert re.search(r"^signoz:", payload, re.MULTILINE) is None, (
         "signoz: block should be absent when observability is off so the "
         "chart-default (enabled: false) governs. Rendered:\n" + rendered
@@ -205,8 +226,7 @@ def test_otel_enabled_when_byo_ocir_set(tmp_path):
     # Pin to the server.otel block specifically — `enabled:` appears in
     # many places in the rendered values.
     assert re.search(r"^\s+otel:\n\s+enabled:\s+true\b", rendered, re.MULTILINE), (
-        "server.otel.enabled must be true when observability is on. "
-        "Rendered:\n" + rendered
+        "server.otel.enabled must be true when observability is on. Rendered:\n" + rendered
     )
 
 
@@ -237,24 +257,18 @@ def test_byo_render_passes_helm_validation(byo_helm_render):
 def test_byo_render_routes_signoz_images_through_registry(byo_helm_render):
     """Every signoz subchart image must resolve under the BYO registry."""
     _, helm_stdout = byo_helm_render
-    image_lines = [
-        line.strip()
-        for line in helm_stdout.splitlines()
-        if re.match(r"^\s*image:\s*['\"]?\S", line)
-    ]
+    image_lines = [line.strip() for line in helm_stdout.splitlines() if re.match(r"^\s*image:\s*['\"]?\S", line)]
     assert image_lines, "helm template produced no image lines: " + helm_stdout[:600]
     # The sqlcl image used by the database init job is intentionally pulled
     # from the Oracle Container Registry and is outside the BYO surface.
     out_of_scope = ("container-registry.oracle.com/database/sqlcl",)
     offenders = [
-        line for line in image_lines
+        line
+        for line in image_lines
         if not any(skip in line for skip in out_of_scope)
         and ("docker.io" in line or (BYO_URL not in line and "localhost/" not in line))
     ]
-    assert not offenders, (
-        "Some images are not routed through the BYO registry:\n  "
-        + "\n  ".join(offenders)
-    )
+    assert not offenders, "Some images are not routed through the BYO registry:\n  " + "\n  ".join(offenders)
 
 
 def test_byo_render_makes_no_outbound_internet_calls(byo_helm_render):
@@ -271,14 +285,11 @@ def test_byo_render_makes_no_outbound_internet_calls(byo_helm_render):
         stripped = line.strip()
         if stripped.startswith(("<!--", "#", "//")):
             continue
-        if any(
-            not _INTERNAL_HOST_RE.match(host) for host in _FETCH_RE.findall(line)
-        ):
+        if any(not _INTERNAL_HOST_RE.match(host) for host in _FETCH_RE.findall(line)):
             offenders.append(f"line {i}: {stripped}")
     assert not offenders, (
         "BYO render still includes external runtime downloads. Disable or "
-        "override the responsible subchart values:\n  "
-        + "\n  ".join(offenders[:10])
+        "override the responsible subchart values:\n  " + "\n  ".join(offenders[:10])
     )
     assert "histogram-quantile" not in helm_stdout, (
         "clickhouse.initContainers.udf is still rendering under BYO; the "

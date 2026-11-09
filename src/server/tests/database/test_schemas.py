@@ -270,9 +270,9 @@ class TestControlCharRejection:
         comparison for certificate DNs."""
         # An ADB-style DN: Oracle compares these character-for-character.
         dsn = (
-            '(DESCRIPTION=(ADDRESS=(PROTOCOL=tcps)(HOST=adb.example.com)(PORT=1522))'
-            '(CONNECT_DATA=(SERVICE_NAME=svc))'
-            '(SECURITY=(SSL_SERVER_CERT_DN='
+            "(DESCRIPTION=(ADDRESS=(PROTOCOL=tcps)(HOST=adb.example.com)(PORT=1522))"
+            "(CONNECT_DATA=(SERVICE_NAME=svc))"
+            "(SECURITY=(SSL_SERVER_CERT_DN="
             '"CN=adb.example.com, OU=Oracle BMCS US, O=Oracle Corporation, L=Redwood City, ST=California, C=US"'
             ")))"
         )
@@ -372,6 +372,7 @@ class TestControlCharRejection:
     def test_legitimate_values_still_accepted(self, field: str, value: str):
         """The validator must not reject ordinary credential/path values."""
         from server.app.core.secrets import reveal
+
         kwargs: dict[str, Any] = {"alias": "TEST", field: value}
         # Constructing succeeds and preserves the value verbatim.
         dc = DatabaseConfig(**kwargs)

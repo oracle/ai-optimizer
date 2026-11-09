@@ -89,6 +89,14 @@ variable "db_conn" {
     password = string
     service  = string
   })
+  validation {
+    condition = alltrue([
+      trimspace(var.db_conn.username) != "",
+      trimspace(var.db_conn.password) != "",
+      trimspace(var.db_conn.service) != "",
+    ])
+    error_message = "db_conn must provide a non-empty username, password, and service."
+  }
 }
 
 variable "lb_client_http_port" {
@@ -131,7 +139,7 @@ variable "ssl_ca_cert" {
 }
 
 variable "client_cookie_secret" {
-  description = "Streamlit XSRF-cookie signing key. Baked into .env.vm so the client service has a stable, operator-owned secret that survives systemd restarts."
+  description = "Streamlit signed-cookie key stored in .env.vm so the value remains stable across systemd restarts."
   type        = string
   sensitive   = true
 }

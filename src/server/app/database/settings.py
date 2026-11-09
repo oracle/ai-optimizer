@@ -18,10 +18,14 @@ from server.app.core.secrets import REVEAL_KEY
 from server.app.core.settings import _PROTECTED_CLIENTS, SettingsBase, settings
 from server.app.oci.schemas import GENAI_OVERLAY_FIELDS
 
-from .config import get_core_pool
+from .config import CoreDatabaseUnavailable, require_core_pool
 from .sql import execute_sql
 
 LOGGER = logging.getLogger(__name__)
+
+
+class SettingsPersistenceError(CoreDatabaseUnavailable):
+    """Raised when CORE settings persistence fails."""
 
 
 def hide_managed_db_configs(data: dict) -> None:
@@ -63,14 +67,14 @@ DELETE FROM aio_settings WHERE client = :client
 
 
 async def _upsert_settings_row(
-    pool: oracledb.AsyncConnectionPool, client: str, payload: dict, is_current: bool, *, label: str
+    pool: oracledb.AsyncConnectionPool,
+    client: str,
+    payload: dict,
+    is_current: bool,
+    *,
+    label: str,
 ) -> bool:
-    """Upsert *payload* into aio_settings for *client*.
-
-    Returns ``True`` on success, ``False`` when the write fails. *label* prefixes the
-    log lines so callers stay distinguishable. Assumes *pool* is non-None (callers
-    handle the unavailable-CORE best-effort case before calling).
-    """
+    """Upsert *payload* into aio_settings for *client*."""
     try:
         async with pool.acquire() as conn:
             await execute_sql(
@@ -84,7 +88,7 @@ async def _upsert_settings_row(
         return True
     except Exception as exc:
         LOGGER.error("%s: failed to persist for client=%s: %s", label, client, exc)
-        return False
+        raise SettingsPersistenceError(f"{label} persistence failed for client={client}") from None
 
 
 async def persist_settings(
@@ -95,20 +99,13 @@ async def persist_settings(
 ) -> bool:
     """Serialize current settings and upsert into aio_settings.
 
-    Returns ``True`` on success or when the CORE pool is unavailable
-    (best-effort — the in-memory change is kept).  Returns ``False``
-    only when a pool exists and the write fails.
-
     ``oci_user_touched`` maps an OCI auth_profile (case-insensitive) to the set
     of GenAI fields the caller just explicitly changed. When a touched field's
     current value equals the file/env baseline, persist treats it as a *revert*
     and removes the override from the row instead of carrying the prior value
     forward.
     """
-    pool = get_core_pool()
-    if not pool:
-        LOGGER.warning("persist_settings: CORE database not available — skipping")
-        return True
+    pool = require_core_pool()
 
     payload = SettingsBase.model_validate(settings).model_dump(
         mode="json",
@@ -155,34 +152,40 @@ async def persist_settings(
             base_value = base.get(field)
             if current != base_value:
                 entry[field] = current
-            elif field not in touched and field in carry and (
-                env_masking[field] or carry[field] != base_value
-            ):
+            elif field not in touched and field in carry and (env_masking[field] or carry[field] != base_value):
                 entry[field] = carry[field]
         if len(entry) > 1:
             oci_entries.append(entry)
     payload[_OCI_OVERLAY_KEY] = oci_entries
 
-    return await _upsert_settings_row(pool, client, payload, is_current, label="Settings")
+    return await _upsert_settings_row(
+        pool,
+        client,
+        payload,
+        is_current,
+        label="Settings",
+    )
 
 
 async def _load_raw_settings(client: str, *, op: str) -> Optional[dict]:
-    """Fetch and decode the JSON payload for *client*; returns None if unavailable or absent."""
-    pool = get_core_pool()
-    if not pool:
-        LOGGER.info("%s: CORE database not available — skipping", op)
-        return None
+    """Fetch and decode the JSON payload for *client*."""
+    pool = require_core_pool()
 
     try:
         async with pool.acquire() as conn:
             rows = await execute_sql(conn, _SELECT_SQL, {"client": client})
-        if not rows:
-            LOGGER.info("%s: No persisted settings found for client=%s", op, client)
-            return None
-        raw = rows[0][0]
-        data = json.loads(raw) if isinstance(raw, str) else raw
     except Exception as exc:
         LOGGER.warning("%s: Failed to load for client=%s: %s", op, client, exc)
+        raise SettingsPersistenceError(f"{op} failed for client={client}") from None
+    if not rows:
+        LOGGER.info("%s: No persisted settings found for client=%s", op, client)
+        return None
+
+    raw = rows[0][0]
+    try:
+        data = json.loads(raw) if isinstance(raw, str) else raw
+    except json.JSONDecodeError as exc:
+        LOGGER.warning("%s: Failed to decode for client=%s: %s", op, client, exc)
         return None
     if not isinstance(data, dict):
         # JSON column can hold arrays/scalars too; callers do mapping ops on
@@ -253,45 +256,44 @@ async def load_oci_genai_overlay(client: str = "CONFIGURED") -> dict[str, dict]:
         if not profile:
             continue
         overlay[profile.casefold()] = {
-            field: entry[field]
-            for field in ("genai_compartment_id", "genai_region")
-            if field in entry
+            field: entry[field] for field in ("genai_compartment_id", "genai_region") if field in entry
         }
     return overlay
 
 
 async def row_exists(client: str) -> bool:
     """Check whether a row exists in aio_settings for the given client."""
-    pool = get_core_pool()
-    if not pool:
-        return False
+    pool = require_core_pool()
 
     try:
         async with pool.acquire() as conn:
             rows = await execute_sql(conn, _ROW_EXISTS_SQL, {"client": client})
         return bool(rows)
-    except Exception:
-        return False
+    except Exception as exc:
+        LOGGER.warning("Settings row check failed for client=%s: %s", client, exc)
+        raise SettingsPersistenceError(f"Settings row check failed for client={client}") from None
 
 
-async def persist_client_settings(client: str, cs: ClientSettings, is_current: bool = False) -> bool:
-    """Serialize a ClientSettings object and upsert into aio_settings.
-
-    Returns ``True`` on success or when the CORE pool is unavailable
-    (best-effort — the in-memory change is kept).  Returns ``False``
-    only when a pool exists and the write fails.
-    """
-    pool = get_core_pool()
-    if not pool:
-        LOGGER.warning("persist_client_settings: CORE database not available — skipping")
-        return True
+async def persist_client_settings(
+    client: str,
+    cs: ClientSettings,
+    is_current: bool = False,
+) -> bool:
+    """Serialize a ClientSettings object and upsert into aio_settings."""
+    pool = require_core_pool()
 
     # deep_data_security is runtime/session-scoped — never persisted.
     payload = {
         "client_settings": cs.model_dump(mode="json", context={REVEAL_KEY: True}, exclude={"deep_data_security"})
     }
 
-    return await _upsert_settings_row(pool, client, payload, is_current, label="Client settings")
+    return await _upsert_settings_row(
+        pool,
+        client,
+        payload,
+        is_current,
+        label="Client settings",
+    )
 
 
 async def delete_row(client: str) -> None:
@@ -300,10 +302,7 @@ async def delete_row(client: str) -> None:
         LOGGER.warning("delete_row: Refusing to delete %s row", client)
         return
 
-    pool = get_core_pool()
-    if not pool:
-        LOGGER.warning("delete_row: CORE database not available — skipping")
-        return
+    pool = require_core_pool()
 
     try:
         async with pool.acquire() as conn:
@@ -312,3 +311,4 @@ async def delete_row(client: str) -> None:
         LOGGER.info("Deleted aio_settings row for client=%s", client)
     except Exception as exc:
         LOGGER.warning("delete_row: Failed to delete for client=%s: %s", client, exc)
+        raise SettingsPersistenceError(f"Settings row deletion failed for client={client}") from None

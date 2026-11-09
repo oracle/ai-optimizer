@@ -75,6 +75,14 @@ variable "db_conn" {
     password = string
     service  = string
   })
+  validation {
+    condition = alltrue([
+      trimspace(var.db_conn.username) != "",
+      trimspace(var.db_conn.password) != "",
+      trimspace(var.db_conn.service) != "",
+    ])
+    error_message = "db_conn must provide a non-empty username, password, and service."
+  }
 }
 
 variable "kubernetes_version" {
@@ -170,7 +178,7 @@ variable "ssl_key_pem" {
 }
 
 variable "client_cookie_secret" {
-  description = "Streamlit XSRF-cookie signing key. Rendered into ai-optimizer-values.yaml as client.cookieSecret so the Helm chart's required contract is satisfied without operator input."
+  description = "Streamlit signed-cookie key supplied explicitly by OpenTofu so the value remains stable across deployment renders."
   type        = string
   sensitive   = true
 }

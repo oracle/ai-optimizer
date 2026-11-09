@@ -164,9 +164,7 @@ class TestKeyValueRedaction:
             "ABCDE+FGHIJKLMNOPQRSTUVWXYZabcdef0123456789exampleBODYabcdef"
         )
         record = _make_record(
-            "OCI_CLI_KEY_CONTENT=-----BEGIN RSA PRIVATE KEY-----\n"
-            f"{body}\n"
-            "-----END RSA PRIVATE KEY-----"
+            f"OCI_CLI_KEY_CONTENT=-----BEGIN RSA PRIVATE KEY-----\n{body}\n-----END RSA PRIVATE KEY-----"
         )
         filt.filter(record)
         scrubbed = record.getMessage()

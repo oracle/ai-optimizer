@@ -108,9 +108,7 @@ async def get_status(conn: oracledb.AsyncConnection) -> dict:
     ``available`` reflects whether the database build includes Deep Data Security at all;
     the per-capability flags reflect what *this* user is privileged to do.
     """
-    version_rows = await execute_sql(
-        conn, "SELECT version_full FROM product_component_version WHERE ROWNUM = 1"
-    )
+    version_rows = await execute_sql(conn, "SELECT version_full FROM product_component_version WHERE ROWNUM = 1")
     version = version_rows[0][0] if version_rows else None
 
     # Feature presence in the build: the privilege exists in the privilege map.

@@ -2,11 +2,11 @@
 Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 
-Contract tests for the Helm chart: enforce explicit operator configuration of
-the client cookie-signing secret, mirroring the existing apiKey pattern.
+Contract tests for the Helm chart.
 """
 # spell-checker: disable
 
+import base64
 import os
 import re
 import shutil
@@ -21,6 +21,19 @@ CHART_DIR = Path(__file__).resolve().parent.parent.parent / "helm"
 helm_bin = shutil.which("helm")
 pytestmark = pytest.mark.skipif(helm_bin is None, reason="helm binary not available on PATH")
 
+_DEFAULT_DATABASE_ARGS = (
+    "--set",
+    "server.database.type=OTHER",
+    "--set",
+    "server.database.authn.secretName=test-database-credentials",
+)
+
+
+def _default_database_args(args: tuple[str, ...]) -> tuple[str, ...]:
+    if any(arg.startswith("server.database.type=") for arg in args):
+        return ()
+    return _DEFAULT_DATABASE_ARGS
+
 
 def _render(*extra_sets: str) -> subprocess.CompletedProcess:
     """Run helm template with a minimal baseline plus extra --set flags."""
@@ -31,6 +44,7 @@ def _render(*extra_sets: str) -> subprocess.CompletedProcess:
         str(CHART_DIR),
         "--set",
         "global.api.apiKey=dummy-api-key",
+        *_default_database_args(extra_sets),
     ]
     for s in extra_sets:
         cmd.extend(["--set", s])
@@ -46,6 +60,7 @@ def _render_raw(*extra_args: str) -> subprocess.CompletedProcess:
         str(CHART_DIR),
         "--set",
         "global.api.apiKey=dummy-api-key",
+        *_default_database_args(extra_args),
         *extra_args,
     ]
     return subprocess.run(cmd, capture_output=True, text=True, check=False)
@@ -64,10 +79,31 @@ def _render_with_notes(*extra_sets: str, env: dict | None = None) -> subprocess.
         "test-ns",
         "--set",
         "global.api.apiKey=dummy-api-key",
+        *_default_database_args(extra_sets),
     ]
     for s in extra_sets:
         cmd.extend(["--set", s])
     return subprocess.run(cmd, capture_output=True, text=True, env=env, check=False)
+
+
+def _render_database_contract(*extra_args: str) -> subprocess.CompletedProcess:
+    """Render without the test baseline's structured database configuration."""
+    return subprocess.run(
+        [
+            "helm",
+            "template",
+            "test",
+            str(CHART_DIR),
+            "--set",
+            "global.api.apiKey=dummy-api-key",
+            "--set",
+            "client.cookieSecret=cccccccccccccccccccccccccccccccc",
+            *extra_args,
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
 
 
 def _docs(stdout: str) -> list[dict]:
@@ -237,18 +273,23 @@ def _extract_checksum(rendered: str) -> str:
 
 
 class TestClientCookieSecretContract:
-    """client.cookieSecret must be operator-supplied — no silent fallback."""
+    """The chart owns a stable cookie Secret unless an override is supplied."""
 
-    def test_fails_when_neither_provided(self):
-        """helm template must fail if neither client.cookieSecret nor client.cookieSecretName is set."""
+    def test_generates_when_neither_provided(self):
+        """The default render creates one random 32-character cookie Secret."""
         result = _render()
-        assert result.returncode != 0, (
-            "helm template should fail when no cookie secret is configured; "
-            f"got rc={result.returncode}\nstdout={result.stdout[:500]}"
-        )
-        assert "cookieSecret" in result.stderr or "cookieSecretName" in result.stderr, (
-            f"expected failure message to mention cookieSecret/cookieSecretName; got: {result.stderr[:500]}"
-        )
+        assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
+        docs = _docs(result.stdout)
+        chart_cookie_secrets = _chart_rendered_cookie_secrets(docs)
+        assert len(chart_cookie_secrets) == 1
+        encoded = chart_cookie_secrets[0]["data"]["cookieSecret"]
+        generated = base64.b64decode(encoded).decode()
+        assert len(generated) == 32
+        assert generated.isalnum()
+
+        deployment = _client_deployment(docs)
+        secret_name = chart_cookie_secrets[0]["metadata"]["name"]
+        assert _cookie_env(deployment)["valueFrom"]["secretKeyRef"]["name"] == secret_name
 
     def test_succeeds_with_inline_value(self):
         """helm template must succeed when client.cookieSecret is set inline."""
@@ -311,14 +352,18 @@ class TestClientCookieSecretContract:
             "Secret; see reviewer finding P2"
         )
 
+    def test_generated_secret_uses_lookup(self):
+        """Live upgrades reuse the value stored in the chart-managed Secret."""
+        secret_tpl = (CHART_DIR / "templates" / "client" / "cookie-secret.yaml").read_text()
+        assert 'lookup "v1" "Secret"' in secret_tpl
+        assert "randAlphaNum 32" in secret_tpl
+
     def test_whitespace_only_cookie_secret_routes_to_external_path(self):
         """P2: whitespace cookieSecret + external cookieSecretName must take external path.
 
-        The validator already trims both values, so this combination passes the
-        "exactly one" check. But the render paths used raw values — meaning the
-        chart would render its OWN Secret named after the external name,
-        silently clobbering the operator-owned Secret. The fix is to trim
-        consistently across every site that branches on these values.
+        Render paths must use the same trimmed values as validation. Otherwise
+        the chart could render its own Secret under the external name and
+        clobber an operator-owned Secret.
         """
         result = _render_raw(
             "--set-string",
@@ -365,17 +410,16 @@ class TestClientCookieSecretContract:
         deployment = _client_deployment(docs)
         assert _cookie_env(deployment)["valueFrom"]["secretKeyRef"]["name"] == name
 
-    def test_whitespace_only_both_fails_validation(self):
-        """P2 invariant: both-whitespace must still fail validation (not slip through)."""
+    def test_whitespace_only_both_uses_generated_secret(self):
+        """Whitespace-only overrides select the chart-managed default."""
         result = _render_raw(
             "--set-string",
             "client.cookieSecret=   ",
             "--set-string",
             "client.cookieSecretName=   ",
         )
-        assert result.returncode != 0, (
-            "both whitespace-only values must fail the required validator, just like both empty would"
-        )
+        assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
+        assert len(_chart_rendered_cookie_secrets(_docs(result.stdout))) == 1
 
     def test_external_secret_checksum_varies_by_name(self):
         """Black-box check: two different cookieSecretName values must produce
@@ -473,6 +517,86 @@ def _server_env_content(docs: list[dict]) -> str:
         ):
             return next(iter(doc["stringData"].values()))
     raise AssertionError("chart-managed server environment Secret not found")
+
+
+class TestRequiredDatabaseContract:
+    """Every server render uses the structured CORE database contract."""
+
+    def test_render_rejects_missing_database_type(self):
+        result = _render_database_contract()
+
+        assert result.returncode != 0, "render unexpectedly accepted a server without database configuration"
+        assert "/server/database/type" in result.stderr
+
+    @pytest.mark.parametrize("key", ["AIO_DB_USERNAME", "AIO_DB_PASSWORD", "AIO_DB_DSN"])
+    def test_chart_managed_env_rejects_database_credentials(self, key: str):
+        result = _render_database_contract(
+            *_DEFAULT_DATABASE_ARGS,
+            "--skip-schema-validation",
+            "--set-string",
+            f"server.envSecret.content.{key}=",
+        )
+
+        assert result.returncode != 0, f"render unexpectedly accepted {key} in envSecret.content"
+        assert key in result.stderr
+
+    def test_external_env_secret_does_not_replace_database_configuration(self):
+        result = _render_database_contract(
+            "--set",
+            "server.envSecret.secretName=operator-server-env",
+            "--set",
+            "server.envSecret.secretKey=server.env",
+        )
+
+        assert result.returncode != 0, "render unexpectedly used envSecret as its database configuration"
+        assert "/server/database/type" in result.stderr
+
+    def test_other_external_auth_secret_supplies_complete_connection(self):
+        result = _render_database_contract(
+            "--set",
+            "server.database.type=OTHER",
+            "--set",
+            "server.database.authn.secretName=database-credentials",
+        )
+
+        assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
+        deployment = _server_deployment(_docs(result.stdout))
+        for name in ("AIO_DB_USERNAME", "AIO_DB_PASSWORD", "AIO_DB_DSN"):
+            entry = _server_env(deployment, name)
+            assert entry is not None
+            assert entry["valueFrom"]["secretKeyRef"]["name"] == "database-credentials"
+
+    @pytest.mark.parametrize("field", ["usernameKey", "passwordKey", "serviceKey"])
+    def test_database_auth_secret_requires_nonblank_keys(self, field: str):
+        result = _render_database_contract(
+            "--set",
+            "server.database.type=OTHER",
+            "--set",
+            "server.database.authn.secretName=database-credentials",
+            "--set-string",
+            f"server.database.authn.{field}=   ",
+        )
+
+        assert result.returncode != 0, f"render unexpectedly accepted a blank authn.{field}"
+        assert f"server.database.authn.{field}" in result.stderr
+
+    def test_adb_external_auth_secret_supplies_tns_service(self):
+        result = _render_database_contract(
+            "--set",
+            "server.database.type=ADB-S",
+            "--set",
+            "server.database.authn.secretName=database-credentials",
+            "--set",
+            "server.database.adb.useExisting=true",
+            "--set",
+            "server.database.adb.tnsAdminSecretName=database-wallet",
+            "--set",
+            "server.database.adb.walletPassSecretName=database-wallet-password",
+        )
+
+        assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
+        docs = _docs(result.stdout)
+        assert not [doc for doc in docs if doc.get("kind") == "Job" and "run-sql" in doc["metadata"]["name"]]
 
 
 class TestApplicationEnvironmentNames:
@@ -645,13 +769,13 @@ def _docs_for_required_defaults() -> list[dict]:
 class TestHelmBestPracticeContracts:
     """Contracts for Helm chart best-practice cleanup."""
 
-    def test_default_render_has_no_database_owned_resources(self):
+    def test_external_database_auth_render_has_no_database_owned_resources(self):
         docs = _docs_for_required_defaults()
         db_docs = [
             d for d in docs if d.get("metadata", {}).get("labels", {}).get("app.kubernetes.io/component") == "database"
         ]
         assert db_docs == [], (
-            "server.database.type defaults to empty, so the chart must not "
+            "the external database authentication path must not "
             f"""
             render database resources by default. got:
             {[(d.get("kind"), d.get("metadata", {}).get("name")) for d in db_docs]}
@@ -912,10 +1036,10 @@ class TestNotesUninstallDeletesOnlyChartManagedSecrets:
         assert "byo-priv" not in delete_lines[0], "operator-owned priv name leaked into NOTES"
         assert "-db-authn" in delete_lines[0], delete_lines
 
-    def test_no_database_emits_no_delete_commands(self):
+    def test_external_database_auth_emits_no_database_secret_delete_commands(self):
         notes = self._notes()
         assert "kubectl delete secret" not in notes, (
-            "with no database configured, NOTES must not suggest deleting db Secrets"
+            "external database authentication must not suggest deleting operator-owned Secrets"
         )
 
 

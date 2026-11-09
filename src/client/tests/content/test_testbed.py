@@ -952,6 +952,7 @@ class TestSetupTestbedSources:
         assert state.get("_core_unavailable") is True
         assert result == ["Local"]
         mock_st.warning.assert_called_once()
+        assert "deployment configuration" in mock_st.warning.call_args.args[0]
 
 
 # ---------------------------------------------------------------------------

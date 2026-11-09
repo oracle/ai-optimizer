@@ -324,9 +324,7 @@ def get_client_embed(
     provider = embedding_model.provider or ""
     model_id = embedding_model.id or ""
 
-    model_cfg = find_model(
-        provider, model_id, model_type="embed", enabled_only=False, case_insensitive=True
-    )
+    model_cfg = find_model(provider, model_id, model_type="embed", enabled_only=False, case_insensitive=True)
     if model_cfg is None:
         raise ValueError(f"Embedding model {provider}/{model_id} not found in model_configs")
     # Lowercase because find_model matched case-insensitively but stored casing

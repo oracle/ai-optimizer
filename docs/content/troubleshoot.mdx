@@ -15,21 +15,20 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 After starting the **AI Optimizer**, it takes a long time to load the first page.
 
 **_Solution_**:
-This is normally the result of a configured database that is inaccessible. Depending on how you've configured the database, if `retry_count`, and `retry_delay` is set but the database is inaccessible, the **AI Optimizer** will appear to hang for the duration of `retry_count * retry_delay` during the startup.
+Check the required [Oracle AI Database](./guides/database) connection and its startup configuration. A connect descriptor with `retry_count` and `retry_delay` can keep the connection attempt active for `retry_count * retry_delay`. Correct the connection and restart the Server.
 
 ## Embedding Rate Limits
 
 **_Problem_**:
-During embedding, especially when using trial keys, you may experience a failure due to rate limits. For example:
+During embedding, especially when using trial keys, the model provider may return a rate-limit error. For example:
 
-```
-Operation Failed: Unexpected error: status_code: 429, body:  
+```text
+Operation Failed: Unexpected error: status_code: 429, body:
 data=None message='trial token rate limit exceeded, limit is 100000 tokens per minute'.
 ```
 
 **_Solution_**:
-Set a rate limit based on the API Key restrictions.
-
+Under **Tools** > **Split/Embed**, reduce **Rate Limit (RPM)** to pace embedding batches within the provider quota. See [Populate Vector Store](./client/tools/split-embed#populate-vector-store).
 
 ## Testbed Evaluation
 
@@ -37,51 +36,54 @@ Set a rate limit based on the API Key restrictions.
 During the Evaluation in the **Testbed**, a database error occurs: `DPY-4011: the database or network closed the connection`
 
 **_Solution_**:
-Increase the memory of the vector_memory_size.  If this is an Oracle Autonomous Database, scale up the CPU.
+`DPY-4011` means the database or network closed the connection. Check the Server logs for an accompanying Oracle error, then verify database availability and the network path. If the database reports vector-memory or resource pressure, increase `vector_memory_size`; for Oracle Autonomous Database, scale the compute resources. See [DPY-4011 troubleshooting](https://python-oracledb.readthedocs.io/en/latest/user_guide/troubleshooting.html#dpy-4011).
 
-## Autonomous Database behind VPN
+## Autonomous Database Through a Forward Proxy
 
 **_Problem_**:
-Connection to an Autonomous database while inside a VPN fails.
+A corporate network requires the Oracle Autonomous Database TLS connection to use a forward proxy.
 
 **_Solution_**:
 Update the database connection string to include a `https_proxy` and `https_proxy_port`.
 
-  For example:
-   
-  ```text
-  ADB_HIGH =
-  (DESCRIPTION = 
-    (ADDRESS = 
-      (PROTOCOL = tcps)(HOST = <adb_host>)(PORT = 1522)
-      (HTTPS_PROXY = <proxy_host>)(HTTPS_PROXY_PORT = <proxy_port>)  # <-- Add
-    )
-    (CONNECT_DATA = 
-      (SERVICE_NAME = <serviceName>)
-      (SECURITY = 
-        (ssl_server_dn_match=yes)
-      )
+For example:
+
+```text
+ADB_HIGH =
+(DESCRIPTION =
+  (ADDRESS =
+    (PROTOCOL = tcps)(HOST = <adb_host>)(PORT = 1522)
+    (HTTPS_PROXY = <proxy_host>)(HTTPS_PROXY_PORT = <proxy_port>)
+  )
+  (CONNECT_DATA =
+    (SERVICE_NAME = <serviceName>)
+    (SECURITY =
+      (ssl_server_dn_match=yes)
     )
   )
-  ```
+)
+```
 
 ## Client Fails to Load on Corporate Networks
 
 **_Problem_**:
-The **AI Optimizer** Client fails to load in certain network environments.  The browser console shows a JavaScript file (`index.<hash>.js`) blocked with `NS_ERROR_CORRUPTED_CONNECTION` (Firefox) or a similar connection error.
+The **AI Optimizer** Client fails to load in certain network environments. The browser console shows a JavaScript file (`index.<hash>.js`) blocked with `NS_ERROR_CORRUPTED_CONNECTION` (Firefox) or a similar connection error.
 
 **_Solution_**:
-This is typically caused by a corporate firewall, deep packet inspection (DPI), or SSL inspection appliance corrupting the unencrypted HTTP traffic.  Enable HTTPS on the client to encrypt the connection end-to-end.  See [TLS / HTTPS](./advanced-guides/tls) for configuration details.
+Enable HTTPS on the Client so its pages and JavaScript assets use an encrypted connection. If the problem continues, ask the network administrator to check the firewall, deep packet inspection, or SSL inspection logs. See [TLS / HTTPS](./advanced-guides/tls) for configuration details.
 
 ## MCP Client Connections
 
-### Authentication Fails
+### Server Returns 403
 
 **_Problem_**:
 An MCP client receives `403 Forbidden` when connecting to the AI Optimizer Server.
 
 **_Solution_**:
-The `X-API-Key` header is missing or incorrect. Generate the configuration for the selected client again and re-import it. For a standalone deployment, confirm that the client configuration uses the same value as `AIO_API_KEY`.
+Check the response body:
+
+- `{"detail":"Forbidden"}` indicates a missing or incorrect `X-API-Key`. Generate the configuration for the selected client again and re-import it. For a standalone deployment, confirm that the configuration uses the same value as `AIO_API_KEY`.
+- `Forbidden Origin` indicates that the request includes an `Origin` header. Connect with a native or server-side MCP client. Browser JavaScript uses the REST API. See [External MCP Clients](./guides/mcp-clients).
 
 ### Connection Is Refused
 

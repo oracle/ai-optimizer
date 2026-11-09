@@ -1,4 +1,5 @@
 # Oracle AI Optimizer and Toolkit
+
 If you find this project useful, please consider giving it a [⭐](https://github.com/oracle/ai-optimizer/stargazers)!
 
 <!-- spell-checker:ignore AgentSpec Docling FastAPI FAISS LangGraph LiteLLM OpenTelemetry OpenTofu pyagentspec SigNoz streamlit Uvicorn venv vLLM setuptools -->
@@ -7,11 +8,13 @@ If you find this project useful, please consider giving it a [⭐](https://githu
 [![Validate Container Images](https://github.com/oracle/ai-optimizer/actions/workflows/image_smoke.yml/badge.svg)](https://github.com/oracle/ai-optimizer/actions/workflows/image_smoke.yml)
 [![Deploy Documentation](https://github.com/oracle/ai-optimizer/actions/workflows/documentation.yml/badge.svg)](https://github.com/oracle/ai-optimizer/actions/workflows/documentation.yml)
 
-The **Oracle AI Optimizer and Toolkit** (the **AI Optimizer**) provides a streamlined environment where developers and data scientists can explore the potential of Generative Artificial Intelligence (GenAI) combined with Retrieval-Augmented Generation (RAG) and Natural Language to SQL (NL2SQL) capabilities. By integrating **Oracle AI Database** VectorSearch and **SQLcl** MCP, the AI Optimizer and Toolkit enables users to extend the knowledge of existing Large Language Models (LLMs) through RAG and NL2SQL.
+The **Oracle AI Optimizer and Toolkit** (the **AI Optimizer**) is an open-source platform for building, testing, and evaluating GenAI applications. Its agentic runtime grounds model responses at request time in authoritative private and sensitive data that remains outside the model's training knowledge and under your control in **Oracle AI Database**.
+
+The Server exposes a REST API and Model Context Protocol (MCP) endpoint. An optional Streamlit web client provides configuration and experimentation. Portable AgentSpec definitions are loaded into a LangGraph runtime for an LLM-only agent, an NL2SQL agent backed by SQLcl MCP, and a Vector Search RAG flow. A combined router coordinates the NL2SQL and Vector Search routes.
 
 ## Technology Stack
 
-- **Application:** Python 3.12–3.14, Streamlit client, and FastAPI/Uvicorn server.
+- **Application:** Python, Streamlit client, and FastAPI/Uvicorn server.
 - **AI orchestration:** LangChain, LangGraph, LiteLLM, AgentSpec/pyagentspec, and Model Context Protocol (MCP).
 - **Oracle integration:** Oracle AI Database Vector Search, Oracle Deep Data Security, SQLcl MCP, OCI, OCI GenAI, and OCI Object Storage.
 - **RAG and evaluation:** Docling, OracleDB/LangChain vector integrations, Giskard v3 testbed checks, and FAISS-backed local vector workflows.
@@ -20,34 +23,36 @@ The **Oracle AI Optimizer and Toolkit** (the **AI Optimizer**) provides a stream
 
 ## AI Optimizer Features
 
-- [Configuring Embedding and Chat Models](https://oracle.github.io/ai-optimizer/client/configuration/models)
-- [Splitting and Embedding Documentation](https://oracle.github.io/ai-optimizer/client/tools/split_embed)
-- [Auto-refresh Vector Store from OCI Object Storage buckets](https://oracle.github.io/ai-optimizer/client/tools/split_embed)
-- [Modifying System Prompts (Prompt Engineering)](https://oracle.github.io/ai-optimizer/client/tools/prompt_eng)
-- [Experimenting with **LLM** Parameters](https://oracle.github.io/ai-optimizer/client/chatbot)
-- [Testbed for auto-generated or existing Q&A datasets](https://oracle.github.io/ai-optimizer/client/testbed)
-- [Managing Oracle Deep Data Security policies](https://oracle.github.io/ai-optimizer/client/tools/deepsec)
+- [Run LLM-only and tool-enabled agents and flows](https://oracle.github.io/ai-optimizer/docs/client/chatbot/)
+- [Configure language and embedding models](https://oracle.github.io/ai-optimizer/docs/client/configuration/models/)
+- [Split and embed documents for Vector Search](https://oracle.github.io/ai-optimizer/docs/client/tools/split-embed/)
+- [Refresh vector stores from OCI Object Storage](https://oracle.github.io/ai-optimizer/docs/client/tools/split-embed/)
+- [Manage system prompts](https://oracle.github.io/ai-optimizer/docs/client/tools/prompts/)
+- [Evaluate generated or existing Q&A datasets](https://oracle.github.io/ai-optimizer/docs/client/testbed/)
+- [Apply Oracle Deep Data Security policies](https://oracle.github.io/ai-optimizer/docs/client/tools/dds/)
+- [Inspect portable AgentSpec definitions](https://oracle.github.io/ai-optimizer/docs/client/configuration/agentspec/)
+- Integrate external applications through the [REST API](https://oracle.github.io/ai-optimizer/docs/server/api-examples/intro/) or [MCP endpoint](https://oracle.github.io/ai-optimizer/docs/guides/mcp-clients/)
 
 ## Getting Started
 
-The **AI Optimizer** is available to install in your own environment, which may be a developer's desktop, on-premises data center environment, or a cloud provider. It can be run either on bare-metal, within a container, or in a Kubernetes Cluster.
+Run the **AI Optimizer** on a developer workstation, on premises, or in a cloud environment. Supported deployment options include bare metal, containers, Oracle Cloud Infrastructure (OCI), and Kubernetes.
 
-For more information, including more details on **Setup and Configuration** please visit the [documentation](https://oracle.github.io/ai-optimizer).
+For guided installation and configuration, see the [documentation](https://oracle.github.io/ai-optimizer/docs/intro/).
 
 ### Prerequisites
 
-- Oracle AI Database incl. [Oracle AI Database Free](https://www.oracle.com/database/free/)
-- [uv](https://docs.astral.sh/uv/) (for running Bare-Metal)
-- Container Runtime e.g. docker/podman (for running in a Container)
-- Access to an Embedding and Chat Model:
-  - API Keys for Third-Party Models
-  - On-Premises Models<sub>\*</sub>
+- [Oracle AI Database](https://oracle.github.io/ai-optimizer/docs/guides/database/), including [Oracle AI Database Free](https://www.oracle.com/database/free/).
+- Access to a language model to run agents and flows
+- Access to an embedding model for RAG and Vector Search
+- [SQLcl](https://oracle.github.io/ai-optimizer/docs/guides/sqlcl-mcp-server/) for NL2SQL
+- [uv](https://docs.astral.sh/uv/) for bare-metal installation
+- A container runtime such as Docker or Podman for container installation
 
-<sub>\*Oracle recommends running On-Premises Models on hardware with GPUs.</sub>
+Language and embedding models can use third-party APIs or run on premises. Oracle recommends GPUs for models hosted on premises.
 
 #### Bare-Metal Installation
 
-To run the application on bare-metal; download the [source](https://github.com/oracle/ai-optimizer):
+To run the application on bare metal, download the [source](https://github.com/oracle/ai-optimizer):
 
 1. Create the project environment and install the application:
 
@@ -55,16 +60,15 @@ To run the application on bare-metal; download the [source](https://github.com/o
    uv sync --all-extras
    ```
 
-1. Configure Settings:
+1. Optionally create an environment file to preconfigure the application:
 
    ```bash
    cp src/.env.example src/.env.dev
    ```
 
-   Edit the `src/.env.dev` file and set your default configuration.  
-   To utilize database functionality, at a minimum, set the `AIO_DB_*` parameters.
+   Edit `src/.env.dev` and set the required `AIO_DB_*` values for the Oracle AI Database connection, or complete the local database setup page when the client first starts.
 
-1. Start Streamlit:
+1. Start the AI Optimizer Client:
 
    ```bash
    uv run python src/entrypoint.py client
@@ -72,38 +76,41 @@ To run the application on bare-metal; download the [source](https://github.com/o
 
 1. Navigate to `http://localhost:8501`.
 
-1. [Configure](https://oracle.github.io/ai-optimizer/client/configuration) the **AI Optimizer**.
+1. [Configure](https://oracle.github.io/ai-optimizer/docs/client/configuration/) the **AI Optimizer**.
 
 #### Container Installation
 
-To run the application in a container; download the [source](https://github.com/oracle/ai-optimizer):
+To run the application in a container, download the [source](https://github.com/oracle/ai-optimizer):
 
 1. Build the all-in-one image.
 
-   _Note:_ MacOS Silicon users may need to specify `--arch amd64`
+   _Note:_ macOS Silicon users may need to specify `--arch amd64`.
 
    ```bash
-   podman build -f src/Dockerfile -t ai-optimizer-aio .
+   podman build -f src/Dockerfile -t localhost/ai-optimizer-aio:dev .
    ```
 
-1. Start the Container:
+1. Start the container:
 
    ```bash
-   podman run -p 8501:8501 -it --rm ai-optimizer-aio
+   podman run -v ai-optimizer-data:/app/data -p 8501:8501 -it --rm localhost/ai-optimizer-aio:dev
    ```
 
 1. Navigate to `http://localhost:8501`.
 
-1. [Configure](https://oracle.github.io/ai-optimizer/client/configuration/index.html) the **AI Optimizer**.
+1. Complete the required Oracle AI Database setup page. A successful configuration is stored in the `ai-optimizer-data` container volume.
+
+1. [Configure](https://oracle.github.io/ai-optimizer/docs/client/configuration/) the **AI Optimizer**.
 
 #### Got OCI?
 
 The **AI Optimizer** can be deployed in Oracle Cloud Infrastructure (OCI) using Infrastructure as Code (IaC).
 
-Choose either a light-weight Virtual Machine or robust Oracle Kubernetes Engine deployment, both with an Oracle Autonomous Database:  
+Choose a virtual machine or Oracle Kubernetes Engine deployment, both with an Oracle Autonomous Database:
+
 [![Deploy to Oracle Cloud][magic_button]][magic_arch_stack]
 
-For more information, please visit the [IaC Documentation](https://oracle.github.io/ai-optimizer/advanced/iac/index.html).
+For more information, see the [IaC documentation](https://oracle.github.io/ai-optimizer/docs/advanced-guides/iac/).
 
 ## Contributing
 

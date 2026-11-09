@@ -137,6 +137,10 @@ variable "byo_odb_port" {
   description = "Bring Your Own Other Database - Port"
   type        = number
   default     = 1521
+  validation {
+    condition     = var.byo_odb_port >= 1 && var.byo_odb_port <= 65535
+    error_message = "byo_odb_port must be between 1 and 65535."
+  }
 }
 
 variable "byo_odb_service" {

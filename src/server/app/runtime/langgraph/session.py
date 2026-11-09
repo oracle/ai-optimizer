@@ -192,6 +192,7 @@ class GraphFlowSession:
 
         return answer
 
+
 class AgentGraphSession:
     """Wraps a compiled LangGraph agent (ReAct agent from AgentSpec)."""
 

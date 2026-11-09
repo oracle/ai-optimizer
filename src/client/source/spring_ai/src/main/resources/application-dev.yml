@@ -10,9 +10,9 @@ app:
 
 spring:
   datasource:
-    url: ${DB_DSN}
-    username: ${DB_USERNAME}
-    password: ${DB_PASSWORD}
+    url: ${AIO_DB_DSN}
+    username: ${AIO_DB_USERNAME}
+    password: ${AIO_DB_PASSWORD}
   ai:
     mcp:
       server:

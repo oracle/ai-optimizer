@@ -1,59 +1,53 @@
 ---
-title: Home
-hide_title: true
+title: Oracle AI Optimizer and Toolkit
+sidebar_label: Introduction
 sidebar_position: 1
 ---
 
 {/* Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl. */}
 
-The **Oracle AI Optimizer and Toolkit** (the **AI Optimizer**) is an agentic AI platform for designing, running, evaluating, and refining GenAI applications. It gives developers and data scientists a practical workbench for model-driven agents and flows.
+The **Oracle AI Optimizer and Toolkit** (the **AI Optimizer**) is an open-source platform for building, testing, and evaluating GenAI applications. Its agentic runtime grounds model responses at request time in authoritative private and sensitive data that remains outside the model's training knowledge and under your control in Oracle AI Database.
 
-Agents can use configured tools to retrieve information or act on external systems, while flows compose model and tool steps into a controlled sequence. The built-in routes ground responses in private structured and unstructured data through [_Oracle AI Database_](https://www.oracle.com/database/) [Vector Search](https://www.oracle.com/database/ai-vector-search/) and [SQLcl MCP](https://www.oracle.com/database/sqldeveloper/technologies/sqlcl/), using Retrieval-Augmented Generation (**RAG**) and Natural Language to SQL (**NL2SQL**).
+## What You Can Do
 
-Grounding gives the runtime relevant application data at request time, which can improve accuracy and reduce reliance on a model's training knowledge.
+- Run LLM-only and tool-enabled [agents and flows](./advanced-guides/agents/intro).
+- Ground responses in unstructured content by [splitting and embedding documents](./client/tools/split-embed) for Vector Search.
+- Query structured data in Oracle AI Database through the [NL2SQL agent](./client/chatbot#nl2sql-natural-language-to-sql).
+- Compare models, prompts, parameters, and retrieval settings in the [Chatbot](./client/chatbot).
+- Evaluate configurations against generated or existing Q&A datasets in the [Testbed](./client/testbed).
+- Apply identity-aware database authorization with [Oracle Deep Data Security](./client/tools/dds).
+- Connect external applications through the [REST API](./server/api-examples/intro) or [MCP endpoint](./guides/mcp-clients).
 
-## Agentic Runtime
+## Technology
 
-The Chatbot selects a runtime route from the tools enabled in **Tool Selection**:
-
-| Tool selection    | Runtime route      | Behavior                                                                                 |
-| ----------------- | ------------------ | ---------------------------------------------------------------------------------------- |
-| No tools          | LLM-only Agent     | Generates a response with the selected language model and conversation context.           |
-| **NL2SQL**        | NL2SQL Agent       | Selects from a restricted SQLcl MCP tool inventory to query structured data.             |
-| **Vector Search** | Vector Search Flow | Runs the configured retrieval steps and uses the results to generate a grounded answer.  |
-| Both tools        | Combined Router    | Classifies the request, runs one route or both routes, and can synthesize their results. |
-
-The reusable AgentSpec definitions and their LangGraph runtime are described in [Agents and Flows](./advanced-guides/agents/intro).
+The AI Optimizer brings together established open-source components<sup>*</sup>:
 
 <div className="home-integrations">
-  <div className="home-integrations__image">![AI Optimizer Integrations](/img/integrations.png)</div>
+  <div className="home-integrations__image">![AI Optimizer integrations](/img/integrations.png)</div>
   <div className="home-integrations__list">
-    <strong className="home-integrations__heading">
-      Familiar OSS components<sup>*</sup>
-    </strong>
     <ul>
       <li>
-        <a href="https://github.com/fastapi/fastapi">FastAPI</a> (REST API)
+        <a href="https://github.com/fastapi/fastapi">FastAPI</a> for the REST API
       </li>
       <li>
-        <a href="https://github.com/jlowin/fastmcp">FastMCP</a> (tools)
+        <a href="https://github.com/jlowin/fastmcp">FastMCP</a> for MCP tools, prompts, and resources
       </li>
       <li>
-        <a href="https://github.com/langchain-ai/langgraph">LangGraph</a> +{' '}
-        <a href="https://github.com/oracle/agent-spec">AgentSpec</a> (orchestration)
+        <a href="https://github.com/langchain-ai/langgraph">LangGraph</a> and{' '}
+        <a href="https://github.com/oracle/agent-spec">AgentSpec</a> for agent and flow orchestration
       </li>
       <li>
-        <a href="https://github.com/docling-project/docling">Docling</a> (parsing)
+        <a href="https://github.com/docling-project/docling">Docling</a> for document parsing
       </li>
       <li>
-        <a href="https://github.com/open-telemetry/opentelemetry-python">OpenTelemetry</a> (observability)
+        <a href="https://github.com/BerriAI/litellm">LiteLLM</a> for model-provider integration
       </li>
       <li>
-        <a href="https://github.com/BerriAI/litellm">LiteLLM</a> (models)
+        <a href="https://github.com/Giskard-AI/giskard">Giskard</a> for evaluation
       </li>
       <li>
-        <a href="https://github.com/Giskard-AI/giskard">Giskard</a> (evaluation)
+        <a href="https://github.com/open-telemetry/opentelemetry-python">OpenTelemetry</a> for observability
       </li>
     </ul>
   </div>
@@ -66,28 +60,38 @@ The reusable AgentSpec definitions and their LangGraph runtime are described in 
 
 ## Architecture
 
-The **Oracle AI Optimizer and Toolkit** (the **AI Optimizer**) consists of an API Server ([**AI Optimizer Server**](./server/intro)) and an _optional_ web client ([**AI Optimizer Client**](./client/intro)) component. The server hosts the REST API, agent runtime, and MCP endpoint. Both the API Server and client can run directly on a developer workstation, in on-premises infrastructure, or in cloud environments.
+The [**AI Optimizer Server**](./server/intro) hosts the REST API, agent and flow runtime, and MCP endpoint. The optional [**AI Optimizer Client**](./client/intro) provides a web interface for configuring and exercising the Server through its REST API. Other applications can integrate with the Server through the REST API or MCP endpoint.
 
-![Architecture Overview](_assets/images/arch-overview.png)
+```mermaid
+flowchart LR
+    web["AI Optimizer Client"] --> api
+    rest["REST clients"] --> api
+    mcpClients["MCP clients"] --> mcp
 
-Depending on the capabilities you plan to use, you may also need the following components, which are not delivered with the **AI Optimizer**. These can be local, on premises, or cloud-hosted:
+    subgraph server["AI Optimizer Server"]
+        api["REST API"] --> runtime["Agent and flow runtime"]
+        runtime --> mcp["MCP tools and prompts"]
+    end
 
-- [Oracle AI Database](guides/database), including [Oracle AI Database **Free**](https://www.oracle.com/database/free)
-- Access to at least one [language model](guides/ai-models#language-models)
-- Access to at least one [Embedding Model](guides/ai-models#embedding-models) (for Retrieval Augmented Generation)
-- (Optional) Access to an [SQLcl **MCP Server**-enabled](https://docs.oracle.com/en/database/oracle/sql-developer-command-line/25.2/sqcug/using-oracle-sqlcl-mcp-server.html) instance
+    runtime --> models["Language and embedding models"]
+    runtime --> database["Oracle AI Database"]
+    mcp --> database
+    mcp --> sqlcl["SQLcl MCP Server"]
+```
 
-:::tip[Cloud Native]
-The **AI Optimizer** supports Kubernetes deployments using a Helm chart. For deployment guidance, see [Kubernetes / Helm](advanced-guides/k8s-helm).
-:::
+## Requirements
 
-## Features
+The Server requires an [Oracle AI Database connection](./guides/database) for application configuration and persistence. The routes you run determine the remaining requirements:
 
-The **AI Optimizer** brings together the capabilities you need to build, test, and refine agentic GenAI solutions on the **Oracle AI Database**:
+- A [language model](./guides/ai-models#language-models) runs agents and flows.
+- An [embedding model](./guides/ai-models#embedding-models) creates vectors for RAG and Vector Search.
+- [SQLcl](./guides/sqlcl-mcp-server) must be installed where the Server runs and available on `PATH` to use NL2SQL.
 
-- [Configuring **Embedding** and **Language** Models](./client/configuration/models)
-- [Running agents and flows from the **Chatbot**](./client/chatbot)
-- [Splitting and **Embedding** Documentation](./client/tools/split-embed)
-- [Modifying System **Prompts** (Prompt Engineering)](./client/tools/prompts)
-- [Enforcing **Deep Data Security**](./client/tools/dds)
-- [**Testbed** for auto-generated or existing Q&A datasets](./client/testbed)
+The client can run alongside the Server or connect to a separately deployed Server. All components can be colocated or distributed across local, on-premises, and cloud environments.
+
+## Get Started
+
+- Follow the [Walkthrough](./walkthrough) for a guided local environment and introduction to the main features.
+- Use the [Quick Start](./quick-start) to choose a bare-metal, container, OCI, or Kubernetes deployment.
+- Explore the [AI Optimizer Client](./client/intro) to configure and exercise the included workbench.
+- Explore the [AI Optimizer Server](./server/intro) to integrate through REST or MCP.

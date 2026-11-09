@@ -10,8 +10,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from server.app.core.settings import SettingsBase, settings
+from server.app.core.settings import CoreDatabaseConfigurationError, SettingsBase, settings
 from server.app.database.schemas import DatabaseConfig
+from server.app.database.settings import SettingsPersistenceError
 
 MODULE = "server.app.main"
 
@@ -45,10 +46,7 @@ class TestApplyConfiguredOverlay:
 
     async def test_overlay_from_config_file(self):
         """Config file source should apply overlay (persist happens later in lifespan)."""
-        source = MagicMock()
-        source.model_fields_set = {"model_configs"}
-        source.model_configs = [MagicMock()]
-        source.prompt_configs = []
+        source = SettingsBase.model_validate({"model_configs": []})
 
         with (
             patch(f"{MODULE}.load_config_file", return_value=source),
@@ -67,9 +65,7 @@ class TestApplyConfiguredOverlay:
 
     async def test_overlay_from_database(self):
         """Database source should be used when no config file exists."""
-        source = MagicMock()
-        source.model_configs = []
-        source.prompt_configs = []
+        source = SettingsBase()
 
         with (
             patch(f"{MODULE}.load_config_file", return_value=None),
@@ -99,11 +95,17 @@ class TestApplyConfiguredOverlay:
 
         mock_persist.assert_not_awaited()
 
-    async def test_overlay_promotes_first_db_to_core_when_no_core(self):
-        """When no CORE exists, the first DB is promoted to CORE and clients are synced."""
-        settings.database_configs = []
-        settings.client_settings.database.alias = "DEFAULT"
-        source = SettingsBase.model_validate({"database_configs": [{"alias": "DEFAULT", "dsn": "//host/svc"}]})
+    async def test_file_overlay_cannot_replace_core(self):
+        """The configuration file cannot replace deployment-owned CORE."""
+        settings.database_configs = [DatabaseConfig(alias="CORE", dsn="env_dsn")]
+        source = SettingsBase.model_validate(
+            {
+                "database_configs": [
+                    {"alias": "core", "dsn": "file_dsn"},
+                    {"alias": "ANALYTICS", "dsn": "analytics_dsn"},
+                ]
+            }
+        )
 
         with (
             patch(f"{MODULE}.load_config_file", return_value=source),
@@ -115,9 +117,10 @@ class TestApplyConfiguredOverlay:
 
             await _apply_configured_overlay(set())
 
-        assert settings.database_configs[0].alias == "CORE"
-        assert settings.database_configs[0].dsn == "//host/svc"
-        assert settings.client_settings.database.alias == "CORE"
+        assert [(database.alias, database.dsn) for database in settings.database_configs] == [
+            ("CORE", "env_dsn"),
+            ("ANALYTICS", "analytics_dsn"),
+        ]
 
     async def test_overlay_no_promotion_when_core_exists(self):
         """When CORE already exists, the source DB alias is not changed."""
@@ -138,14 +141,15 @@ class TestApplyConfiguredOverlay:
         assert "CORE" in aliases
         assert "DEFAULT" in aliases
 
-    async def test_overlay_normalizes_lowercase_core(self):
-        """A lowercase 'core' alias from config file is normalized to exact 'CORE'."""
-        settings.database_configs = []
-        source = SettingsBase.model_validate({"database_configs": [{"alias": "core", "dsn": "//host/svc"}]})
+    async def test_database_overlay_cannot_supply_core(self):
+        """Persisted settings cannot supply the CORE bootstrap configuration."""
+        settings.database_configs = [DatabaseConfig(alias="CORE", dsn="env_dsn")]
+        source = SettingsBase.model_validate({"database_configs": [{"alias": "core", "dsn": "stored_dsn"}]})
 
         with (
-            patch(f"{MODULE}.load_config_file", return_value=source),
-            patch(f"{MODULE}.row_exists", new_callable=AsyncMock),
+            patch(f"{MODULE}.load_config_file", return_value=None),
+            patch(f"{MODULE}.row_exists", new_callable=AsyncMock, return_value=True),
+            patch(f"{MODULE}.load_settings", new_callable=AsyncMock, return_value=source),
             patch(f"{MODULE}.reconcile_prompt_customizations"),
             patch(f"{MODULE}.persist_settings", new_callable=AsyncMock),
         ):
@@ -153,8 +157,7 @@ class TestApplyConfiguredOverlay:
 
             await _apply_configured_overlay(set())
 
-        assert settings.database_configs[0].alias == "CORE"
-        assert settings.database_configs[0].dsn == "//host/svc"
+        assert [(database.alias, database.dsn) for database in settings.database_configs] == [("CORE", "env_dsn")]
 
 
 # ---------------------------------------------------------------------------
@@ -165,32 +168,62 @@ class TestApplyConfiguredOverlay:
 class TestLifespan:
     """Tests for the FastAPI lifespan context manager."""
 
-    async def test_core_db_failure_continues(self):
-        """CORE database init failure should be logged but not crash the app."""
+    async def test_core_db_failure_stops_startup(self):
+        """CORE database initialization failure aborts lifespan startup."""
         mock_db = MagicMock()
         with (
-            patch(f"{MODULE}.get_database_settings", return_value=mock_db),
+            patch(f"{MODULE}.require_core_database_config", return_value=mock_db),
             patch(f"{MODULE}.init_core_database", new_callable=AsyncMock, side_effect=Exception("db down")),
-            patch(f"{MODULE}.load_default_models", new_callable=AsyncMock),
-            patch(f"{MODULE}.apply_env_overrides"),
-            patch(f"{MODULE}.load_factory_prompts"),
-            patch(f"{MODULE}.persist_settings", new_callable=AsyncMock),
-            patch(f"{MODULE}._apply_configured_overlay", new_callable=AsyncMock),
-            patch(f"{MODULE}.load_client_settings", new_callable=AsyncMock, return_value=None),
-            patch(f"{MODULE}.persist_client_settings", new_callable=AsyncMock),
-            patch(f"{MODULE}.load_oci_profiles", new_callable=AsyncMock),
-            patch(f"{MODULE}.load_ollama_models", new_callable=AsyncMock),
-            patch(f"{MODULE}.register_mcp_prompts"),
-            patch(f"{MODULE}.register_mcp_tools"),
-            patch(f"{MODULE}.register_sqlcl_proxy", new_callable=AsyncMock, return_value=None),
-            patch(f"{MODULE}.check_model_reachability", new_callable=AsyncMock),
-            patch(f"{MODULE}.close_sqlcl_proxy", new_callable=AsyncMock),
-            patch(f"{MODULE}.close_pool", new_callable=AsyncMock),
+            patch(f"{MODULE}.load_default_models", new_callable=AsyncMock) as mock_load_defaults,
         ):
             from server.app.main import lifespan
 
-            async with lifespan(MagicMock()):
-                pass  # lifespan should yield without error
+            with pytest.raises(Exception, match="db down"):
+                async with lifespan(MagicMock()):
+                    pass
+
+        mock_load_defaults.assert_not_awaited()
+
+    async def test_incomplete_core_config_stops_before_initialization(self):
+        """Bootstrap validation fails before the database initializer runs."""
+        error = CoreDatabaseConfigurationError("CORE database configuration is incomplete; missing AIO_DB_DSN")
+        with (
+            patch(f"{MODULE}.require_core_database_config", side_effect=error),
+            patch(f"{MODULE}.init_core_database", new_callable=AsyncMock) as mock_init,
+        ):
+            from server.app.main import lifespan
+
+            with pytest.raises(CoreDatabaseConfigurationError, match="AIO_DB_DSN"):
+                async with lifespan(MagicMock()):
+                    pass
+
+        mock_init.assert_not_awaited()
+
+    async def test_startup_persistence_failure_closes_core_pool(self):
+        """A later startup failure closes the successfully initialized CORE pool."""
+        core = DatabaseConfig(alias="CORE")
+        core.pool = MagicMock()
+        settings.database_configs = [core]
+        error = SettingsPersistenceError("FACTORY settings persistence failed")
+
+        with (
+            patch(f"{MODULE}.require_core_database_config", return_value=core),
+            patch(f"{MODULE}.init_core_database", new_callable=AsyncMock, return_value=core.pool),
+            patch(f"{MODULE}.load_default_models", new_callable=AsyncMock),
+            patch(f"{MODULE}.apply_env_overrides"),
+            patch(f"{MODULE}.load_factory_prompts"),
+            patch(f"{MODULE}.persist_settings", new_callable=AsyncMock, side_effect=error),
+            patch(f"{MODULE}.close_sqlcl_proxy", new_callable=AsyncMock) as mock_close_sqlcl,
+            patch(f"{MODULE}.close_pool", new_callable=AsyncMock) as mock_close_pool,
+        ):
+            from server.app.main import lifespan
+
+            with pytest.raises(SettingsPersistenceError, match="FACTORY"):
+                async with lifespan(MagicMock()):
+                    pass
+
+        mock_close_sqlcl.assert_awaited_once_with()
+        mock_close_pool.assert_awaited_once_with(core.pool)
 
     async def test_configured_persist_runs_after_load_oci_profiles(self):
         """Regression: persisting CONFIGURED before OCI load erases the saved GenAI overlay.
@@ -200,17 +233,24 @@ class TestLifespan:
         """
         call_order: list[str] = []
 
+        async def _track_init(_core):
+            call_order.append("init_core_database")
+
+        async def _track_factory():
+            call_order.append("load_default_models")
+
         async def _track_oci():
             call_order.append("load_oci_profiles")
 
         async def _track_persist(client, is_current=True):
             del is_current
             call_order.append(f"persist_settings:{client}")
+            return True
 
         with (
-            patch(f"{MODULE}.get_database_settings", return_value=MagicMock()),
-            patch(f"{MODULE}.init_core_database", new_callable=AsyncMock),
-            patch(f"{MODULE}.load_default_models", new_callable=AsyncMock),
+            patch(f"{MODULE}.require_core_database_config", return_value=MagicMock()),
+            patch(f"{MODULE}.init_core_database", side_effect=_track_init),
+            patch(f"{MODULE}.load_default_models", side_effect=_track_factory),
             patch(f"{MODULE}.apply_env_overrides"),
             patch(f"{MODULE}.load_factory_prompts"),
             patch(f"{MODULE}.persist_settings", side_effect=_track_persist),
@@ -232,6 +272,8 @@ class TestLifespan:
                 pass
 
         oci_idx = call_order.index("load_oci_profiles")
+        assert call_order.index("init_core_database") < call_order.index("load_default_models")
+        assert call_order.index("load_default_models") < call_order.index("persist_settings:FACTORY")
         configured_persists = [i for i, evt in enumerate(call_order) if evt == "persist_settings:CONFIGURED"]
         assert configured_persists, "lifespan must persist CONFIGURED"
         assert all(i > oci_idx for i in configured_persists), (
@@ -243,7 +285,7 @@ class TestLifespan:
         mock_transport = MagicMock()
         saved_db_configs = list(settings.database_configs)
         with (
-            patch(f"{MODULE}.get_database_settings", return_value=MagicMock()),
+            patch(f"{MODULE}.require_core_database_config", return_value=MagicMock()),
             patch(f"{MODULE}.init_core_database", new_callable=AsyncMock),
             patch(f"{MODULE}.load_default_models", new_callable=AsyncMock),
             patch(f"{MODULE}.apply_env_overrides"),

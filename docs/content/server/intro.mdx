@@ -17,6 +17,8 @@ The **AI Optimizer Server** API documentation is available at `http://<IP Addres
 
 Powered by [FastAPI](https://fastapi.tiangolo.com/) and [Uvicorn](https://uvicorn.dev/), the **AI Optimizer Server** hosts the REST API, agent and flow runtime, and MCP server. It connects REST-capable clients to AI models, configured tools, and the Oracle AI Database.
 
+During startup, the Server connects to the required [Oracle AI Database](../guides/database), initializes and verifies the application schema, and restores persisted settings before accepting traffic. Its readiness status tracks database availability.
+
 ## [Calling the API](./api-examples/intro)
 
 Authenticated API requests send the API key in the `X-API-Key` header. In a standalone deployment, set `AIO_API_KEY` before starting the server and distribute the key through your normal secret-management process.

@@ -102,9 +102,7 @@ async def test_embed_rejects_invalid_client_header(app_client, auth_headers, bad
         "/v1/embed/MY_VS/files",
         headers={**auth_headers, "Client": bad_client},
     )
-    assert resp.status_code == 422, (
-        f"Expected 422 for Client={bad_client!r}, got {resp.status_code}: {resp.text}"
-    )
+    assert resp.status_code == 422, f"Expected 422 for Client={bad_client!r}, got {resp.status_code}: {resp.text}"
 
 
 @pytest.mark.unit
@@ -117,9 +115,7 @@ async def test_embed_accepts_valid_client_header(app_client, auth_headers, good_
         "/v1/embed/MY_VS/files",
         headers={**auth_headers, "Client": good_client},
     )
-    assert resp.status_code != 422, (
-        f"Valid client {good_client!r} was rejected with 422: {resp.text}"
-    )
+    assert resp.status_code != 422, f"Valid client {good_client!r} was rejected with 422: {resp.text}"
 
 
 # ---------------------------------------------------------------------------
@@ -153,9 +149,7 @@ async def test_testbed_rejects_invalid_client_header(app_client, auth_headers, b
         files=[("files", ("a.pdf", _io.BytesIO(b"%PDF-"), "application/pdf"))],
         headers={**auth_headers, "Client": bad_client},
     )
-    assert resp.status_code == 422, (
-        f"Expected 422 for Client={bad_client!r}, got {resp.status_code}: {resp.text}"
-    )
+    assert resp.status_code == 422, f"Expected 422 for Client={bad_client!r}, got {resp.status_code}: {resp.text}"
 
 
 # ---------------------------------------------------------------------------
@@ -172,9 +166,7 @@ async def test_chat_history_rejects_invalid_client_header(app_client, auth_heade
         "/v1/chat/history",
         headers={**auth_headers, "Client": bad_client},
     )
-    assert resp.status_code == 422, (
-        f"Expected 422 for Client={bad_client!r}, got {resp.status_code}: {resp.text}"
-    )
+    assert resp.status_code == 422, f"Expected 422 for Client={bad_client!r}, got {resp.status_code}: {resp.text}"
 
 
 @pytest.mark.unit
@@ -186,9 +178,7 @@ async def test_chat_history_accepts_valid_client_header(app_client, auth_headers
         "/v1/chat/history",
         headers={**auth_headers, "Client": good_client},
     )
-    assert resp.status_code != 422, (
-        f"Valid client {good_client!r} was rejected with 422: {resp.text}"
-    )
+    assert resp.status_code != 422, f"Valid client {good_client!r} was rejected with 422: {resp.text}"
 
 
 # ---------------------------------------------------------------------------
@@ -206,9 +196,7 @@ async def test_oci_download_rejects_invalid_client_header(app_client, auth_heade
         json=["file.txt"],
         headers={**auth_headers, "Client": bad_client},
     )
-    assert resp.status_code == 422, (
-        f"Expected 422 for Client={bad_client!r}, got {resp.status_code}: {resp.text}"
-    )
+    assert resp.status_code == 422, f"Expected 422 for Client={bad_client!r}, got {resp.status_code}: {resp.text}"
 
 
 # ---------------------------------------------------------------------------
@@ -230,9 +218,7 @@ async def test_settings_rejects_invalid_client_query(app_client, auth_headers, b
         params={"client": bad_client},
         headers=auth_headers,
     )
-    assert resp.status_code == 422, (
-        f"Expected 422 for client={bad_client!r}, got {resp.status_code}: {resp.text}"
-    )
+    assert resp.status_code == 422, f"Expected 422 for client={bad_client!r}, got {resp.status_code}: {resp.text}"
 
 
 @pytest.mark.unit
@@ -245,6 +231,4 @@ async def test_settings_accepts_valid_client_query(app_client, auth_headers, goo
         params={"client": good_client},
         headers=auth_headers,
     )
-    assert resp.status_code != 422, (
-        f"Valid client {good_client!r} was rejected with 422: {resp.text}"
-    )
+    assert resp.status_code != 422, f"Valid client {good_client!r} was rejected with 422: {resp.text}"

@@ -11,7 +11,7 @@ import TabItem from '@theme/TabItem';
 import LocalContainer from './_assets/partials/local-container.mdx';
 import OracleAiDatabaseFree from './_assets/partials/oracle-ai-database-free.mdx';
 
-This walkthrough will guide you through a basic installation of the **Oracle AI Optimizer and Toolkit** (the **AI Optimizer**). It will allow you to experiment with tool-enabled agents and retrieval workflows using Retrieval-Augmented Generation (**RAG**) and Natural Language to SQL (**NL2SQL**) with the Oracle AI Database at the core.
+This walkthrough guides you through a local installation of the **Oracle AI Optimizer and Toolkit** (the **AI Optimizer**). You will configure language and embedding models, populate a Vector Store in Oracle AI Database, and compare ungrounded and Retrieval-Augmented Generation (**RAG**) responses in the web client. The resulting environment prepares you for further experimentation with SQLcl and Natural Language to SQL (**NL2SQL**) in the [Use Cases](./use-cases/intro).
 
 By the end of the walkthrough you will be familiar with:
 
@@ -38,11 +38,10 @@ When testing the language model, if you don't get a response in a couple of minu
 
 ## Installation
 
-You will run four container images to establish the "Infrastructure":
+You will run three containers for the walkthrough:
 
-- On-premises language model - granite4.1:8b
-- On-premises embedding model - mxbai-embed-large
-- Vector Store - Oracle AI Database Free
+- Ollama with the `granite4.1:8b` language model and `mxbai-embed-large` embedding model
+- Oracle AI Database Free as the Vector Store
 - The **AI Optimizer**
 
 ### Language Model - granite4.1:8b
@@ -152,7 +151,9 @@ The **AI Optimizer** provides a web client for experimenting with language-model
 3. Start the **AI Optimizer**:
 
    ```bash
-   podman run -d --name ai-optimizer-aio --network=host localhost/ai-optimizer-aio:latest
+   podman run -d --name ai-optimizer-aio --network=host \
+     -v ai-optimizer-data:/app/data \
+     localhost/ai-optimizer-aio:dev
    ```
 
 ### Vector Store - Oracle AI Database Free
@@ -204,14 +205,34 @@ As the container is running in a VM, a port-forward is required from the localho
 podman machine ssh -- -N -L 8501:localhost:8501
 ```
 
-This command does not return as it holds the tunnel open. Leave it running in its own terminal for the duration of the walkthrough, and open a new terminal for the remaining commands.
+This command holds the tunnel open. Leave it running in its own terminal for the duration of the walkthrough, and open a new terminal for the remaining commands.
 
 </TabItem>
 </Tabs>
 
-With the "Infrastructure" in-place, you're ready to configure the **AI Optimizer**.
+With the infrastructure in place, you're ready to configure the **AI Optimizer**.
 
 In a web browser, navigate to [`http://localhost:8501`](http://localhost:8501):
+
+### Configure Oracle AI Database
+
+The all-in-one container opens the required Oracle AI Database setup page.
+
+![Oracle AI Database Setup](_assets/images/database-core-setup.png)
+
+Enter:
+
+1. **Username**: `WALKTHROUGH`
+1. **Password**: `OrA_41_OpTIMIZER`
+1. **Connection string**: `//localhost:1521/FREEPDB1`
+1. Select **Connect and start**.
+
+The Client starts the Server after the database connection succeeds and its schema initializes. It stores the successful configuration in the `ai-optimizer-data` container volume.
+
+For required database setup, see [Oracle AI Database](./guides/database). To add or select connections in the client, see [Database Configuration](./client/configuration/databases).
+
+After startup, the application opens on the Chatbot with a language model ready to configure:
+
 ![Chatbot](_assets/images/chatbot-no-models.png)
 
 Notice that there are no language models configured to use. Let's start the configuration.
@@ -232,9 +253,7 @@ Navigate to the _Chatbot_ screen:
 
 ![Say Hello?](_assets/images/chatbot-say-hello.png)
 
-The error about language models will have disappeared, but there is a new warning about the database. You'll take care of that in the next steps.
-
-The `Chat Model:` field will have been pre-set to the only enabled language model and the chat input will be ready for your first request.
+The `Chat Model:` field is preset to the only enabled language model, and the chat input is ready for your first request. Type `Hello?` to test the model.
 
 Feel free to play around with the different Language Model Parameters, hovering over the ︖ icons to get more information on what they do.
 
@@ -248,19 +267,6 @@ To configure the On-Premises Embedding Model, navigate back to the _Configuratio
    ![Configure Embedding Model](_assets/images/models-edit-embed.png)
 
 ⭐️ More information about configuring embedding models can be found in the [Model Configuration](./client/configuration/models) documentation.
-
-### Configure the Database
-
-To configure Oracle AI Database Free, navigate to the _Configuration_ screen and _Databases_ tab:
-
-1. Enter the Database Username: `WALKTHROUGH`
-1. Enter the Database Password for the database user: `OrA_41_OpTIMIZER`
-1. Enter the Database Connection String: `//localhost:1521/FREEPDB1`
-1. Save Database
-
-![Configure Database](_assets/images/database-config.png)
-
-⭐️ More information about configuring the database can be found in the [Database Configuration](./client/configuration/databases) documentation.
 
 ## Split and Embed
 
@@ -365,7 +371,7 @@ To take your experiments further, consider exploring:
 
 ## Clean Up
 
-To cleanup the walkthrough "Infrastructure", stop and remove the containers.
+To clean up the walkthrough, stop and remove the three containers.
 
 ```bash
 podman container rm ai-optimizer-db --force

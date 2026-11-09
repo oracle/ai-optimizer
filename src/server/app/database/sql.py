@@ -28,6 +28,7 @@ _FETCH_PAGE_SIZE = 1_000
 # Used with ``fullmatch`` so the entire identifier must consist of word
 # characters (no embedded whitespace or punctuation).
 _VS_TABLE_NAME_PATTERN = re.compile(r"\w+")
+_DEFAULT_IGNORED_ERROR_CODES = frozenset({942, 955})
 
 
 class ResultSetTooLargeError(RuntimeError):
@@ -58,12 +59,13 @@ async def execute_sql(
     binds: Optional[dict] = None,
     input_sizes: Optional[dict] = None,
     max_rows: int = DEFAULT_MAX_ROWS,
+    ignored_error_codes: frozenset[int] = _DEFAULT_IGNORED_ERROR_CODES,
 ) -> Optional[list]:
     """Execute a SQL statement and return results for SELECT queries.
 
     - SELECT: returns list of rows with LOB columns auto-read
     - DML/DDL: returns None
-    - Swallows ORA-00955 (object already exists) and ORA-00942 (table/view does not exist)
+    - By default, ignores ORA-00955 and ORA-00942
 
     Result sets larger than *max_rows* raise :class:`ResultSetTooLargeError`
     instead of being truncated, so callers cannot silently lose rows.
@@ -83,7 +85,7 @@ async def execute_sql(
                 raise
             error = exc.args[0]
             code = getattr(error, "code", None)
-            if code in (955, 942):
+            if code in ignored_error_codes:
                 LOGGER.info("Ignoring ORA-%05d: %s", code, error.message.strip())
                 return None
             raise

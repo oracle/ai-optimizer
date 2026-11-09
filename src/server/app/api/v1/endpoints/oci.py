@@ -13,6 +13,7 @@ from fastapi import APIRouter, Body, Header, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 
 from server.app.api.v1.endpoints._helpers import _build_updates, _log_sensitive_read
+from server.app.api.v1.persistence import persistence_succeeded
 from server.app.api.v1.schemas.common import ClientId
 from server.app.core.client_locks import _client_lock
 from server.app.core.constants import PERSIST_FAIL_DETAIL as _PERSIST_FAIL
@@ -79,7 +80,7 @@ async def create_oci_profile(body: OciProfileConfig):
                 raise HTTPException(status_code=409, detail=f"OCI profile config already exists: {body.auth_profile}")
         settings.oci_configs.append(body)
         error = _check_usable(body)
-        if not await persist_settings():
+        if not await persistence_succeeded(persist_settings()):
             settings.oci_configs.remove(body)
             raise HTTPException(status_code=503, detail=_PERSIST_FAIL)
         if error:
@@ -115,7 +116,7 @@ async def update_oci_profile(auth_profile: str, body: OciProfileUpdate):
                 # doesn't interpret an env-masked field equal to baseline as a
                 # user revert and drop the prior overlay.
                 touched_arg = None
-            if not await persist_settings(oci_user_touched=touched_arg):
+            if not await persistence_succeeded(persist_settings(oci_user_touched=touched_arg)):
                 # Persistence failed — ensure all mutations are rolled back
                 for field, value in originals.items():
                     setattr(cfg, field, value)
@@ -125,7 +126,7 @@ async def update_oci_profile(auth_profile: str, body: OciProfileUpdate):
         saved_model_configs = settings.model_configs[:]
         if cfg.genai_region != old_genai_region:
             settings.model_configs = [m for m in settings.model_configs if m.provider != "oci"]
-        if not await persist_settings(oci_user_touched=touched_arg):
+        if not await persistence_succeeded(persist_settings(oci_user_touched=touched_arg)):
             for field, value in originals.items():
                 setattr(cfg, field, value)
             cfg.usable = was_usable
@@ -141,7 +142,7 @@ async def delete_oci_profile(auth_profile: str):
         for i, cfg in enumerate(settings.oci_configs):
             if cfg.auth_profile.lower() == auth_profile.lower():
                 settings.oci_configs.pop(i)
-                if not await persist_settings():
+                if not await persistence_succeeded(persist_settings()):
                     settings.oci_configs.insert(i, cfg)
                     raise HTTPException(status_code=503, detail=_PERSIST_FAIL)
                 return None
@@ -179,7 +180,7 @@ async def enable_genai_models(auth_profile: str):
         except ValueError as exc:
             settings.model_configs = saved_model_configs
             raise HTTPException(status_code=400, detail=str(exc)) from exc
-        if not await persist_settings():
+        if not await persistence_succeeded(persist_settings()):
             settings.model_configs = saved_model_configs
             raise HTTPException(status_code=503, detail=_PERSIST_FAIL)
         return [m.model_dump() for m in models]
@@ -253,6 +254,9 @@ async def oci_download_objects(
     # restore — see ``_restore_claimed_files_to_shared_under_lock``.
     async with _client_lock(client):
         downloaded, _failures = await download_bucket_objects_to_dir(
-            temp_directory, profile, bucket_name, request,
+            temp_directory,
+            profile,
+            bucket_name,
+            request,
         )
         return downloaded

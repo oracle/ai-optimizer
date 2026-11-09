@@ -36,7 +36,6 @@ _STATIC_SENSITIVE_KEYS: frozenset[str] = frozenset(
         "AIO_OCI_CLI_PASSPHRASE",
         "AIO_OCI_CLI_KEY_CONTENT",
         "DB_PASSWORD",
-        "DB_WALLET_PASSWORD",
         # Per-provider API key env vars (and AIO_-prefixed forms) used by the
         # model registry's env-override path.  Listed explicitly because the
         # word-boundary check prevents ``api_key`` from matching ``API_KEY``
@@ -98,7 +97,6 @@ def _sensitive_keys() -> tuple[frozenset[str], str]:
             "AIO_OCI_CLI_PASSPHRASE",
             "AIO_OCI_CLI_KEY_CONTENT",
             "DB_PASSWORD",
-            "DB_WALLET_PASSWORD",
             "X-API-Key",
         }
     )

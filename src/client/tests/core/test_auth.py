@@ -472,9 +472,7 @@ class TestRedactedPasswordInput:
             patch(f"{MODULE}.st", mock_st),
             patch(f"{MODULE}.is_authenticated", return_value=True),
         ):
-            result = auth.redacted_password_input(
-                "Password:", value="secret-value", key="form_pw", disabled=False
-            )
+            result = auth.redacted_password_input("Password:", value="secret-value", key="form_pw", disabled=False)
         mock_st.text_input.assert_called_once()
         kwargs = mock_st.text_input.call_args.kwargs
         assert kwargs.get("value") == "secret-value"
@@ -491,9 +489,7 @@ class TestRedactedPasswordInput:
             patch(f"{MODULE}.st", mock_st),
             patch(f"{MODULE}.is_authenticated", return_value=False),
         ):
-            result = auth.redacted_password_input(
-                "API Key:", value="real-secret-do-not-leak", key="form_key"
-            )
+            result = auth.redacted_password_input("API Key:", value="real-secret-do-not-leak", key="form_key")
         mock_st.text_input.assert_not_called()
         mock_st.markdown.assert_called_once()
         rendered = mock_st.markdown.call_args[0][0]

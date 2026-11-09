@@ -6,12 +6,10 @@ sidebar_position: 5
 {/* Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl. */}
 
-import Tabs from '@theme/Tabs';
-import TabItem from '@theme/TabItem';
 import LocalContainer from './_assets/partials/local-container.mdx';
 import ReleaseSourceExtract from './_assets/partials/release-source-extract.mdx';
 
-The **AI Optimizer** can be installed on a developer's desktop, an on-premises data center, or a cloud environment. It can be run either on bare-metal, within a container, or in a Kubernetes cluster using a Helm chart.
+Choose a deployment path to install the **AI Optimizer** on a developer workstation, on premises, or in a cloud environment.
 
 :::note[Prefer a Step-by-Step?]
 The [Walkthrough](./walkthrough) is a great way to install and familiarize yourself with the **AI Optimizer** and its features in a containerized, development environment.
@@ -19,23 +17,24 @@ The [Walkthrough](./walkthrough) is a great way to install and familiarize yours
 
 ## Prerequisites
 
-- [uv](https://docs.astral.sh/uv/getting-started/installation/) (for running bare-metal)
-- A container runtime, such as Docker or Podman (for running in a container)
-- Access to a language model and an embedding model for RAG:
-  - API Keys for Third-Party Models
-  - On-Premises Models<sup>\*</sup>
-- Oracle AI Database incl. [Oracle AI Database Free](https://www.oracle.com/database/free/)
+Every deployment requires a connection to [Oracle AI Database](./guides/database), including [Oracle AI Database Free](https://www.oracle.com/database/free/). The local client and all-in-one container provide a setup page for configuring this connection.
+
+Install the tool required by your deployment path:
+
+- [uv](https://docs.astral.sh/uv/getting-started/installation/) for bare-metal installation
+- A container runtime, such as Docker or Podman, for container installation
+
+The features you use determine the remaining requirements:
+
+| Feature                 | Requirement                                                                                                     |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Agents and flows        | Access to a [language model](./guides/ai-models#language-models)                                                |
+| Vector Search           | Access to an [embedding model](./guides/ai-models#embedding-models)                                             |
+| NL2SQL                  | [SQLcl](./guides/sqlcl-mcp-server) installed where the Server runs and available on `PATH`                      |
+
+The all-in-one container includes SQLcl. Language and embedding models can use third-party APIs or run on premises.
 
 <sub>*Oracle recommends running on-premises models on hardware with GPUs.</sub>
-
-:::info[What do I actually need?]
-
-The **AI Optimizer** will start without any AI model or database configured. However:
-
-- To run the LLM-only Agent, you will need to configure and enable a language model.
-- To persist settings across restarts and to enable features like RAG, NL2SQL and the [Testbed](./client/testbed), a [database](./client/configuration/databases) is required.
-
-:::
 
 ## Deployment Options
 
@@ -49,8 +48,6 @@ Available deployment options:
 ---
 
 ### Bare-Metal Installation
-
-Python 3.12, 3.13, and 3.14 are supported. The default is 3.14; select another supported version with `uv python pin 3.12` or `uv python pin 3.13` before installing.
 
 To run the **AI Optimizer** on bare-metal:
 
@@ -68,7 +65,7 @@ To run the **AI Optimizer** on bare-metal:
    cp src/.env.example src/.env.dev
    ```
 
-   Edit `src/.env.dev` as needed. See [Environment Variables](./guides/env-vars) for details.
+   Edit `src/.env.dev` as needed. You can supply the required Oracle AI Database connection in this file or enter it on the local setup page for the current client process. See [Environment Variables](./guides/env-vars) for details.
 
 1. Start the application:
 
@@ -84,42 +81,19 @@ To run the **AI Optimizer** on bare-metal:
 
 ### Container Installation
 
-To run the **AI Optimizer** in a container:
-
-:::tip[Same... but different!]
-
-The commands in this section work in a macOS/Linux shell or PowerShell 7. The documentation will reference `podman` commands. If applicable to your environment, `podman` can be substituted with `docker`.
-
-If you are using `docker`, consider aliasing the `podman` command for convenience:
-
-<Tabs>
-<TabItem value="macos-linux" label="Linux/macOS">
-
-```bash
-alias podman=docker
-```
-
-</TabItem>
-<TabItem value="powershell" label="PowerShell">
-
-```powershell
-Set-Alias podman docker
-```
-
-</TabItem>
-</Tabs>
-
-:::
+To run the **AI Optimizer** in a container, use the following `podman` commands. You can substitute `docker` for `podman`.
 
 <LocalContainer />
 
-3. Start the Container:
+3. Start the container:
 
    ```bash
-   podman run -p 8501:8501 -it --rm localhost/ai-optimizer-aio:latest
+   podman run -v ai-optimizer-data:/app/data -p 8501:8501 -it --rm localhost/ai-optimizer-aio:dev
    ```
 
 1. Navigate to `http://localhost:8501`.
+
+1. Complete the required Oracle AI Database setup page. A successful configuration is stored in the `ai-optimizer-data` container volume.
 
 1. [Configure](./client/configuration) the **AI Optimizer**.
 
@@ -127,15 +101,7 @@ Set-Alias podman docker
 
 ### Oracle Cloud Infrastructure
 
-The **AI Optimizer** can easily be deployed using Infrastructure as Code (**IaC**) into Oracle Cloud Infrastructure (**OCI**).
-
-**OCI** deployment options include:
-
-- An [Always-Free](https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier_topic-Always_Free_Resources.htm) Installation
-- Simple Virtual Machine Installation
-- Advanced Oracle Kubernetes Engine
-
-To get started, review the [IaC](./advanced-guides/iac) documentation.
+The included OpenTofu Infrastructure as Code (**IaC**) can deploy the **AI Optimizer** and its supporting infrastructure in Oracle Cloud Infrastructure (**OCI**). It can provision an Autonomous Database or connect the deployment to an existing Oracle database. See [Infrastructure as Code](./advanced-guides/iac) for deployment instructions.
 
 ---
 

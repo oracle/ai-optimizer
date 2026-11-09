@@ -72,9 +72,7 @@ def test_helm_resolve_dependencies_clean_config_quiet(tmp_path, monkeypatch, cap
     env = _isolated_helm_env(tmp_path)
 
     def env_run_cmd(cmd, capture_output=True):
-        result = subprocess.run(
-            cmd, env=env, capture_output=capture_output, text=True, check=False
-        )
+        result = subprocess.run(cmd, env=env, capture_output=capture_output, text=True, check=False)
         stdout = result.stdout.strip() if result.stdout else ""
         stderr = result.stderr.strip() if result.stderr else ""
         return stdout, stderr, result.returncode

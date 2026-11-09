@@ -86,9 +86,7 @@ def pick_files(corpus_dir: Path, workers: int) -> list[Path]:
     return [files[i % len(files)] for i in range(workers)]
 
 
-async def _post_upload(
-    client: httpx.AsyncClient, base_url: str, headers: dict, file_path: Path
-) -> list[str]:
+async def _post_upload(client: httpx.AsyncClient, base_url: str, headers: dict, file_path: Path) -> list[str]:
     with file_path.open("rb") as fh:
         content = fh.read()
     files = {"files": (file_path.name, content, "application/octet-stream")}
@@ -172,9 +170,7 @@ async def _run_worker(
         result.job_id = job_id
 
         t0 = time.monotonic()
-        info = await _poll(
-            client, cfg.base_url, headers, job_id, cfg.poll_interval, cfg.timeout
-        )
+        info = await _poll(client, cfg.base_url, headers, job_id, cfg.poll_interval, cfg.timeout)
         result.poll_wait_seconds = time.monotonic() - t0
         result.total_seconds = time.monotonic() - wall_start
 
@@ -219,17 +215,14 @@ def _print_report(results: list[WorkerResult], wall_seconds: float) -> int:
     return 0 if not failed else 1
 
 
-async def _discover_embedding_model(
-    client: httpx.AsyncClient, base_url: str, api_key: str
-) -> tuple[str, str]:
+async def _discover_embedding_model(client: httpx.AsyncClient, base_url: str, api_key: str) -> tuple[str, str]:
     resp = await client.get(
         f"{base_url}/v1/models",
         headers={"X-API-Key": api_key},
     )
     resp.raise_for_status()
     embeds = [
-        m for m in resp.json()
-        if m.get("type") == "embed" and m.get("enabled") and m.get("provider") and m.get("id")
+        m for m in resp.json() if m.get("type") == "embed" and m.get("enabled") and m.get("provider") and m.get("id")
     ]
     if not embeds:
         raise SystemExit(

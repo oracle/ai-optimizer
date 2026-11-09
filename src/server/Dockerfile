@@ -4,7 +4,7 @@
 ##################################################
 # Stage 1: Base — shared by builder and runtime
 # Build from the project root directory:
-#  podman build -f src/server/Dockerfile -t ai-optimizer-server:latest .
+#  podman build -f src/server/Dockerfile -t localhost/ai-optimizer-server:dev .
 ##################################################
 FROM container-registry.oracle.com/os/oraclelinux:9-slim AS base
 
@@ -73,6 +73,8 @@ RUN rm -rf /app/src/client
 # Mount points (supply via -v at runtime):
 # - /app/.oci      — OCI config (read-only); entrypoint copies to /app/runtime/.oci
 # - /app/tns_admin — Oracle TNS admin directory
+# Supply AIO_DB_USERNAME, AIO_DB_PASSWORD, and AIO_DB_DSN through container
+# environment variables or the mounted /app/src/.env.{AIO_ENV} file.
 
 # Set user and working directory
 EXPOSE 8000

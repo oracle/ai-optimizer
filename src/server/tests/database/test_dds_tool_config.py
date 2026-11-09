@@ -249,7 +249,7 @@ async def test_persist_settings_excludes_managed_configs():
         return []  # carry-forward read in _load_raw_settings
 
     with (
-        patch.object(dbsettings, "get_core_pool", return_value=pool),
+        patch.object(dbsettings, "require_core_pool", return_value=pool),
         patch.object(dbsettings, "execute_sql", side_effect=_fake_execute),
         patch("server.app.oci.registry.get_oci_source_baseline", return_value={}),
     ):

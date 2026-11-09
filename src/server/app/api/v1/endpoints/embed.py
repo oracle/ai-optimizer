@@ -881,7 +881,7 @@ async def _run_split_embed_preflight(
         # the synchronous 503 they expect rather than a job that
         # immediately fails. The result is intentionally discarded: the
         # actual snapshot the pipeline runs against is taken later under
-        # ``_settings_lock`` to close the rotation race.
+        # ``_settings_lock`` with mutable additional database settings.
         _get_client_db_config(client)
 
         # Job state (status / progress / result) lives in the CORE
@@ -948,12 +948,9 @@ async def _submit_split_embed_under_lock(
         file_metadata = await asyncio.to_thread(load_file_metadata, work_dir)
 
         manager = get_embed_job_manager()
-        # Hold ``_settings_lock`` across both the DB snapshot and the
-        # submit so a concurrent CORE rotation cannot close
-        # ``captured_pool`` between snapshot and INSERT. ``model_copy``
-        # gives the snapshot its own attribute storage so post-submit
-        # edits to the live ``DatabaseConfig`` cannot retarget the
-        # in-flight job.
+        # Capture additional database settings under the same lock used by
+        # database updates. ``model_copy`` gives the snapshot its own
+        # attribute storage so later edits cannot retarget the in-flight job.
         async with _settings_lock:
             _live_db_config, captured_pool = _get_client_db_config(client)
             db_config = _live_db_config.model_copy()

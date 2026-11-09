@@ -36,13 +36,13 @@ Get Started with Java Development](https://docs.oracle.com/en/database/oracle/or
 
 Download one of them through the `Download SpringAI` button. Unzip the content and set the executable permission on the `start.sh`  with `chmod 755 ./start.sh`.
 
-Edit `start.sh` to change the DB_PASSWORD, AI_SERVICE_API_KEY or any other referece/credential changed by the dev env, as in this example:
+Edit `start.sh` to change `AIO_DB_PASSWORD`, `AI_SERVICE_API_KEY`, or any other credential used by the development environment, as in this example:
 ```
 export SPRING_AI_OPENAI_API_KEY=$OPENAI_API_KEY
-export DB_DSN="jdbc:oracle:thin:@localhost:1521/FREEPDB1"
+export AIO_DB_DSN="jdbc:oracle:thin:@localhost:1521/FREEPDB1"
 export AI_SERVICE_API_KEY=<AI_SERVICE_API_KEY>
-export DB_USERNAME=<DB_USER_NAME>
-export DB_PASSWORD=<DB_PASSWORD>
+export AIO_DB_USERNAME=<DB_USER_NAME>
+export AIO_DB_PASSWORD=<DATABASE_PASSWORD>
 export DISTANCE_TYPE=COSINE
 export OPENAI_CHAT_MODEL=gpt-5-mini
 export OPENAI_EMBEDDING_MODEL=text-embedding-3-small
@@ -206,10 +206,10 @@ datastore create --namespace <OPTIMIZER_NAMESPACE> --username <OPTIMIZER_USER> -
 * For the AI Optimizer and Toolkit local startup,  setting this env variables in startup:
 
 ```bash
-DB_USERNAME=<OPTIMIZER_USER>
-DB_PASSWORD=<OPTIMIZER_USER_PASSWORD>
-DB_DSN="<Connection_String_to_Instance>"
-DB_WALLET_PASSWORD=<Wallet_Password>
+AIO_DB_USERNAME=<OPTIMIZER_USER>
+AIO_DB_PASSWORD=<OPTIMIZER_USER_PASSWORD>
+AIO_DB_DSN="<Connection_String_to_Instance>"
+AIO_DB_WALLET_PASSWORD=<Wallet_Password>
 TNS_ADMIN=<Wallet_Zip_Full_Path>
 ```
 

@@ -68,10 +68,7 @@ def _step2(n: int, m: int) -> list[str]:
         f"I am Driver {n}. How many points do I have before the finale?",
         f"I am Driver {n}. What was my best finish, and my fastest lap?",
         f"I am Driver {n}. Did I have any incidents? How many pit stops did I make?",
-        (
-            f"Compare Driver {n} with Driver {m} on total points, best finish, "
-            "average lap time, and incidents."
-        ),
+        (f"Compare Driver {n} with Driver {m} on total points, best finish, average lap time, and incidents."),
         f"Which drivers have the same driving style as Driver {n}?",
         "Which team is leading before Round 6?",
     ]
@@ -90,26 +87,14 @@ def _step3(n: int) -> list[str]:
 
 def _step4(n: int, m: int) -> list[str]:
     return [
-        (
-            f"I am Driver {n}. Use my database results and my documents to "
-            "summarize my season so far."
-        ),
-        (
-            f"I am Driver {n}. Based on my points, incidents, and coaching "
-            "notes, what should I focus on next?"
-        ),
+        (f"I am Driver {n}. Use my database results and my documents to summarize my season so far."),
+        (f"I am Driver {n}. Based on my points, incidents, and coaching notes, what should I focus on next?"),
         (
             f"I am Driver {n}. Which race should I review first, based on my "
             "worst structured result and my debrief notes?"
         ),
-        (
-            f"I am Driver {n}. Did my structured performance match the "
-            "feedback in my documents?"
-        ),
-        (
-            f"Compare Driver {n} with Driver {m} using both database results "
-            "and driver notes."
-        ),
+        (f"I am Driver {n}. Did my structured performance match the feedback in my documents?"),
+        (f"Compare Driver {n} with Driver {m} using both database results and driver notes."),
     ]
 
 
@@ -144,9 +129,7 @@ _STEP_DEFS = {
 
 
 def _make_plan_builder(selected_steps: list[str]):
-    def builder(
-        n: int, m: int, vs_alias_for: Callable[[int], str]
-    ) -> list[StepPlan]:
+    def builder(n: int, m: int, vs_alias_for: Callable[[int], str]) -> list[StepPlan]:
         out: list[StepPlan] = []
         for key in selected_steps:
             name, tools = _STEP_DEFS[key]
@@ -177,9 +160,7 @@ def _parse_steps(raw: str) -> list[str]:
     parts = [s.strip().lower() for s in raw.split(",") if s.strip()]
     unknown = [p for p in parts if p not in _STEP_DEFS]
     if unknown:
-        raise SystemExit(
-            f"Unknown step(s) {unknown}. Valid steps: {sorted(_STEP_DEFS)}"
-        )
+        raise SystemExit(f"Unknown step(s) {unknown}. Valid steps: {sorted(_STEP_DEFS)}")
     return parts
 
 
@@ -218,8 +199,7 @@ def main() -> int:
         type=int,
         default=0,
         help=(
-            "Offset added to worker_id when computing driver number. "
-            "Driver number = (worker_id + offset) %% 100 + 1."
+            "Offset added to worker_id when computing driver number. Driver number = (worker_id + offset) %% 100 + 1."
         ),
     )
     parser.add_argument(

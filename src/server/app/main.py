@@ -8,10 +8,10 @@ FastAPI application entrypoint.
 
 import asyncio
 import contextlib
-import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastmcp.utilities.lifespan import combine_lifespans
 from starlette.middleware import Middleware
 
@@ -19,10 +19,10 @@ import server.app.core.environ  # noqa: F401, E402  # side-effect: loads .env
 from _version import __version__
 from server.app.api.mcp.router import router as mcp_router
 from server.app.api.v1.router import router as v1_router
-from server.app.core.etc import apply_overlay, ensure_core_alias, load_config_file
+from server.app.core.etc import apply_overlay, load_config_file
 from server.app.core.mcp import MCPApiKeyMiddleware, MCPOriginMiddleware, mcp
-from server.app.core.settings import _client_store, settings
-from server.app.database.config import close_pool, get_database_settings
+from server.app.core.settings import _client_store, require_core_database_config, settings
+from server.app.database.config import CoreDatabaseUnavailable, close_pool
 from server.app.database.registry import init_core_database
 from server.app.database.settings import (
     load_client_settings,
@@ -47,7 +47,6 @@ from server.app.otel import init_telemetry, instrument_fastapi
 
 init_telemetry()
 
-LOGGER = logging.getLogger(__name__)
 #############################################################################
 # APP FACTORY
 #############################################################################
@@ -62,8 +61,9 @@ async def _apply_configured_overlay(protected: set[str]) -> None:
         source = await load_settings("CONFIGURED")
 
     if source is not None:
+        source = source.model_copy(deep=True)
+        source.database_configs = [database for database in source.database_configs if database.alias.upper() != "CORE"]
         apply_overlay(source, protected, exclude_fields={"oci_configs", "prompt_configs"})
-        ensure_core_alias(settings.database_configs, settings.client_settings, _client_store)
         has_models = "model_configs" in source.model_fields_set if from_file else bool(source.model_configs)
         if has_models:
             # Restored settings can carry duplicate (provider, id) entries written
@@ -84,65 +84,57 @@ async def lifespan(_app: FastAPI):
     if settings.api_key_generated:
         protected.discard("api_key")
 
-    # --- Phase 2: Init CORE database ---
-    core_db = get_database_settings(settings.database_configs, "CORE")
-    if core_db is not None:
-        try:
-            await init_core_database(core_db)
-        except Exception:
-            LOGGER.exception("CORE database initialization failed — continuing without persistence")
+    # --- Phase 2: Init required CORE database ---
+    core_db = require_core_database_config()
+    await init_core_database(core_db)
 
-    # --- Phase 3: Build FACTORY baseline ---
-    await load_default_models()
-    apply_env_overrides()
-    load_factory_prompts()
-    await persist_settings("FACTORY", is_current=False)
-
-    # --- Phase 4: Build/load CONFIGURED ---
-    await _apply_configured_overlay(protected)
-
-    # --- Phase 4b: Init server client settings ---
-    server_cs = await load_client_settings("server")
-    if server_cs is None:
-        server_cs = settings.client_settings.model_copy(deep=True)
-        await persist_client_settings("server", server_cs)
-    server_cs.client = "server"
-    _client_store["server"] = server_cs
-
-    # --- Phase 5: Post-config startup ---
-    await load_oci_profiles()
-    await load_ollama_models()
-    register_mcp_prompts()
-    register_mcp_tools()
-    settings.nl2sql_available = await register_sqlcl_proxy() is not None
-
-    # Persist CONFIGURED after load_oci_profiles() so the OCI GenAI overlay
-    # picked up from the previous run's row is preserved (an earlier persist
-    # would write an empty oci_configs list and erase it).
-    await persist_settings("CONFIGURED", is_current=True)
-
-    # --- Phase 6: Model reachability ---
-    await check_model_reachability()
-
-    # --- Phase 7: Embed-job heartbeat + reaper ---
-    # Each replica heartbeats its own owned rows in aio_embed_jobs and
-    # also participates in the cross-pod reaper sweep. This is what
-    # turns a pod crash mid-pipeline into a terminal "failed" record
-    # for polling clients instead of an indefinite "running" row.
-    embed_job_manager = get_embed_job_manager()
-    heartbeat_task = asyncio.create_task(
-        run_heartbeat_loop(embed_job_manager),
-        name="embed-jobs-heartbeat",
-    )
-    reaper_task = asyncio.create_task(
-        run_reaper_loop(embed_job_manager),
-        name="embed-jobs-reaper",
-    )
-
+    background_tasks: list[asyncio.Task] = []
     try:
+        # --- Phase 3: Build FACTORY baseline ---
+        await load_default_models()
+        apply_env_overrides()
+        load_factory_prompts()
+        await persist_settings("FACTORY", is_current=False)
+
+        # --- Phase 4: Build/load CONFIGURED ---
+        await _apply_configured_overlay(protected)
+
+        # --- Phase 4b: Init server client settings ---
+        server_cs = await load_client_settings("server")
+        if server_cs is None:
+            server_cs = settings.client_settings.model_copy(deep=True)
+            await persist_client_settings("server", server_cs)
+        server_cs.client = "server"
+        _client_store["server"] = server_cs
+
+        # --- Phase 5: Post-config startup ---
+        await load_oci_profiles()
+        await load_ollama_models()
+        register_mcp_prompts()
+        register_mcp_tools()
+        settings.nl2sql_available = await register_sqlcl_proxy() is not None
+
+        # Persist after OCI loading so the saved GenAI overlay is retained.
+        await persist_settings("CONFIGURED", is_current=True)
+
+        # --- Phase 6: Model reachability ---
+        await check_model_reachability()
+
+        # --- Phase 7: Embed-job heartbeat + reaper ---
+        embed_job_manager = get_embed_job_manager()
+        background_tasks = [
+            asyncio.create_task(
+                run_heartbeat_loop(embed_job_manager),
+                name="embed-jobs-heartbeat",
+            ),
+            asyncio.create_task(
+                run_reaper_loop(embed_job_manager),
+                name="embed-jobs-reaper",
+            ),
+        ]
         yield
     finally:
-        for task in (heartbeat_task, reaper_task):
+        for task in background_tasks:
             task.cancel()
             with contextlib.suppress(BaseException):
                 await task
@@ -178,6 +170,13 @@ app = FastAPI(
     },
 )
 instrument_fastapi(app)
+
+
+@app.exception_handler(CoreDatabaseUnavailable)
+async def core_database_unavailable_handler(_request: Request, _exc: CoreDatabaseUnavailable) -> JSONResponse:
+    """Translate required CORE dependency failures into a retryable response."""
+    return JSONResponse(status_code=503, content={"detail": "CORE database is unavailable"})
+
 
 app.include_router(v1_router, prefix=API_PREFIX)
 app.include_router(mcp_router, prefix=MCP_PREFIX)

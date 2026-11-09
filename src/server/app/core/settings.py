@@ -25,6 +25,10 @@ from server.app.models.schemas import ModelConfig
 from server.app.oci.schemas import OciProfileConfig
 
 
+class CoreDatabaseConfigurationError(ValueError):
+    """Raised when required CORE bootstrap settings are incomplete."""
+
+
 class SettingsBase(BaseModel):
     """Fields shared between Settings and SettingsResponse."""
 
@@ -70,7 +74,7 @@ class Settings(SettingsBase, BaseSettings):
     db_dsn: Optional[str] = Field(default=None, exclude=True)
     db_wallet_password: Optional[SecretStr] = Field(default=None, exclude=True)
     db_wallet_location: Optional[str] = Field(default=None, exclude=True)
-    db_pool_size: int = Field(default=5, exclude=True)
+    db_pool_size: int = Field(default=5, ge=1, exclude=True)
 
     max_clients: int = Field(default=64, ge=1, exclude=True)
     mcp_cache_ttl_seconds: int = Field(default=5, ge=0, exclude=True)
@@ -90,33 +94,19 @@ class Settings(SettingsBase, BaseSettings):
 
     @model_validator(mode="after")
     def _build_core_database_config(self) -> "Settings":
-        """Create the CORE database config from DB_* / AIO_DB_* env vars.
+        """Create the CORE database config from AIO_DB_* environment settings."""
+        self.db_wallet_location = os.environ.get("DB_WALLET_LOCATION") or self.db_wallet_location
+        pool_size_env = os.environ.get("DB_POOL_SIZE")
+        if pool_size_env:
+            try:
+                self.db_pool_size = int(pool_size_env)
+            except ValueError as exc:
+                raise ValueError("DB_POOL_SIZE must be an integer") from exc
+            if self.db_pool_size < 1:
+                raise ValueError("DB_POOL_SIZE must be at least 1")
 
-        Precedence: DB_* env var > AIO_DB_* (.env / export).
-        """
-        username = os.environ.get("DB_USERNAME") or self.db_username
-        # Env-var values arrive as ``str``; promote them to ``SecretStr`` so
-        # the precedence ``or self.db_password`` produces a single SecretStr |
-        # None type rather than a mixed str | SecretStr | None.
-        db_password_env = os.environ.get("DB_PASSWORD")
-        password: Optional[SecretStr] = SecretStr(db_password_env) if db_password_env else self.db_password
-        dsn = os.environ.get("DB_DSN") or self.db_dsn
-        wallet_password_env = os.environ.get("DB_WALLET_PASSWORD")
-        wallet_password: Optional[SecretStr] = (
-            SecretStr(wallet_password_env) if wallet_password_env else self.db_wallet_password
-        )
-        wallet_location = os.environ.get("DB_WALLET_LOCATION") or self.db_wallet_location
-
-        if any([username, password, dsn]):
-            core = DatabaseConfig(
-                alias="CORE",
-                username=username,
-                password=password,
-                dsn=dsn,
-                wallet_password=wallet_password,
-                wallet_location=wallet_location,
-            )
-            self.database_configs = [core]
+        if any([self.db_username, self.db_password, self.db_dsn]):
+            self.database_configs = [_make_core_database_config(self)]
         return self
 
     @model_validator(mode="after")
@@ -134,7 +124,39 @@ class Settings(SettingsBase, BaseSettings):
         return getattr(self, "_api_key_generated", False)
 
 
+def _make_core_database_config(app_settings: Settings) -> DatabaseConfig:
+    return DatabaseConfig(
+        alias="CORE",
+        username=app_settings.db_username,
+        password=app_settings.db_password,
+        dsn=app_settings.db_dsn,
+        wallet_password=app_settings.db_wallet_password,
+        wallet_location=app_settings.db_wallet_location,
+    )
+
+
 settings = Settings()
+
+
+def require_core_database_config(app_settings: Settings = settings) -> DatabaseConfig:
+    """Return the deployment-owned CORE config or raise a sanitized error."""
+    missing_checks = (
+        ("AIO_DB_USERNAME", not app_settings.db_username),
+        (
+            "AIO_DB_PASSWORD",
+            app_settings.db_password is None or not app_settings.db_password.get_secret_value(),
+        ),
+        ("AIO_DB_DSN", not app_settings.db_dsn),
+    )
+    missing = [name for name, is_missing in missing_checks if is_missing]
+    if missing:
+        raise CoreDatabaseConfigurationError(f"CORE database configuration is incomplete; missing {', '.join(missing)}")
+
+    core = _make_core_database_config(app_settings)
+    non_core = [config for config in app_settings.database_configs if config.alias.upper() != "CORE"]
+    app_settings.database_configs = [core, *non_core]
+    return core
+
 
 # ---------------------------------------------------------------------------
 # Per-client settings store

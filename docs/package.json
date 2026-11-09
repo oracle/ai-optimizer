@@ -51,6 +51,12 @@
   "engines": {
     "node": ">=20.0"
   },
+  "overrides": {
+    "deepmerge": "4.1.1",
+    "serialize-javascript": "7.1.4",
+    "tinypool": "2.2.0",
+    "uuid": "11.1.1"
+  },
   "allowScripts": {
     "prettier@3.9.6": true
   }
