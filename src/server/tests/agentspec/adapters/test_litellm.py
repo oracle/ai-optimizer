@@ -165,4 +165,3 @@ class TestLiteLlmConfigSerialization:
         assert parsed["name"] == "Test Agent"
         assert parsed["llm_config"]["component_type"] == "LiteLlmConfig"
         assert parsed["llm_config"]["provider"] == "ollama"
-

@@ -40,8 +40,9 @@ class BootstrapError(Exception):
     """Helpers raise this; main() catches once and turns it into an exit message."""
 
 
-def _read_json(url: str, *, data: bytes | None = None, headers: dict[str, str] | None = None,
-               timeout: int = LOGIN_TIMEOUT_SECONDS) -> dict:
+def _read_json(
+    url: str, *, data: bytes | None = None, headers: dict[str, str] | None = None, timeout: int = LOGIN_TIMEOUT_SECONDS
+) -> dict:
     """GET (or POST if ``data`` is set) ``url`` and return the parsed JSON body."""
     req = urllib.request.Request(url, data=data, headers=headers or {})
     try:
@@ -78,12 +79,7 @@ def _resolve_org_id(host: str, email: str) -> str:
     multi-org accounts: returns one id only when the account belongs to exactly
     one org, otherwise raises with the list so the operator picks explicitly.
     """
-    url = (
-        host.rstrip("/")
-        + SESSION_CONTEXT_PATH
-        + "?"
-        + urllib.parse.urlencode({"email": email, "ref": host})
-    )
+    url = host.rstrip("/") + SESSION_CONTEXT_PATH + "?" + urllib.parse.urlencode({"email": email, "ref": host})
     body = _read_json(url)
     data = body.get("data") if isinstance(body, dict) else None
     if not isinstance(data, dict):

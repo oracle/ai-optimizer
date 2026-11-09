@@ -297,7 +297,8 @@ async def _sweep_sql_scratch_files(client: str, shared_dir: Path) -> None:
                 except OSError as ex:
                     LOGGER.warning(
                         "Could not drop stale SQL scratch file %s: %s",
-                        item, ex,
+                        item,
+                        ex,
                     )
 
     async with _client_lock(client):
@@ -334,8 +335,7 @@ async def _restore_claimed_files_to_shared_under_lock(client: str, work_dir: Pat
             if item.is_file():
                 if _SQL_GENERATED_CSV_RE.match(item.name):
                     LOGGER.debug(
-                        "Dropping SQL-generated CSV %s on restore — retry "
-                        "will regenerate via /embed/sql/store",
+                        "Dropping SQL-generated CSV %s on restore — retry will regenerate via /embed/sql/store",
                         item.name,
                     )
                     continue
@@ -347,7 +347,8 @@ async def _restore_claimed_files_to_shared_under_lock(client: str, work_dir: Pat
                 if target.exists():
                     LOGGER.warning(
                         "Skipping restore of %s — shared dir already has %s",
-                        item, target,
+                        item,
+                        target,
                     )
                     continue
                 shutil.move(str(item), str(target))
@@ -357,7 +358,9 @@ async def _restore_claimed_files_to_shared_under_lock(client: str, work_dir: Pat
     except OSError as ex:
         LOGGER.warning(
             "Could not restore claimed files for client %s from %s: %s",
-            client, work_dir, ex,
+            client,
+            work_dir,
+            ex,
         )
     shutil.rmtree(work_dir, ignore_errors=True)
 

@@ -44,7 +44,7 @@ import httpx
 class QuestionResult:
     step: str
     question: str
-    status: str = "pending"          # "ok" | "failed"
+    status: str = "pending"  # "ok" | "failed"
     seconds: float = 0.0
     chars: int = 0
     route: Optional[str] = None
@@ -166,17 +166,14 @@ def cfg_from_args(args: argparse.Namespace) -> RunConfig:
 # ---------------------------------------------------------------------------
 
 
-async def _discover_embedding_model(
-    client: httpx.AsyncClient, base_url: str, api_key: str
-) -> tuple[str, str]:
+async def _discover_embedding_model(client: httpx.AsyncClient, base_url: str, api_key: str) -> tuple[str, str]:
     resp = await client.get(
         f"{base_url}/v1/models",
         headers={"X-API-Key": api_key},
     )
     resp.raise_for_status()
     embeds = [
-        m for m in resp.json()
-        if m.get("type") == "embed" and m.get("enabled") and m.get("provider") and m.get("id")
+        m for m in resp.json() if m.get("type") == "embed" and m.get("enabled") and m.get("provider") and m.get("id")
     ]
     if not embeds:
         raise SystemExit(
@@ -219,9 +216,7 @@ async def _put_settings(
     resp.raise_for_status()
 
 
-async def _patch_history(
-    client: httpx.AsyncClient, cfg: RunConfig, client_id: str
-) -> None:
+async def _patch_history(client: httpx.AsyncClient, cfg: RunConfig, client_id: str) -> None:
     resp = await client.patch(
         f"{cfg.base_url}/v1/chat/history",
         headers={"X-API-Key": cfg.api_key, "Client": client_id},
@@ -409,9 +404,7 @@ async def _run(
             cfg.embedding_provider, cfg.embedding_model = await _discover_embedding_model(
                 client, cfg.base_url, cfg.api_key
             )
-            print(
-                f"Discovered embedding model: {cfg.embedding_provider}/{cfg.embedding_model}"
-            )
+            print(f"Discovered embedding model: {cfg.embedding_provider}/{cfg.embedding_model}")
         wall_start = time.monotonic()
         await asyncio.gather(
             *(

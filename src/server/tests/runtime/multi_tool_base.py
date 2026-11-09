@@ -235,9 +235,7 @@ class StreamingBase:
                 stream_flow=stream_flow,
                 stream_agent=stream_agent,
             )
-            stream_agent.assert_awaited_once_with(
-                session.nl2sql_session, history_messages, "How many tables?", queue
-            )
+            stream_agent.assert_awaited_once_with(session.nl2sql_session, history_messages, "How many tables?", queue)
             stream_flow.assert_not_awaited()
 
     @pytest.mark.anyio

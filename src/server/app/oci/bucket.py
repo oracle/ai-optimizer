@@ -228,7 +228,11 @@ async def download_bucket_objects_to_dir(
         for name in names:
             try:
                 path = await asyncio.to_thread(
-                    download_object, str(temp_directory), name, bucket_name, profile,
+                    download_object,
+                    str(temp_directory),
+                    name,
+                    bucket_name,
+                    profile,
                 )
                 results.append((name, path))
             except Exception as ex:  # caller decides what to do with the failure

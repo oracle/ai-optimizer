@@ -297,9 +297,7 @@ class TestGraphFlowSessionMetadata:
         )
         session = GraphFlowSession(graph, SAMPLE_CLIENT_SETTINGS)
         await session.execute("test", "t1")
-        assert session.last_metadata.token_usage == TokenUsage(
-            prompt_tokens=20, completion_tokens=10, total_tokens=30
-        )
+        assert session.last_metadata.token_usage == TokenUsage(prompt_tokens=20, completion_tokens=10, total_tokens=30)
 
     @pytest.mark.anyio
     async def test_streaming_forwards_chunks_to_queue(self):
@@ -497,18 +495,14 @@ class TestAggregateUsageCallback:
         """Single model usage is mapped from input/output_tokens to prompt/completion_tokens."""
         cb = UsageMetadataCallbackHandler()
         _fire_callback(cb, model_name="m1", input_tokens=20, output_tokens=10, total_tokens=30)
-        assert _aggregate_usage_callback(cb) == TokenUsage(
-            prompt_tokens=20, completion_tokens=10, total_tokens=30
-        )
+        assert _aggregate_usage_callback(cb) == TokenUsage(prompt_tokens=20, completion_tokens=10, total_tokens=30)
 
     def test_sums_across_models(self):
         """Per-model usage is summed into a single TokenUsage."""
         cb = UsageMetadataCallbackHandler()
         _fire_callback(cb, model_name="m1", input_tokens=10, output_tokens=5, total_tokens=15)
         _fire_callback(cb, model_name="m2", input_tokens=20, output_tokens=10, total_tokens=30)
-        assert _aggregate_usage_callback(cb) == TokenUsage(
-            prompt_tokens=30, completion_tokens=15, total_tokens=45
-        )
+        assert _aggregate_usage_callback(cb) == TokenUsage(prompt_tokens=30, completion_tokens=15, total_tokens=45)
 
     def test_total_falls_back_to_sum(self):
         """When total_tokens is missing, fall back to prompt+completion."""
@@ -573,9 +567,7 @@ class TestAgentGraphSession:
         )
         session = AgentGraphSession(graph)
         await session.chat("hello")
-        assert session.last_metadata.token_usage == TokenUsage(
-            prompt_tokens=15, completion_tokens=8, total_tokens=23
-        )
+        assert session.last_metadata.token_usage == TokenUsage(prompt_tokens=15, completion_tokens=8, total_tokens=23)
 
     @pytest.mark.anyio
     async def test_chat_extracts_sql_metadata_from_tool_calls(self):
@@ -594,7 +586,7 @@ class TestAgentGraphSession:
                             }
                         ],
                     ),
-                    ToolMessage(content="[{\"TEAM_NAME\": \"Team 10\"}]", tool_call_id="call_1"),
+                    ToolMessage(content='[{"TEAM_NAME": "Team 10"}]', tool_call_id="call_1"),
                     AIMessage(content="You are on Team 10."),
                 ]
             }
@@ -624,7 +616,7 @@ class TestAgentGraphSession:
                             }
                         ],
                     ),
-                    ToolMessage(content="[{\"TEAM_NAME\": \"Team 10\"}]", tool_call_id="call_1"),
+                    ToolMessage(content='[{"TEAM_NAME": "Team 10"}]', tool_call_id="call_1"),
                     AIMessage(content="You are on Team 10."),
                 ]
             }
@@ -669,6 +661,7 @@ class TestAgentGraphSession:
         while not queue.empty():
             events.append(queue.get_nowait())
         assert events == [{"type": "stream", "content": "response"}]
+
 
 # ---------------------------------------------------------------------------
 # TestNL2SQLGraphSession

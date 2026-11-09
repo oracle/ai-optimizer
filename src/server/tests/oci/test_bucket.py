@@ -127,6 +127,7 @@ class TestGetBucketsPagination:
 
     def test_aggregates_buckets_across_pages(self):
         """Buckets returned across multiple OCI pages all appear in the result."""
+
         def _bucket(name, genai_chunk=False):
             b = MagicMock()
             b.name = name
@@ -333,7 +334,10 @@ class TestGetBucketObjectsWithMetadata:
             patch(
                 f"{MODULE}.oci.pagination.list_call_get_all_results",
                 side_effect=oci.exceptions.ServiceError(
-                    status=404, code="BucketNotFound", headers={}, message="not found",
+                    status=404,
+                    code="BucketNotFound",
+                    headers={},
+                    message="not found",
                 ),
             ),
         ):

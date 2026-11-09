@@ -44,22 +44,15 @@ async def _post_upload_many(
     paths: list[Path],
 ) -> None:
     """Stage every corpus file under a single client in one multipart POST."""
-    files = [
-        ("files", (p.name, p.read_bytes(), "application/octet-stream"))
-        for p in paths
-    ]
-    resp = await client.post(
-        f"{base_url}/v1/embed/local/store", headers=headers, files=files
-    )
+    files = [("files", (p.name, p.read_bytes(), "application/octet-stream")) for p in paths]
+    resp = await client.post(f"{base_url}/v1/embed/local/store", headers=headers, files=files)
     resp.raise_for_status()
 
 
 async def _run(args: Any) -> int:
     cfg = cfg_from_args(args)
     corpus_dir = Path(args.corpus_dir)
-    paths = sorted(
-        p for p in corpus_dir.iterdir() if p.is_file() and not p.name.startswith(".")
-    )
+    paths = sorted(p for p in corpus_dir.iterdir() if p.is_file() and not p.name.startswith("."))
     if not paths:
         raise SystemExit(f"No corpus files found under {corpus_dir}")
 
@@ -71,17 +64,12 @@ async def _run(args: Any) -> int:
             cfg.embedding_provider, cfg.embedding_model = await _discover_embedding_model(
                 http, cfg.base_url, cfg.api_key
             )
-            print(
-                f"Discovered embedding model: {cfg.embedding_provider}/{cfg.embedding_model}"
-            )
+            print(f"Discovered embedding model: {cfg.embedding_provider}/{cfg.embedding_model}")
 
         t0 = time.monotonic()
         await _post_upload_many(http, cfg.base_url, headers, paths)
         upload_seconds = time.monotonic() - t0
-        print(
-            f"Uploaded {len(paths)} corpus files in {upload_seconds:.2f}s "
-            f"(client={client_id}, alias={args.alias})"
-        )
+        print(f"Uploaded {len(paths)} corpus files in {upload_seconds:.2f}s (client={client_id}, alias={args.alias})")
 
         body = {
             "alias": args.alias,
@@ -96,9 +84,7 @@ async def _run(args: Any) -> int:
             "parsing_mode": cfg.parsing_mode,
         }
         t0 = time.monotonic()
-        accepted = await _post_schedule(
-            http, cfg.base_url, headers, body, cfg.rate_limit
-        )
+        accepted = await _post_schedule(http, cfg.base_url, headers, body, cfg.rate_limit)
         schedule_seconds = time.monotonic() - t0
         job_id = accepted.get("job_id")
         if not isinstance(job_id, str):
@@ -109,9 +95,7 @@ async def _run(args: Any) -> int:
         )
 
         t0 = time.monotonic()
-        info = await _poll(
-            http, cfg.base_url, headers, job_id, cfg.poll_interval, cfg.timeout
-        )
+        info = await _poll(http, cfg.base_url, headers, job_id, cfg.poll_interval, cfg.timeout)
         wait_seconds = time.monotonic() - t0
 
     status = info.get("status", "unknown")

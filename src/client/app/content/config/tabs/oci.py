@@ -310,9 +310,7 @@ def _get_oci(force: bool = False) -> None:
                 if not profile:
                     detailed.append(entry)
                     continue
-                detailed.append(
-                    api_get(f"oci/{profile}", params={"include_sensitive": "true"})
-                )
+                detailed.append(api_get(f"oci/{profile}", params={"include_sensitive": "true"}))
             state["settings"]["oci_configs"] = detailed
             state["_oci_sensitive_loaded"] = True
         except httpx.HTTPStatusError as ex:

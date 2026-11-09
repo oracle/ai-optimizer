@@ -159,10 +159,10 @@ def test_rejects_nat64_embedded_restricted_ipv4(url):
         # — embeds the IPv4 destination in the lower 32 bits while
         # ``is_global=True``, so without an explicit decode the deny-list
         # would be bypassed.
-        "http://[::ffff:0:a00:1]/",        # 10.0.0.1
-        "http://[::ffff:0:7f00:1]/",       # 127.0.0.1
-        "http://[::ffff:0:a9fe:a9fe]/",    # 169.254.169.254
-        "http://[::ffff:0:c0a8:101]/",     # 192.168.1.1
+        "http://[::ffff:0:a00:1]/",  # 10.0.0.1
+        "http://[::ffff:0:7f00:1]/",  # 127.0.0.1
+        "http://[::ffff:0:a9fe:a9fe]/",  # 169.254.169.254
+        "http://[::ffff:0:c0a8:101]/",  # 192.168.1.1
     ],
 )
 def test_rejects_ipv4_translated_embedded_restricted_ipv4(url):
@@ -204,10 +204,10 @@ def test_accepts_ipv4_compatible_routable_ipv4():
 @pytest.mark.parametrize(
     "url",
     [
-        "http://127。0。0。1/",         # U+3002 (CJK ideographic full stop)
+        "http://127。0。0。1/",  # U+3002 (CJK ideographic full stop)
         "http://169。254。169。254/",
-        "http://127．0．0．1/",         # U+FF0E (fullwidth full stop)
-        "http://10。0．0。1/",          # mixed U+3002 / U+FF0E
+        "http://127．0．0．1/",  # U+FF0E (fullwidth full stop)
+        "http://10。0．0。1/",  # mixed U+3002 / U+FF0E
     ],
 )
 def test_rejects_fullwidth_dot_ipv4_literal(url):
@@ -877,9 +877,7 @@ async def test_pinned_backend_falls_back_to_next_ip_on_failure():
     """
     pins = {"good.example.com": ["192.0.2.1", "8.8.8.8"]}
     base = AsyncMock()
-    base.connect_tcp = AsyncMock(
-        side_effect=[ConnectionRefusedError("first refused"), "stream-stub"]
-    )
+    base.connect_tcp = AsyncMock(side_effect=[ConnectionRefusedError("first refused"), "stream-stub"])
     backend = _PinnedBackend(base, pins)
 
     result = await backend.connect_tcp("good.example.com", 443, timeout=5.0)
@@ -898,9 +896,7 @@ async def test_pinned_backend_raises_when_every_ip_fails():
     pins = {"good.example.com": ["192.0.2.1", "192.0.2.2"]}
     base = AsyncMock()
     last_err = ConnectionRefusedError("the second one")
-    base.connect_tcp = AsyncMock(
-        side_effect=[ConnectionRefusedError("the first one"), last_err]
-    )
+    base.connect_tcp = AsyncMock(side_effect=[ConnectionRefusedError("the first one"), last_err])
     backend = _PinnedBackend(base, pins)
 
     with pytest.raises(ConnectionRefusedError) as excinfo:
@@ -973,7 +969,8 @@ async def test_safe_async_client_honours_https_proxy_env(monkeypatch):
         # transport is enough to confirm proxy discovery happened.
         mounts = client._client._mounts  # noqa: SLF001
         proxy_mounts = [
-            t for t in mounts.values()
+            t
+            for t in mounts.values()
             if t is not None and t is not client._client._transport  # noqa: SLF001
         ]
         assert proxy_mounts, "expected env HTTPS_PROXY to register a mount"

@@ -254,6 +254,9 @@ async def oci_download_objects(
     # restore — see ``_restore_claimed_files_to_shared_under_lock``.
     async with _client_lock(client):
         downloaded, _failures = await download_bucket_objects_to_dir(
-            temp_directory, profile, bucket_name, request,
+            temp_directory,
+            profile,
+            bucket_name,
+            request,
         )
         return downloaded

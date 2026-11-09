@@ -21,17 +21,12 @@ from server.app.embed.schemas import VectorStoreConfig
 _FORBIDDEN_CONTROL_CHARS = frozenset({"\n", "\r", "\x00"})
 
 
-def _reject_chars(
-    value: Optional[str], field_name: Optional[str], forbidden: frozenset[str]
-) -> Optional[str]:
+def _reject_chars(value: Optional[str], field_name: Optional[str], forbidden: frozenset[str]) -> Optional[str]:
     if value is None:
         return value
     bad = sorted({c for c in value if c in forbidden})
     if bad:
-        raise ValueError(
-            f"{field_name or 'value'} must not contain control characters "
-            f"{[repr(c) for c in bad]}"
-        )
+        raise ValueError(f"{field_name or 'value'} must not contain control characters {[repr(c) for c in bad]}")
     return value
 
 

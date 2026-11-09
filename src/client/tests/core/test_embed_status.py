@@ -35,8 +35,7 @@ def _make_state(extra=None):
     return data
 
 
-def _job(job_id="abcd1234abcd1234abcd1234abcd1234", status="running",
-         stage="embedding", message="3 of 12 chunks"):
+def _job(job_id="abcd1234abcd1234abcd1234abcd1234", status="running", stage="embedding", message="3 of 12 chunks"):
     """Build a fake EmbedJobInfo dict."""
     return {
         "job_id": job_id,
@@ -161,8 +160,7 @@ class TestRenderJobsPanel:
         """Verify each active job produces a markdown line containing its short id and stage."""
         active = [
             _job(job_id="aaaa1111aaaa1111aaaa1111aaaa1111", stage="splitting", message=""),
-            _job(job_id="bbbb2222bbbb2222bbbb2222bbbb2222", stage="embedding",
-                 message="5 of 10"),
+            _job(job_id="bbbb2222bbbb2222bbbb2222bbbb2222", stage="embedding", message="5 of 10"),
         ]
         with patch(f"{MODULE}.st", mock_st):
             from client.app.core.embed_status import _render_jobs_panel
@@ -316,8 +314,7 @@ class TestMaybeRefreshOnIdle:
         mock_helpers.refresh_settings.assert_called_once_with(clear_runtime=False)
         mock_st.rerun.assert_not_called()
         assert state.get("_embed_jobs_seen_ids") == {"aaaa"}, (
-            "seen set must persist when refresh_settings returns False so a "
-            "later tick can retry"
+            "seen set must persist when refresh_settings returns False so a later tick can retry"
         )
 
     def test_concurrent_jobs_one_completes_triggers_refresh(self, mock_st):
@@ -648,7 +645,8 @@ class TestEmbedJobsFragmentBody:
         ):
             hlp.refresh_settings.return_value = True
             self._bare(embed_status._embed_jobs_fragment)(
-                refresh_on_idle=True, hide_when_idle=False,
+                refresh_on_idle=True,
+                hide_when_idle=False,
             )
         hlp.refresh_settings.assert_called_once_with(clear_runtime=False)
         mock_st.rerun.assert_called_once()

@@ -229,7 +229,5 @@ def enabled_models_lookup(model_type: str) -> dict[str, dict[str, Any]]:
 def available_models_lookup(model_type: str) -> dict[str, dict[str, Any]]:
     """Create a lookup of enabled models whose endpoints are available."""
     return {
-        key: config
-        for key, config in enabled_models_lookup(model_type).items()
-        if config.get("status") == "available"
+        key: config for key, config in enabled_models_lookup(model_type).items() if config.get("status") == "available"
     }

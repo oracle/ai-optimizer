@@ -9,9 +9,7 @@ Checks for the committed Streamlit config at client/app/.streamlit/config.toml.
 import tomllib
 from pathlib import Path
 
-STREAMLIT_CONFIG = (
-    Path(__file__).resolve().parent.parent / "app" / ".streamlit" / "config.toml"
-)
+STREAMLIT_CONFIG = Path(__file__).resolve().parent.parent / "app" / ".streamlit" / "config.toml"
 
 
 class TestStreamlitConfigIntegrity:

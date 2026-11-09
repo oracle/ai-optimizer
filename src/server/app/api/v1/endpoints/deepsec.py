@@ -93,9 +93,7 @@ async def deepsec_objects(client: Annotated[ClientId, Header()] = "server") -> l
 
 
 @auth.get("/objects/{object_name}/columns", response_model=list[str])
-async def deepsec_object_columns(
-    object_name: str, client: Annotated[ClientId, Header()] = "server"
-) -> list[str]:
+async def deepsec_object_columns(object_name: str, client: Annotated[ClientId, Header()] = "server") -> list[str]:
     """List columns for one of the user's tables/views."""
     return await _run(client, lambda conn: deepsec_db.list_object_columns(conn, object_name))
 
@@ -111,9 +109,7 @@ async def list_data_roles(client: Annotated[ClientId, Header()] = "server") -> l
 
 
 @auth.post("/data-roles", response_model=MessageResponse)
-async def create_data_role(
-    body: DataRoleCreate, client: Annotated[ClientId, Header()] = "server"
-) -> MessageResponse:
+async def create_data_role(body: DataRoleCreate, client: Annotated[ClientId, Header()] = "server") -> MessageResponse:
     await _run(client, lambda conn: deepsec_db.create_data_role(conn, body.name, body.mapped_to))
     return MessageResponse(message=f"Data role created: {body.name}")
 
@@ -135,9 +131,7 @@ async def list_end_users(client: Annotated[ClientId, Header()] = "server") -> li
 
 
 @auth.post("/end-users", response_model=MessageResponse)
-async def create_end_user(
-    body: EndUserCreate, client: Annotated[ClientId, Header()] = "server"
-) -> MessageResponse:
+async def create_end_user(body: EndUserCreate, client: Annotated[ClientId, Header()] = "server") -> MessageResponse:
     # End users are provisioned with the same password as the connected database user.
     db_config = get_client_db_config(client)
     password = reveal(db_config.password) if db_config else None
@@ -172,9 +166,7 @@ def _managed_alias(base_alias: str, end_user: str) -> str:
 
 
 @auth.post("/connect-as", response_model=ConnectAsResponse)
-async def dds_connect_as(
-    body: ConnectAsRequest, client: Annotated[ClientId, Header()] = "server"
-) -> ConnectAsResponse:
+async def dds_connect_as(body: ConnectAsRequest, client: Annotated[ClientId, Header()] = "server") -> ConnectAsResponse:
     """Register a runtime-only managed connection authenticating as a DDS end user.
 
     The connection copies the owner's password/dsn/wallet (DDS end users share the owner's
@@ -288,9 +280,7 @@ async def list_data_grants(client: Annotated[ClientId, Header()] = "server") -> 
 
 
 @auth.post("/data-grants", response_model=MessageResponse)
-async def create_data_grant(
-    body: DataGrantCreate, client: Annotated[ClientId, Header()] = "server"
-) -> MessageResponse:
+async def create_data_grant(body: DataGrantCreate, client: Annotated[ClientId, Header()] = "server") -> MessageResponse:
     await _run(
         client,
         lambda conn: deepsec_db.create_data_grant(

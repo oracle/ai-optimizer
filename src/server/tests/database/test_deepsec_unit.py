@@ -28,8 +28,12 @@ def test_basic_select_grant():
 
 def test_all_columns_except():
     sql = build_create_data_grant_sql(
-        name="g", privileges=["SELECT"], object_name="emp", grantee="r",
-        columns=["salary"], all_columns_except=True,
+        name="g",
+        privileges=["SELECT"],
+        object_name="emp",
+        grantee="r",
+        columns=["salary"],
+        all_columns_except=True,
     )
     assert 'SELECT (ALL COLUMNS EXCEPT "salary")' in sql
     assert 'ON "emp"' in sql
@@ -43,9 +47,7 @@ def test_specific_columns():
 
 
 def test_row_predicate_appended():
-    sql = build_create_data_grant_sql(
-        name="g", privileges=["SELECT"], object_name="t", grantee="r", predicate="id = 1"
-    )
+    sql = build_create_data_grant_sql(name="g", privileges=["SELECT"], object_name="t", grantee="r", predicate="id = 1")
     assert sql.endswith('WHERE id = 1 TO "R"')
 
 
@@ -58,9 +60,7 @@ def test_multiple_privileges_delete_has_no_columns():
 
 
 def test_or_replace():
-    sql = build_create_data_grant_sql(
-        name="g", privileges=["SELECT"], object_name="t", grantee="r", or_replace=True
-    )
+    sql = build_create_data_grant_sql(name="g", privileges=["SELECT"], object_name="t", grantee="r", or_replace=True)
     assert sql.startswith("CREATE OR REPLACE DATA GRANT")
 
 
@@ -89,9 +89,7 @@ def test_all_columns_except_requires_columns():
 
 def test_predicate_length_capped():
     with pytest.raises(DeepSecError):
-        build_create_data_grant_sql(
-            name="g", privileges=["SELECT"], object_name="t", grantee="r", predicate="x" * 4001
-        )
+        build_create_data_grant_sql(name="g", privileges=["SELECT"], object_name="t", grantee="r", predicate="x" * 4001)
 
 
 # ---------------------------------------------------------------------------
@@ -216,9 +214,7 @@ async def test_create_data_grant_surfaces_object_errors(code):
     """Duplicate name (955) / missing object (942) must raise, not commit silently."""
     conn = _conn_ddl_raises(code)
     with pytest.raises(oracledb.DatabaseError):
-        await deepsec_db.create_data_grant(
-            conn, name="g", privileges=["SELECT"], object_name="t", grantee="r"
-        )
+        await deepsec_db.create_data_grant(conn, name="g", privileges=["SELECT"], object_name="t", grantee="r")
     conn.commit.assert_not_awaited()
 
 

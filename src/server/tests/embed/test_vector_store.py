@@ -79,13 +79,13 @@ def test_generate_vs_metadata_with_description():
 @pytest.mark.parametrize(
     "alias,model_id",
     [
-        ("café", "embed"),                # Latin accented (preserved as Unicode word char)
-        ("докс", "embed"),                # Cyrillic
-        ("тест", "embed"),                # different Cyrillic — must NOT collide with above
-        ("文档", "embed"),                # CJK
-        ("docs", "embed-é"),              # accent in model id
-        ("alias with space", "embed"),    # whitespace collapses to _
-        ("a-b.c/d", "embed"),             # punctuation collapses to _
+        ("café", "embed"),  # Latin accented (preserved as Unicode word char)
+        ("докс", "embed"),  # Cyrillic
+        ("тест", "embed"),  # different Cyrillic — must NOT collide with above
+        ("文档", "embed"),  # CJK
+        ("docs", "embed-é"),  # accent in model id
+        ("alias with space", "embed"),  # whitespace collapses to _
+        ("a-b.c/d", "embed"),  # punctuation collapses to _
     ],
 )
 def test_generate_vs_metadata_output_passes_validator(alias, model_id):
@@ -247,8 +247,7 @@ def test_merge_calls_normalize_before_merge_sql():
     )
     assert "merge" in order, "the merge SQL must still execute"
     assert order.index("normalize:REAL_TBL_TMP") < order.index("merge"), (
-        f"normalize must run BEFORE the merge so the merged rows inherit "
-        f"the server-canonical OSON; got {order}"
+        f"normalize must run BEFORE the merge so the merged rows inherit the server-canonical OSON; got {order}"
     )
 
 
@@ -313,16 +312,14 @@ def test_normalize_metadata_oson_real_db_round_trip_preserves_data(oracle_db_con
 
         # Snapshot pre-normalize state.
         with conn.cursor() as cur:
-            cur.execute(
-                f'SELECT JSON_SERIALIZE(metadata RETURNING VARCHAR2), LENGTH(metadata) FROM "{table}"'
-            )
+            cur.execute(f'SELECT JSON_SERIALIZE(metadata RETURNING VARCHAR2), LENGTH(metadata) FROM "{table}"')
             pre_serialized, pre_oson_len = cur.fetchone()
 
         # Sanity: inserted exactly what we asked for.
         import json as _json
+
         assert _json.loads(pre_serialized) == metadata, (
-            "INSERT round-trip already corrupted the data — this test "
-            "cannot diagnose the OSON re-encoding"
+            "INSERT round-trip already corrupted the data — this test cannot diagnose the OSON re-encoding"
         )
 
         # The fix under test.
@@ -331,9 +328,7 @@ def test_normalize_metadata_oson_real_db_round_trip_preserves_data(oracle_db_con
 
         # Post-normalize.
         with conn.cursor() as cur:
-            cur.execute(
-                f'SELECT JSON_SERIALIZE(metadata RETURNING VARCHAR2), LENGTH(metadata) FROM "{table}"'
-            )
+            cur.execute(f'SELECT JSON_SERIALIZE(metadata RETURNING VARCHAR2), LENGTH(metadata) FROM "{table}"')
             post_serialized, post_oson_len = cur.fetchone()
 
         # Logical content unchanged — re-encoding must be lossless.
@@ -627,7 +622,7 @@ def _assert_well_formed_literal(sql: str) -> str:
     """Assert sql wraps a balanced 'GENAI: …' literal; return the literal body."""
     assert sql.startswith(_COMMENT_PREFIX)
     assert sql.endswith("'")
-    body = sql[len(_COMMENT_PREFIX):-1]
+    body = sql[len(_COMMENT_PREFIX) : -1]
     # Every ``'`` inside the body must be doubled (Oracle string-literal escape),
     # so the count is always even.
     assert body.count("'") % 2 == 0

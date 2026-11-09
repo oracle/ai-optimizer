@@ -226,9 +226,7 @@ class TestRunSqlQuerySync:
             mock_create.return_value.__enter__ = MagicMock(return_value=mock_conn)
             mock_create.return_value.__exit__ = MagicMock(return_value=False)
 
-            result = _run_sql_query_sync(
-                _make_db_config(), "SELECT my_pkg.do_dml() FROM dual", str(tmp_path)
-            )
+            result = _run_sql_query_sync(_make_db_config(), "SELECT my_pkg.do_dml() FROM dual", str(tmp_path))
 
         assert result == ""
 

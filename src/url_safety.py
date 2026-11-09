@@ -74,11 +74,7 @@ def _embedded_ipv4(addr: ipaddress.IPv6Address) -> ipaddress.IPv4Address | None:
     """
     if addr.ipv4_mapped is not None:
         return addr.ipv4_mapped
-    if (
-        addr in _NAT64_WELL_KNOWN_PREFIX
-        or addr in _IPV4_TRANSLATED_PREFIX
-        or addr in _IPV4_COMPATIBLE_PREFIX
-    ):
+    if addr in _NAT64_WELL_KNOWN_PREFIX or addr in _IPV4_TRANSLATED_PREFIX or addr in _IPV4_COMPATIBLE_PREFIX:
         return ipaddress.IPv4Address(int(addr) & 0xFFFFFFFF)
     return None
 
@@ -418,9 +414,7 @@ class _PinnedBackend(httpcore.AsyncNetworkBackend):
         timeout: float | None = None,
         socket_options: Iterable[Any] | None = None,
     ) -> httpcore.AsyncNetworkStream:
-        return await self._base.connect_unix_socket(
-            path, timeout=timeout, socket_options=socket_options
-        )
+        return await self._base.connect_unix_socket(path, timeout=timeout, socket_options=socket_options)
 
     async def sleep(self, seconds: float) -> None:
         await self._base.sleep(seconds)
@@ -459,9 +453,7 @@ class SafeAsyncClient:
                     self._pins,
                 )
         else:
-            self._client = httpx.AsyncClient(
-                follow_redirects=False, timeout=timeout, transport=transport
-            )
+            self._client = httpx.AsyncClient(follow_redirects=False, timeout=timeout, transport=transport)
 
     async def __aenter__(self) -> SafeAsyncClient:
         return self

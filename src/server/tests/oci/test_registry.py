@@ -733,9 +733,7 @@ class TestLoadOciProfilesAutoLoadRollback:
         settings.model_configs = saved
 
     @pytest.mark.anyio
-    async def test_empty_discovery_preserves_existing_oci_models(
-        self, _clear_oci_cli_env, _restore_model_configs
-    ):
+    async def test_empty_discovery_preserves_existing_oci_models(self, _clear_oci_cli_env, _restore_model_configs):
         """Empty discovery against the same region — assume transient and preserve."""
         from server.app.models.schemas import ModelConfig
 
@@ -848,9 +846,7 @@ class TestLoadOciProfilesAutoLoadRollback:
         assert stale_model not in settings.model_configs
 
     @pytest.mark.anyio
-    async def test_exception_during_discovery_restores_model_configs(
-        self, _clear_oci_cli_env, _restore_model_configs
-    ):
+    async def test_exception_during_discovery_restores_model_configs(self, _clear_oci_cli_env, _restore_model_configs):
         """An exception against the *current* region restores the pre-call snapshot."""
         from server.app.models.schemas import ModelConfig
 

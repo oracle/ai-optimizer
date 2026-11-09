@@ -178,9 +178,7 @@ class TestLoadOllamaModels:
         monkeypatch.setenv("ON_PREM_OLLAMA_URL", OLLAMA_URL)
         with patch("server.app.models.ollama.httpx.AsyncClient") as mock_cls:
             mock_cls.return_value.__aenter__ = AsyncMock(
-                return_value=_mock_client(
-                    {"models": [{"name": "mistral:latest", "details": {"families": ["llama"]}}]}
-                )
+                return_value=_mock_client({"models": [{"name": "mistral:latest", "details": {"families": ["llama"]}}]})
             )
             mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
             await load_ollama_models()

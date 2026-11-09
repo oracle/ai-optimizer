@@ -131,6 +131,9 @@ jobs:
       - name: Run Ruff
         run: ruff check src/${{ matrix.variant }}
 
+      - name: Check Ruff formatting
+        run: ruff format --check src/${{ matrix.variant }}
+
       - name: Run Tests
         env:
           VARIANT: ${{ matrix.variant }}
@@ -181,6 +184,9 @@ jobs:
 
       - name: Run Ruff
         run: ruff check src/aio conftest.py src/tests/oracle.py
+
+      - name: Check Ruff formatting
+        run: ruff format --check src/aio conftest.py src/tests/oracle.py
 
       - name: Run Oracle and all-in-one integration tests
         run: >-
@@ -337,6 +343,9 @@ jobs:
 
       - name: Run Ruff
         run: ruff check opentofu
+
+      - name: Check Ruff formatting
+        run: ruff format --check opentofu
 
       - name: Run cfgmgt pytest
         # Exercises opentofu/cfgmgt/apply.py helpers (dep resolution, repo

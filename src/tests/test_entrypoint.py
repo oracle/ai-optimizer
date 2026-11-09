@@ -306,9 +306,7 @@ class TestStartClient:
             entrypoint.start_client(tmp_path)
 
         args = mock_exec.call_args[0][1]
-        assert not any(secret in str(a) for a in args), (
-            f"secret leaked into argv: {args}"
-        )
+        assert not any(secret in str(a) for a in args), f"secret leaked into argv: {args}"
 
 
 class TestMain:
