@@ -1,38 +1,23 @@
 ---
 title: 🗄️ Database Configuration
-description: Configure Oracle AI Database.
+description: Manage database connections and vector stores in the AI Optimizer Client.
 sidebar_position: 10
 ---
 
 {/* Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl. */}
 
-The Oracle AI Database provides:
+Use **Configuration** > **Databases** to view the required database connection, add connections for feature data, select the database used by the client, and manage vector stores. For provisioning, startup configuration, wallets, and database-user requirements, see [Oracle AI Database](../../guides/database).
 
-- vector stores for document embeddings used in Retrieval-Augmented Generation (RAG)
-- structured data for Natural Language to SQL (NL2SQL)
-- storage for [Testbed](../testbed) question-and-answer test sets and evaluations
-- storage for **AI Optimizer** settings and configuration
+## Required Database Connection
 
-To use this functionality of the **AI Optimizer**, you will need access to an **Oracle AI Database**. Both the [Always Free Oracle Autonomous Database Serverless (ADB-S)](https://docs.oracle.com/en/cloud/paas/autonomous-database/serverless/adbsb/autonomous-always-free.html) and the [Oracle AI Database Free](https://www.oracle.com/database/free/get-started/) are supported. They are a great, no-cost, way to get up and running quickly.
+The page displays the required connection with the reserved alias **CORE**, its connection status, and redacted settings. The deployment startup configuration controls CORE. Update that configuration and restart the Server to apply changes.
 
-⭐️ For more information on setting up an Oracle AI Database, see the [Oracle AI Database Guide](../../guides/database).
+## Additional Database Connections
 
-## Configuration
+Select **Add New...** from the database list to add a connection with a custom alias. Additional databases can provide data for Split/Embed, Vector Search, and NL2SQL.
 
-Navigate to **Configuration** > **Databases**:
-
-![Database Config](../../_assets/images/database-config.png)
-
-### CORE Database
-
-The first database configured must use the alias **CORE**. The **CORE** database is used for application persistence (settings, test sets, evaluations). When no database has been configured, the alias field will automatically be set to `CORE`.
-
-### Additional Databases
-
-Once the **CORE** database is configured, additional databases can be added with custom aliases by selecting **Add New...** from the database dropdown. These databases can be used for Vector Search and NL2SQL operations.
-
-The currently selected database is used for all Splitting and Embedding, NL2SQL, and Vector Search operations, so when you have more than one database, be sure to select the correct database.
+The selected database is used for Split/Embed, Vector Search, and NL2SQL. Confirm the selection before working with data when more than one database is configured.
 
 ![Database Add New](../../_assets/images/database-add-new.png)
 
@@ -40,26 +25,28 @@ The currently selected database is used for all Splitting and Embedding, NL2SQL,
 
 Provide the following inputs:
 
-- **Alias**: A unique identifier for the database configuration (automatically set to `CORE` for the first database)
+- **Alias**: A unique identifier for an additional database connection
 - **Username**: The pre-created [database username](../../guides/database#database-user)
 - **Password**: The password for the **Username**
-- **DSN (Connect String)**: The full connection string or [TNS Alias](../../guides/database#using-a-wallettns_admin) for the Database.
-  This is normally in the form of:
+- **DSN (Connect String)**: The full connection string or [TNS alias](../../guides/database#using-a-wallettns_admin). Common formats include:
+
   ```
   (DESCRIPTION=(ADDRESS=(PROTOCOL=tcp)(HOST=<hostname>)(PORT=<port>))(CONNECT_DATA=(SERVICE_NAME=<serviceName>)))
   ```
-  or
+
+  or:
+
   ```
   //<hostname>:<port>/<serviceName>
   ```
-- **Wallet Password** (_Optional_): If the connection to the database uses mTLS, provide the wallet password. ⭐️ Review [Using a Wallet](../../guides/database#using-a-wallettns_admin) for additional setup instructions.
+- **Wallet Password** (_Optional_): The wallet password for an mTLS connection. See [Using a Wallet](../../guides/database#using-a-wallettns_admin) for setup instructions.
 
-Once all fields are set, click the `Create` or `Save` button.
+Select **Create** to add the connection. You can save changes to or remove an existing additional connection.
+
+### Vector Stores
+
+The page lists the vector stores in the selected database. Removing a vector store drops its database table and the embeddings stored in that table.
 
 ### NL2SQL Access
 
-NL2SQL uses the database account configured for its saved SQLcl connection. Configure an account with only the permissions needed for the required objects, such as `CREATE SESSION` and `SELECT` on specific tables or views.
-
-SQLcl restrict level `4` blocks host commands, scripts, and configuration-changing SQLcl commands by default. It does not change what SQL statements the configured database account can run. Prompts, MCP tool selection, and AgentSpec configuration do not change database authorization.
-
-The NL2SQL prompt requests read-only queries, but the SQL tool can submit DML, DDL, and PL/SQL if the configured account has those privileges. Use a database account with appropriate permissions for the intended operations.
+NL2SQL uses the account configured for the selected database. See [NL2SQL Access](../../guides/database#nl2sql-access) for database-user and privilege guidance.

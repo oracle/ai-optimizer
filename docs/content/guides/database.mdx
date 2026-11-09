@@ -1,6 +1,6 @@
 ---
 title: Oracle AI Database
-description: Configure database connections for Oracle AI.
+description: Provision and connect Oracle AI Database for the AI Optimizer.
 sidebar_position: 15
 ---
 
@@ -10,21 +10,54 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 import OracleAiDatabaseFree from '../_assets/partials/oracle-ai-database-free.mdx';
 import DeepDataSecurityPrivileges from '../_assets/partials/deep-data-security-privileges.mdx';
 
-The [**Oracle AI Database**](https://www.oracle.com/database/) sits at the core of the **AI Optimizer**. It is used for application persistence (settings, test sets, evaluations), storing embeddings for **Vector Search** and querying structured data via **NL2SQL**.
+The [**Oracle AI Database**](https://www.oracle.com/database/) is required by the **AI Optimizer Server**. The database is used to store:
+
+- **AI Optimizer** settings and configuration
+- [Testbed](../client/testbed) question-and-answer test sets and evaluations
+- background job state
+
+The required connection and any additional database connections can also provide:
+
+- vector stores for document embeddings used in Retrieval-Augmented Generation (RAG)
+- structured data for Natural Language to SQL (NL2SQL)
 
 ![Database](../_assets/images/vscode-vstore-table.png)
 
-:::note[Reduced capabilities]
-The **AI Optimizer** can be used to interact with language models without having the database configured, however, grounded routes such as RAG and NL2SQL require a configured database.
+:::warning[Required at startup]
+Server startup requires complete database settings, a successful connection, and schema initialization.
 :::
 
-### Database Configuration
+Oracle Autonomous Database and [Oracle AI Database Free](https://www.oracle.com/database/free/get-started/) are supported. Oracle AI Database Free provides a no-cost option for local development.
 
-You can configure the connection to an Oracle AI Database in the [client](../client/configuration/databases) page or by setting [environment variables](../guides/env-vars#database). The **AI Optimizer** supports multiple database connections, but only one can be active at a time.
+## Database Configuration
+
+How you provide the required Oracle AI Database connection depends on how you run the AI Optimizer.
+
+### Bare Metal and Containers
+
+For bare-metal and container installations, set `AIO_DB_USERNAME`, `AIO_DB_PASSWORD`, and `AIO_DB_DSN` in the environment. You can set them in the shell, in `src/.env.dev`, or pass them to the container. Wallet connections can also use `AIO_DB_WALLET_LOCATION` and `AIO_DB_WALLET_PASSWORD`. See [Environment Variables](./env-vars#database) for details.
+
+If you start the bare-metal client or all-in-one container without the three required variables, the client opens a setup page:
+
+![Oracle AI Database first-run setup](../_assets/images/database-core-setup.png)
+
+Settings entered on the bare-metal setup page last until the client stops. The all-in-one container stores them in its application-data volume.
+
+:::note[Standalone Server]
+The setup page is provided by the client. If you run the [Server](../server/intro) directly, set the database environment variables before starting it.
+:::
+
+### Helm and Kubernetes
+
+With Helm, set the database mode and connection details under `server.database`. Store the username, password, and connection service in a Kubernetes Secret, then reference it with `server.database.authn.secretName`. The chart adds those credentials to the Server deployment.
+
+The [Kubernetes / Helm](../advanced-guides/k8s-helm#configure-the-database) guide covers the supported database modes and Secret formats.
+
+### Client Display
+
+After the Server starts, the [Databases](../client/configuration/databases) page displays the required connection with the reserved alias **CORE**. The deployment startup configuration controls CORE. Use the page to add and select database connections for Split/Embed, Vector Search, and NL2SQL.
 
 ## Run Local Oracle AI Database Free
-
-Provisioning an on-premises database or an Oracle Cloud database is outside the scope of this guide.
 
 For a local development environment, you can run Oracle AI Database Free in a container:
 
@@ -38,7 +71,7 @@ For mTLS database connectivity, or to use a TNS alias instead of a full connect 
 
 :::info[Great things come from unzipped files]
 
-If using an ADB-S wallet, unzip its contents into the `TNS_ADMIN` directory. The `.zip` file is not recognized.
+For an ADB-S wallet, unzip its contents into the `TNS_ADMIN` directory. The `.zip` file is not recognized.
 
 :::
 
@@ -53,12 +86,12 @@ When starting the container, mount the `TNS_ADMIN` directory at `/app/tns_admin`
 For example:
 
 ```bash
-podman run -v $TNS_ADMIN:/app/tns_admin -p 8501:8501 -it --rm localhost/ai-optimizer-aio:latest
+podman run -v $TNS_ADMIN:/app/tns_admin -p 8501:8501 -it --rm localhost/ai-optimizer-aio:dev
 ```
 
 ## Database User
 
-For both **RAG** and **NL2SQL**, the **AI Optimizer** needs to authenticate to an Oracle AI Database. AI agents use this user to retrieve data, so carefully consider the access granted to it. Use a non-privileged user with a non-`SYSTEM` tablespace.
+The required database connection uses an application user that can create, read, and write the **AI Optimizer** schema objects. Vector Search and NL2SQL use the account configured for the selected database. Create dedicated application users in application tablespaces and grant the access needed for each connection.
 
 For Oracle AI Database Free running in a container, connect as a privileged user and select the pluggable database:
 
@@ -108,11 +141,19 @@ END;
 EXIT;
 ```
 
-:::tip[One schema fits none...]
+:::tip[Separate development schemas]
 
 Creating multiple users in the same database allows developers to separate their experiments by changing the Database User.
 
 :::
+
+### NL2SQL Access
+
+NL2SQL uses the account configured for the selected database. Grant this account only the permissions needed for the intended objects and operations, such as `CREATE SESSION` and `SELECT` on specific tables or views.
+
+SQLcl restrict level `4` blocks host commands, scripts, and configuration-changing SQLcl commands by default. Database privileges still determine which SQL statements the account can run.
+
+The NL2SQL prompt requests read-only queries. The SQL tool can submit DML, DDL, and PL/SQL when the account has those privileges.
 
 ## Deep Data Security Privileges
 
