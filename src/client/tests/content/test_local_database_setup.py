@@ -30,8 +30,15 @@ def test_unsubmitted_form_does_not_return_configuration():
 
         assert display_local_database_setup() is None
 
+    streamlit.title.assert_called_once_with("Configure Oracle AI Database")
+    streamlit.write.assert_called_once_with("Connect to Oracle AI Database to start the AI Optimizer.")
+    streamlit.markdown.assert_called_once_with(
+        "For connection requirements and examples, see "
+        "[Oracle AI Database](https://oracle.github.io/ai-optimizer/docs/guides/database/)."
+    )
 
-def test_submitted_form_returns_core_configuration():
+
+def test_submitted_form_returns_database_configuration():
     streamlit = _mock_streamlit(submitted=True)
     with patch(f"{MODULE}.st", streamlit):
         from client.app.content.local_database_setup import display_local_database_setup
@@ -51,4 +58,4 @@ def test_incomplete_form_reports_validation_error():
 
         assert display_local_database_setup() is None
 
-    streamlit.error.assert_called_once()
+    streamlit.error.assert_called_once_with("Check these database fields: connection string, password")

@@ -10,13 +10,13 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 The **Oracle AI Optimizer and Toolkit** (the **AI Optimizer**) exposes an [MCP](https://modelcontextprotocol.io/) endpoint at `/mcp`. MCP-compatible clients can use the tools, prompts, and resources registered by the server, including Vector Search tools and SQLcl tools when NL2SQL is configured.
 
-Clients must support the sessionless MCP `2026-07-28` protocol and Streamable HTTP transport. Generated JSON uses MCP and client wire casing, including fields such as `inputSchema`, `readOnlyHint`, and `streamableHttp`; preserve that casing when importing or adapting the configuration.
+Clients must support the sessionless MCP `2026-07-28` protocol and Streamable HTTP transport. Generated JSON uses MCP and client wire casing, including `inputSchema`, `readOnlyHint`, and the `streamableHttp` type; preserve that casing when importing or adapting the configuration.
 
 Connect to `/mcp` from a native or server-side MCP client. Requests carrying an `Origin` header receive HTTP 403; browser JavaScript uses the application's REST APIs instead.
 
 Cacheable MCP responses include a private five-second cache hint by default. Set [`AIO_MCP_CACHE_TTL_SECONDS`](./env-vars#server) to `0` for immediate refresh or to another non-negative value to change the maximum retention time.
 
-External clients use the resources configured on the AI Optimizer Server. To use Vector Search, split and embed content first. To use NL2SQL, configure a database and [SQLcl MCP Server](./sqlcl-mcp-server).
+External clients use the resources configured on the AI Optimizer Server. To use Vector Search, split and embed content first. To use NL2SQL, configure a database and make [SQLcl MCP Server](./sqlcl-mcp-server) available. The Server creates a saved SQLcl connection for each configured database alias.
 
 ## Select a Vector Store
 
@@ -30,17 +30,17 @@ The `optimizer_vs_retriever` tool accepts an optional `collection_alias` argumen
 }
 ```
 
-When `collection_alias` is supplied, the retriever resolves it against the stores available to that client and searches only the uniquely matching store. It bypasses automatic table selection, even when the question describes another collection. Matching is case-sensitive and preserves whitespace. Empty or whitespace-only aliases, unavailable aliases, and aliases shared by multiple available stores return an error without searching a vector store; there is no fallback to another collection. Discovery respects the client's Vector Search settings and enabled embedding models.
+When `collection_alias` is supplied, the retriever resolves it against the stores available to that client and searches the uniquely matching store. Matching is case-sensitive and preserves whitespace. Empty, unavailable, or ambiguous aliases return an error before the search. Discovery respects the client's Vector Search settings and enabled embedding models.
 
-Omit `collection_alias` (or pass `null`) to retain automatic table selection. Putting an alias in the question text does not apply this filter. Check `status`, `searched_tables`, and `failed_tables` in the response to confirm which store was successfully searched.
+For automatic table selection, omit `collection_alias` or pass `null`. Pass the alias as `collection_alias` to scope the search; an alias in the question remains part of the question text. Check `status`, `searched_tables`, and `failed_tables` in the response to confirm which store was successfully searched.
 
-The argument selects a search scope for one request. It does not change client defaults or provide an authorization boundary. See [Access Control](./access-control) for deployment isolation and tool authorization.
+The argument selects a search scope for one request. Configure deployment isolation and tool authorization through [Access Control](./access-control).
 
 ## Authority and Execution Location
 
 The `X-API-Key` authorizes the holder to invoke the tools published by the AI Optimizer Server. Provide it only to users and systems authorized to use those server-side operations.
 
-When SQLcl is configured, the AI Optimizer Server launches the `sql` process and executes SQLcl commands locally. External MCP clients send requests over HTTP; they do not run SQLcl on their own workstation. SQLcl uses restrict level `4` by default. Operators can set `AIO_SQLCL_MCP_LEVEL` to a lower level when additional SQLcl capabilities are required; see [SQLcl MCP Server](./sqlcl-mcp-server).
+When SQLcl is configured, the AI Optimizer Server launches the `sql` process and executes SQLcl commands locally. External MCP clients send requests to it over HTTP. SQLcl uses restrict level `4` by default. Operators can set `AIO_SQLCL_MCP_LEVEL` to a lower level when additional SQLcl capabilities are required; see [SQLcl MCP Server](./sqlcl-mcp-server).
 
 External MCP clients can use all tools registered on the server that are available at the configured SQLcl restrict level. The built-in NL2SQL agent uses only its connection, schema, query, and request-status tools.
 
@@ -60,7 +60,7 @@ This command assumes that the server is available locally on its default port. F
 The generated configuration is the source of truth: it includes the deployment's URL, any server URL prefix, and the required `X-API-Key` header.
 
 :::danger[Secrets Inside!]
-The configurations contains a secret to access the server, so do not commit or share it.
+The configuration contains a secret for accessing the Server. Store it securely and keep it out of source control.
 :::
 
 | Client                         | Query value      | Connection type            |
@@ -73,7 +73,7 @@ The configurations contains a secret to access the server, so do not commit or s
 
 To retrieve Cline, LangGraph, or Claude Desktop configuration, replace `generic` in the command above with the client's query value. The web client provides an importable JSON configuration for MCP Inspector.
 
-For a client that is not listed, select **Generic Streamable HTTP** in the web client, or use `client=generic` in the command. Use that configuration only when the client accepts Streamable HTTP server entries.
+For another client that accepts Streamable HTTP server entries, select **Generic Streamable HTTP** in the web client or use `client=generic` in the command.
 
 ## MCP Inspector
 
