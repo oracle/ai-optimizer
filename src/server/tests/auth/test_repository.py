@@ -91,7 +91,11 @@ async def test_authority_accepts_transport_repair_to_same_logical_core(monkeypat
 
 async def test_authority_identity_includes_database_container(monkeypatch):
     monkeypatch.setattr(repository, "require_core_pool", lambda: _pool_for(object()))
-    monkeypatch.setattr(repository, "execute_sql", AsyncMock(return_value=[("APPDB", "APP_PDB", "APP_SCHEMA")]))
+    monkeypatch.setattr(
+        repository,
+        "execute_sql",
+        AsyncMock(side_effect=[[("APPDB", "APP_PDB")], [("APP_SCHEMA",)]]),
+    )
 
     identity = await repository.authority_identity()
 
@@ -174,4 +178,21 @@ async def test_cleanup_is_bounded_and_committed(monkeypatch):
 
     assert count == 7
     assert cursor.execute.await_args.args[1] == {"batch_size": 25}
+    conn.commit.assert_awaited_once()
+
+
+async def test_admin_recovery_preserves_reserved_user_and_revokes_sessions(monkeypatch):
+    conn = SimpleNamespace(commit=AsyncMock())
+    execute = AsyncMock(side_effect=[[("LOCAL_USERS", "OLD_ADMIN", None)], None, None, None, None])
+    monkeypatch.setattr(repository, "require_core_pool", lambda: _pool_for(conn))
+    monkeypatch.setattr(repository, "execute_sql", execute)
+
+    await repository.recover_admin_identity("installation", database_username="NEW_ADMIN")
+
+    statements = [call.args[1] for call in execute.await_args_list]
+    assert any("UPDATE aio_users" in statement for statement in statements)
+    assert any("UPDATE aio_auth_sessions" in statement for statement in statements)
+    assert any("INSERT INTO aio_auth_audit" in statement for statement in statements)
+    admin_update = next(call for call in execute.await_args_list if "UPDATE aio_users" in call.args[1])
+    assert admin_update.args[2]["user_id"] == repository.ADMIN_USER_ID.bytes
     conn.commit.assert_awaited_once()

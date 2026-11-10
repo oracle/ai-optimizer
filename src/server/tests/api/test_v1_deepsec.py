@@ -10,8 +10,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import oracledb
 import pytest
+from fastapi import HTTPException
 from pydantic import SecretStr
 
+from server.app.api.v1.endpoints import deepsec
 from server.app.database.schemas import DatabaseConfig
 from server.app.deepsec.database import DeepSecError
 from server.tests.api.conftest import _create_mock_pool
@@ -152,6 +154,23 @@ async def test_create_end_user_requires_db_password(app_client, auth_headers, mo
     with patch(f"{MODULE}.get_client_db_config", return_value=db_config):
         resp = await app_client.post("/v1/deepsec/end-users", json={"name": "EU"}, headers=auth_headers)
     assert resp.status_code == 400
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_authentication_member_protection_uses_database_identity(monkeypatch):
+    conn = AsyncMock()
+    pool = _create_mock_pool(conn)
+    monkeypatch.setattr(deepsec.settings, "auth_mode", "local_users")
+    monkeypatch.setattr(deepsec, "get_client_pool", lambda _client: pool)
+    monkeypatch.setattr(deepsec, "authority_identity", AsyncMock(return_value=("APPDB:APP_PDB", "APP_SCHEMA")))
+    monkeypatch.setattr(deepsec, "connection_database_identity", AsyncMock(return_value="APPDB:APP_PDB"))
+    monkeypatch.setattr(deepsec, "get_user_by_database_username", AsyncMock(return_value=object()))
+
+    with pytest.raises(HTTPException) as exc_info:
+        await deepsec._reject_authentication_member_change("alternate-dsn", "APP_MEMBER")
+
+    assert exc_info.value.status_code == 409
 
 
 @pytest.mark.unit

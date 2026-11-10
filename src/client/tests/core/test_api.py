@@ -31,6 +31,9 @@ def _mock_settings(**overrides):
     m.server_ssl_cert_file = overrides.get("server_ssl_cert_file", "")
     m.server_ssl_key_file = overrides.get("server_ssl_key_file", "")
     m.server_url_prefix = overrides.get("server_url_prefix", "")
+    m.auth_mode = overrides.get("auth_mode", "single_user")
+    m.installation_id = overrides.get("installation_id")
+    m.admin_database_username = overrides.get("admin_database_username")
     return m
 
 
@@ -1009,15 +1012,25 @@ class TestStartServer:
             patch(f"{MODULE}._SERVER", {"process": None, "log_file": None}),
             patch(f"{MODULE}.settings", settings),
             patch(f"{MODULE}._spawn_server", return_value=(mock_proc, mock_fh)) as mock_spawn,
+            patch(f"{MODULE}.subprocess.run") as mock_setup,
             patch(f"{MODULE}._wait_for_server_ready", return_value=True),
             patch(f"{MODULE}.atexit.register"),
         ):
+            mock_setup.return_value.returncode = 0
             from client.app.core.api import start_server
 
             assert start_server(core_environment) is True
 
         child_environment = mock_spawn.call_args.args[1]
         assert {key: child_environment[key] for key in core_environment} == core_environment
+        assert child_environment["AIO_AUTH_MODE"] == "single_user"
+        assert child_environment["AIO_INSTALLATION_ID"] == "aio-local-single-user"
+        assert child_environment["AIO_ADMIN_DATABASE_USERNAME"] == "AIO_LOCAL_ADMIN"
+        setup_environment = mock_setup.call_args.kwargs["env"]
+        assert setup_environment["AIO_AUTH_ADMIN_PASSWORD"] == "secret"
+        assert setup_environment["AIO_AUTH_SETUP_LOCAL_AUTO"] == "1"
+        assert "AIO_AUTH_ADMIN_PASSWORD" not in child_environment
+        assert "AIO_AUTH_SETUP_LOCAL_AUTO" not in child_environment
 
     def test_start_server_does_not_generate_shared_credentials(self):
         """Local startup forwards configuration without creating a shared key."""

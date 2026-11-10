@@ -4,8 +4,11 @@
 
 # Example Helm Values for Containerized ADB
 global:
-  api:
-    secretName: ai-optimizer-api
+  authentication:
+    mode: single_user
+    installationId: kind-adb-free
+    adminDatabaseUsername: OPTIMIZER_ADMIN
+    adminPasswordSecretName: optimizer-admin-password
 
 server:
   replicaCount: 1

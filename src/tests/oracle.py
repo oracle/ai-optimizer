@@ -83,6 +83,7 @@ def _write_startup_scripts(temp_dir: Path) -> None:
     GRANT CREATE DATA ROLE TO "{TEST_DB_CONFIG["db_username"]}";
     GRANT DROP DATA ROLE TO "{TEST_DB_CONFIG["db_username"]}";
     GRANT CREATE END USER TO "{TEST_DB_CONFIG["db_username"]}";
+    GRANT ALTER END USER TO "{TEST_DB_CONFIG["db_username"]}";
     GRANT DROP END USER TO "{TEST_DB_CONFIG["db_username"]}";
     GRANT CREATE DATA GRANT TO "{TEST_DB_CONFIG["db_username"]}";
     GRANT ADMINISTER ANY DATA GRANT TO "{TEST_DB_CONFIG["db_username"]}";

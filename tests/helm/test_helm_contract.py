@@ -134,7 +134,61 @@ def test_authentication_setup_runs_after_database_initialization():
     assert set(jobs) == {"database", "auth-setup"}
     assert all("helm.sh/hook" not in job["metadata"].get("annotations", {}) for job in jobs.values())
     auth_env = jobs["auth-setup"]["spec"]["template"]["spec"]["containers"][0]["env"]
-    assert {item["name"]: item.get("value") for item in auth_env}["AIO_AUTH_SETUP_WAIT_SECONDS"] == "900"
+    auth_env_by_name = {item["name"]: item for item in auth_env}
+    assert auth_env_by_name["AIO_AUTH_SETUP_WAIT_SECONDS"]["value"] == "900"
+    assert auth_env_by_name["AIO_AUTH_SETUP_PRIV_USERNAME"]["valueFrom"]["secretKeyRef"]
+    assert auth_env_by_name["AIO_AUTH_SETUP_PRIV_PASSWORD"]["valueFrom"]["secretKeyRef"]
+
+    database_script = next(
+        doc for doc in _docs(result.stdout) if doc.get("kind") == "ConfigMap" and "db-init" in doc["metadata"]["name"]
+    )["data"]["init.sh"]
+    assert 'GRANT CREATE END USER TO "$AIO_DB_USERNAME"' not in database_script
+    assert 'GRANT ALTER END USER TO "$AIO_DB_USERNAME"' not in database_script
+    assert 'GRANT DROP END USER TO "$AIO_DB_USERNAME"' not in database_script
+
+
+def test_external_database_authentication_setup_has_zero_touch_privileged_fallback():
+    result = _render()
+    assert result.returncode == 0, result.stderr
+    docs = _docs(result.stdout)
+    assert not any(
+        doc.get("kind") == "Secret" and doc.get("metadata", {}).get("name", "").endswith("db-priv-authn")
+        for doc in docs
+    )
+    auth_job = next(
+        doc
+        for doc in docs
+        if doc.get("kind") == "Job"
+        and doc.get("metadata", {}).get("labels", {}).get("app.kubernetes.io/component") == "auth-setup"
+    )
+    env = {item["name"]: item for item in auth_job["spec"]["template"]["spec"]["containers"][0]["env"]}
+    assert env["AIO_AUTH_SETUP_PRIV_USERNAME"]["valueFrom"]["secretKeyRef"]["optional"] is True
+    assert env["AIO_AUTH_SETUP_PRIV_PASSWORD"]["valueFrom"]["secretKeyRef"]["optional"] is True
+
+
+def test_authentication_session_limits_render_to_server_environment():
+    result = _render(
+        "global.authentication.sessionAbsoluteSeconds=3600",
+        "global.authentication.sessionIdleSeconds=600",
+        "global.authentication.sessionLastSeenSeconds=15",
+        "global.authentication.sessionMaxPerUser=3",
+        "global.authentication.accountStatusCacheSeconds=0",
+        "global.authentication.loginMaxConcurrent=4",
+    )
+    assert result.returncode == 0, result.stderr
+    env_secret = next(
+        doc
+        for doc in _docs(result.stdout)
+        if doc.get("kind") == "Secret"
+        and doc.get("metadata", {}).get("labels", {}).get("app.kubernetes.io/component") == "server"
+    )
+    content = next(iter(env_secret["stringData"].values()))
+    assert "AIO_AUTH_SESSION_ABSOLUTE_SECONDS=3600" in content
+    assert "AIO_AUTH_SESSION_IDLE_SECONDS=600" in content
+    assert "AIO_AUTH_SESSION_LAST_SEEN_SECONDS=15" in content
+    assert "AIO_AUTH_SESSION_MAX_PER_USER=3" in content
+    assert "AIO_AUTH_ACCOUNT_STATUS_CACHE_SECONDS=0" in content
+    assert "AIO_AUTH_LOGIN_MAX_CONCURRENT=4" in content
 
 
 def _render_database_contract(*extra_args: str) -> subprocess.CompletedProcess:

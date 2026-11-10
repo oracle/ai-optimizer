@@ -72,6 +72,8 @@ _SERVER_READY_POLL_INTERVAL = 5.0
 
 
 _SRC_DIR = Path(__file__).resolve().parents[3]
+_LOCAL_INSTALLATION_ID = "aio-local-single-user"
+_LOCAL_ADMIN_USERNAME = "AIO_LOCAL_ADMIN"
 
 
 def _server_module_available() -> bool:
@@ -111,6 +113,33 @@ def _spawn_server(port: str, env: dict, log_path: Path) -> tuple[subprocess.Pope
         stderr=log_fh,
     )
     return proc, log_fh
+
+
+def _prepare_local_single_user(env: dict[str, str]) -> bool:
+    if env.setdefault("AIO_AUTH_MODE", settings.auth_mode) != "single_user":
+        return True
+    env.setdefault("AIO_INSTALLATION_ID", settings.installation_id or _LOCAL_INSTALLATION_ID)
+    env.setdefault("AIO_ADMIN_DATABASE_USERNAME", settings.admin_database_username or _LOCAL_ADMIN_USERNAME)
+    admin_password = env.pop("AIO_AUTH_ADMIN_PASSWORD", None) or env.get("AIO_DB_PASSWORD")
+    if not admin_password:
+        LOGGER.error("Local authentication setup requires the application database password")
+        return False
+    setup = subprocess.run(
+        [sys.executable, "-m", "server.app.auth.setup"],
+        cwd=_SRC_DIR,
+        env={
+            **env,
+            "AIO_AUTH_ADMIN_PASSWORD": admin_password,
+            "AIO_AUTH_SETUP_LOCAL_AUTO": "1",
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if setup.returncode != 0:
+        LOGGER.error("Local authentication setup failed: %s", setup.stderr.strip())
+        return False
+    return True
 
 
 def _wait_for_server_ready(proc: subprocess.Popen, timeout: float = _SERVER_READY_TIMEOUT_SECONDS) -> bool:
@@ -153,6 +182,8 @@ def start_server(core_environment: Mapping[str, str] | None = None) -> bool:
     existing_pypath = os.environ.get("PYTHONPATH", "")
     pypath = f"{src_dir}{os.pathsep}{existing_pypath}" if existing_pypath else src_dir
     env = {**os.environ, "PYTHONPATH": pypath, **(core_environment or {})}
+    if core_environment is not None and not _prepare_local_single_user(env):
+        return False
 
     log_path = Path(src_dir) / f"apiserver_{port}.log"
     proc, log_fh = _spawn_server(port, env, log_path)

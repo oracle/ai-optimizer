@@ -31,8 +31,13 @@ from server.app.api.v1.schemas.deepsec import (
     EndUserCreate,
     SchemaObject,
 )
+from server.app.auth.repository import (
+    authority_identity,
+    connection_database_identity,
+    get_user_by_database_username,
+)
 from server.app.core.secrets import reveal
-from server.app.core.settings import _settings_lock, resolve_client
+from server.app.core.settings import _settings_lock, resolve_client, settings
 from server.app.database.config import (
     MANAGED_CONNECTION_FIELDS,
     _find_config_ci,
@@ -73,6 +78,21 @@ async def _run(client: str, op: Callable[[oracledb.AsyncConnection], Awaitable])
             return await op(conn)
     except (DeepSecError, oracledb.DatabaseError) as exc:
         raise _translate(exc) from exc
+
+
+async def _reject_authentication_member_change(client: str, username: str) -> None:
+    if settings.auth_mode != "local_users":
+        return
+    target_pool = get_client_pool(client)
+    if target_pool is None:
+        return
+    core_identity, _schema = await authority_identity()
+    async with target_pool.acquire() as conn:
+        target_identity = await connection_database_identity(conn)
+    if target_identity != core_identity:
+        return
+    if await get_user_by_database_username(username) is not None:
+        raise HTTPException(status_code=409, detail="Manage application members through the authentication Users API")
 
 
 # ---------------------------------------------------------------------------
@@ -132,6 +152,7 @@ async def list_end_users(client: Annotated[ClientId, Header()] = "server") -> li
 
 @auth.post("/end-users", response_model=MessageResponse)
 async def create_end_user(body: EndUserCreate, client: Annotated[ClientId, Header()] = "server") -> MessageResponse:
+    await _reject_authentication_member_change(client, body.name)
     # End users are provisioned with the same password as the connected database user.
     db_config = get_client_db_config(client)
     password = reveal(db_config.password) if db_config else None
@@ -143,6 +164,7 @@ async def create_end_user(body: EndUserCreate, client: Annotated[ClientId, Heade
 
 @auth.delete("/end-users/{name}", response_model=MessageResponse)
 async def drop_end_user(name: str, client: Annotated[ClientId, Header()] = "server") -> MessageResponse:
+    await _reject_authentication_member_change(client, name)
     await _run(client, lambda conn: deepsec_db.drop_end_user(conn, name))
     # Tear down the connect-as connection for this end user ON THE CURRENT BASE only —
     # end users are per-database accounts, so a same-named user on another base is a distinct

@@ -103,9 +103,18 @@ Values supplied through `AIO_*` variables are reapplied at startup. Interface ch
 
 ### Authentication
 
-| Variable      | Description                                                                                                                                                                                      | Default       |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------- |
-| `AIO_API_KEY` | API key for authenticating requests to the [**AI Optimizer Server**](../server/intro.mdx). In an all-in-one deployment, the Client generates and displays a shared key when this variable is unset. Set it explicitly for a standalone Server. | _(generated)_ |
+| Variable | Description | Default |
+| --- | --- | --- |
+| `AIO_AUTH_MODE` | Authentication authority: `single_user`, `local_users`, or `oidc`. Local client startup defaults to `single_user`. | _(required)_ |
+| `AIO_INSTALLATION_ID` | Stable deployment identifier bound to the authentication authority in the AI Optimizer application database. Local client startup supplies a stable default. | _(required)_ |
+| `AIO_ADMIN_DATABASE_USERNAME` | Oracle database identity mapped to the reserved Admin user. Local client startup creates this mapping automatically. | Local client: automatic; otherwise required |
+| `AIO_AUTH_LOGIN_DATA_ROLE` | Data role identifying application-managed local end users. | `AIO_LOGIN_ROLE` |
+| `AIO_AUTH_SESSION_ABSOLUTE_SECONDS` | Maximum database-account bearer-session lifetime. | `28800` |
+| `AIO_AUTH_SESSION_IDLE_SECONDS` | Maximum session inactivity before rejection. | `1800` |
+| `AIO_AUTH_SESSION_LAST_SEEN_SECONDS` | Minimum interval between persisted activity updates. | `60` |
+| `AIO_AUTH_SESSION_MAX_PER_USER` | Maximum active sessions retained for one user. | `10` |
+| `AIO_AUTH_ACCOUNT_STATUS_CACHE_SECONDS` | Maximum delay for observing an out-of-band database account-state change. | `30` |
+| `AIO_AUTH_LOGIN_MAX_CONCURRENT` | Maximum concurrent direct database login attempts per Server process. | `8` |
 
 ### Client
 

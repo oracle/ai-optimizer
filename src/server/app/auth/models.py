@@ -96,6 +96,14 @@ class AuthContext:
     workspace_key: str
 
 
+@dataclass(frozen=True)
+class IssuedSession:
+    """A newly issued bearer credential and its public expiry metadata."""
+
+    token: str = field(repr=False)
+    expires: datetime
+
+
 def workspace_key(user_id: UUID) -> str:
     """Return the server-owned workspace key for a user."""
     return f"user:{user_id}"

@@ -32,9 +32,11 @@ _STATIC_SENSITIVE_KEYS: frozenset[str] = frozenset(
         # — these aliases close that gap.
         "AIO_API_KEY",
         "AIO_AUTH_ADMIN_PASSWORD",
+        "AIO_AUTH_SETUP_PRIV_PASSWORD",
         "AIO_DB_PASSWORD",
         "AIO_DB_WALLET_PASSWORD",
         "AIO_OIDC_CLIENT_SECRET",
+        "AIO_RECOVERY_ADMIN_PASSWORD",
         "AIO_OCI_CLI_PASSPHRASE",
         "AIO_OCI_CLI_KEY_CONTENT",
         "DB_PASSWORD",
@@ -96,9 +98,11 @@ def _sensitive_keys() -> tuple[frozenset[str], str]:
         {
             "AIO_API_KEY",
             "AIO_AUTH_ADMIN_PASSWORD",
+            "AIO_AUTH_SETUP_PRIV_PASSWORD",
             "AIO_DB_PASSWORD",
             "AIO_DB_WALLET_PASSWORD",
             "AIO_OIDC_CLIENT_SECRET",
+            "AIO_RECOVERY_ADMIN_PASSWORD",
             "AIO_OCI_CLI_PASSPHRASE",
             "AIO_OCI_CLI_KEY_CONTENT",
             "DB_PASSWORD",

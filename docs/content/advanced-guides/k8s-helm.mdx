@@ -96,13 +96,15 @@ podman push ${REGISTRY}/ai-optimizer-server:${APP_VERSION}
 
 ### Create Kubernetes Secrets
 
-Create a namespace and the API key used by the Client and Server:
+Create a namespace and the Secret containing the managed deployment's initial Admin password:
 
 ```bash
 kubectl create namespace ai-optimizer
-kubectl -n ai-optimizer create secret generic optimizer-api-key \
-  --from-literal=apiKey="$(openssl rand -base64 32)"
+kubectl -n ai-optimizer create secret generic optimizer-admin-password \
+  --from-literal=password='<admin-password>'
 ```
+
+The Admin signs in with this password and the database username selected in the Helm values below.
 
 The chart generates the Client cookie-signing Secret on first install and reuses it during live Helm upgrades. For offline `helm template` or client-side GitOps rendering, create an external Secret to keep the value stable across deployments:
 
@@ -135,8 +137,11 @@ Replace `<registry-host>/<registry-namespace>` with the `${REGISTRY}` value used
 
 ```yaml
 global:
-  api:
-    secretName: optimizer-api-key
+  authentication:
+    mode: single_user
+    installationId: optimizer-production
+    adminDatabaseUsername: OPTIMIZER_ADMIN
+    adminPasswordSecretName: optimizer-admin-password
 
 server:
   image:
@@ -148,6 +153,8 @@ client:
     repository: <registry-host>/<registry-namespace>/ai-optimizer-client
     tag: "<version>"
 ```
+
+`adminDatabaseUsername` names the Oracle local end user mapped to the sole AI Optimizer Admin. Keep the name stable across upgrades. Use a distinct name for each AI Optimizer deployment connected to the same Oracle database. Set `mode: local_users` when this Admin will manage additional platform users.
 
 Add `client.cookieSecretName: optimizer-cookie-key` only when using the external Secret workflow described above.
 

@@ -9,6 +9,7 @@ from pydantic import SecretStr, ValidationError
 from starlette.requests import Request
 
 from server.app.auth.models import Principal, RequestCredential, workspace_key
+from server.app.auth.provisioning import configure_provisioning_authority, package_role_name
 from server.app.auth.service import AUTHENTICATORS, authenticator_ready, request_auth_context
 from server.app.auth.setup import (
     _core_wait_seconds,
@@ -152,6 +153,24 @@ def test_database_mode_rejects_oidc_authority_fields():
         validate_auth_configuration(_settings(oidc_issuer="https://identity.example.test"))
 
 
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        (
+            {"auth_session_absolute_seconds": 300, "auth_session_idle_seconds": 301},
+            "AIO_AUTH_SESSION_IDLE_SECONDS",
+        ),
+        (
+            {"auth_session_idle_seconds": 60, "auth_session_last_seen_seconds": 60},
+            "AIO_AUTH_SESSION_LAST_SEEN_SECONDS",
+        ),
+    ],
+)
+def test_authentication_configuration_rejects_inconsistent_session_intervals(overrides, message):
+    with pytest.raises(CoreDatabaseConfigurationError, match=message):
+        validate_auth_configuration(_settings(**overrides))
+
+
 @pytest.mark.parametrize("field", ["api_key", "admin_password"])
 def test_removed_auth_fields_are_rejected(field):
     with pytest.raises(ValidationError, match="Removed authentication settings"):
@@ -236,3 +255,25 @@ async def test_setup_reuses_existing_login_data_role(monkeypatch):
     assert len(calls) == 2
     assert all("CREATE DATA ROLE" not in sql for sql in calls)
     assert calls[-1] == 'GRANT AIO_DDS_ROLE TO "AIO_LOGIN_ROLE"'
+
+
+async def test_provisioning_privileges_are_attached_to_package(monkeypatch):
+    execute = AsyncMock(side_effect=lambda _conn, sql, *_args, **_kwargs: [] if "dba_roles" in sql else None)
+    monkeypatch.setattr("server.app.auth.provisioning.execute_sql", execute)
+
+    await configure_provisioning_authority(cast(Any, object()), cast(Any, object()), "APP_SCHEMA")
+
+    package_role = package_role_name("APP_SCHEMA")
+    statements = [call.args[1] for call in execute.await_args_list]
+    assert f'GRANT {package_role} TO "APP_SCHEMA" WITH DELEGATE OPTION' in statements
+    assert f'GRANT {package_role} TO PACKAGE "APP_SCHEMA".AIO_AUTH_ADMIN' in statements
+    assert 'REVOKE CREATE END USER FROM "APP_SCHEMA"' in statements
+    assert 'REVOKE ALTER END USER FROM "APP_SCHEMA"' in statements
+
+
+async def test_provisioning_rejects_existing_package_role_with_unexpected_grantee(monkeypatch):
+    execute = AsyncMock(side_effect=[[("EXISTING", "SYSTEM")], [("OTHER_SCHEMA",)], []])
+    monkeypatch.setattr("server.app.auth.provisioning.execute_sql", execute)
+
+    with pytest.raises(RuntimeError, match="unexpected grantees"):
+        await configure_provisioning_authority(cast(Any, object()), cast(Any, object()), "APP_SCHEMA")

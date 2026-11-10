@@ -195,6 +195,22 @@ SCHEMA_DDL = [
     CREATE INDEX IF NOT EXISTS aio_auth_sessions_expiry_ix
         ON aio_auth_sessions (expires, revoked)
     """,
+    """
+    CREATE TABLE IF NOT EXISTS aio_auth_audit (
+        event_id       RAW(16) NOT NULL,
+        event_type     VARCHAR2(64) NOT NULL,
+        user_id        RAW(16) NOT NULL,
+        old_identity   VARCHAR2(2048),
+        new_identity   VARCHAR2(2048),
+        created        TIMESTAMP(9) WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
+        CONSTRAINT aio_auth_audit_pk PRIMARY KEY (event_id),
+        CONSTRAINT aio_auth_audit_user_fk FOREIGN KEY (user_id) REFERENCES aio_users(user_id)
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS aio_auth_audit_user_ix
+        ON aio_auth_audit (user_id, created)
+    """,
 ]
 
 REQUIRED_SCHEMA_TABLES = frozenset(
@@ -207,6 +223,7 @@ REQUIRED_SCHEMA_TABLES = frozenset(
         "AIO_AUTH_AUTHORITY",
         "AIO_USERS",
         "AIO_AUTH_SESSIONS",
+        "AIO_AUTH_AUDIT",
     }
 )
 
@@ -217,5 +234,6 @@ REQUIRED_SCHEMA_INDEXES = frozenset(
         "AIO_EMBED_JOBS_TARGET_DB_IX",
         "AIO_AUTH_SESSIONS_USER_IX",
         "AIO_AUTH_SESSIONS_EXPIRY_IX",
+        "AIO_AUTH_AUDIT_USER_IX",
     }
 )

@@ -478,6 +478,12 @@ Secret-mounted file rather than as pod env entries. Operator-supplied
 {{- $_ = set $out "AIO_INSTALLATION_ID" $auth.installationId -}}
 {{- $_ = set $out "AIO_ADMIN_DATABASE_USERNAME" $auth.adminDatabaseUsername -}}
 {{- $_ = set $out "AIO_AUTH_LOGIN_DATA_ROLE" ($auth.loginDataRole | default "AIO_LOGIN_ROLE") -}}
+{{- $_ = set $out "AIO_AUTH_SESSION_ABSOLUTE_SECONDS" ($auth.sessionAbsoluteSeconds | default 28800 | toString) -}}
+{{- $_ = set $out "AIO_AUTH_SESSION_IDLE_SECONDS" ($auth.sessionIdleSeconds | default 1800 | toString) -}}
+{{- $_ = set $out "AIO_AUTH_SESSION_LAST_SEEN_SECONDS" ($auth.sessionLastSeenSeconds | default 60 | toString) -}}
+{{- $_ = set $out "AIO_AUTH_SESSION_MAX_PER_USER" ($auth.sessionMaxPerUser | default 10 | toString) -}}
+{{- $_ = set $out "AIO_AUTH_ACCOUNT_STATUS_CACHE_SECONDS" ($auth.accountStatusCacheSeconds | toString) -}}
+{{- $_ = set $out "AIO_AUTH_LOGIN_MAX_CONCURRENT" ($auth.loginMaxConcurrent | default 8 | toString) -}}
 {{- if eq $auth.mode "oidc" -}}
 {{- $oidc := $auth.oidc -}}
 {{- $_ = set $out "AIO_OIDC_ISSUER" $oidc.issuer -}}

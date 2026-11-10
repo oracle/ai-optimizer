@@ -5,8 +5,11 @@
 # Kubernetes Secrets before installing and replace the OCI values for your
 # environment.
 global:
-  api:
-    secretName: ai-optimizer-api
+  authentication:
+    mode: single_user
+    installationId: adb-s-production
+    adminDatabaseUsername: OPTIMIZER_ADMIN
+    adminPasswordSecretName: optimizer-admin-password
 
 server:
   database:

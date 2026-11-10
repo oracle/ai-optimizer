@@ -23,12 +23,16 @@ from server.app.api.v1.endpoints import (
 )
 from server.app.auth.dependencies import require_authenticated
 from server.app.auth.router import router as auth_router
+from server.app.auth.router import users_router
+from server.app.core.settings import settings as app_settings
 
 router = APIRouter()
 # -- Non Authenticated Endpoints
 router.include_router(probes.noauth, tags=["Probes"])
 router.include_router(docs.noauth, tags=["Docs"])
 router.include_router(auth_router)
+if app_settings.auth_mode == "local_users":
+    router.include_router(users_router)
 
 # -- Authenticated Endpoints
 router.include_router(

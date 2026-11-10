@@ -5,11 +5,8 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 Real-Oracle validation for client-managed local server bootstrap.
 """
 
-import os
 import socket
-import subprocess
-import sys
-from pathlib import Path
+from contextlib import suppress
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -26,6 +23,7 @@ pytestmark = [pytest.mark.db, pytest.mark.integration]
 
 _ADMIN_USERNAME = "AIO_LOCAL_ADMIN"
 _ADMIN_PASSWORD = TEST_DB_CONFIG["db_password"]
+_REPLACEMENT_PASSWORD = "Local_Admin_52_Replacement"
 
 
 def _unused_local_port() -> int:
@@ -35,7 +33,7 @@ def _unused_local_port() -> int:
 
 
 def test_local_bootstrap_starts_server_with_real_core(oracle_db_container, tmp_path):
-    """The server stays live and unready until its authenticator is installed."""
+    """The mapped Admin authenticates through the local server lifecycle."""
     del oracle_db_container
     core = LocalCoreConfig(
         username=TEST_DB_CONFIG["db_username"],
@@ -50,17 +48,14 @@ def test_local_bootstrap_starts_server_with_real_core(oracle_db_container, tmp_p
         server_ssl_cert_file="",
         server_ssl_key_file="",
         server_url_prefix="",
+        auth_mode="single_user",
+        installation_id=None,
+        admin_database_username=None,
         api_key=None,
     )
     server_state = {"process": None, "log_file": None}
     original_spawn = api._spawn_server
-    child_environment = {
-        **os.environ,
-        **core.child_environment(),
-        "AIO_AUTH_MODE": "single_user",
-        "AIO_INSTALLATION_ID": "local-bootstrap-integration",
-        "AIO_ADMIN_DATABASE_USERNAME": _ADMIN_USERNAME,
-    }
+    child_environment = core.child_environment()
 
     with (
         oracledb.connect(
@@ -70,22 +65,12 @@ def test_local_bootstrap_starts_server_with_real_core(oracle_db_container, tmp_p
         ) as connection,
         connection.cursor() as cursor,
     ):
-        cursor.execute(f'CREATE END USER "{_ADMIN_USERNAME}" IDENTIFIED BY "{_ADMIN_PASSWORD}"')
-
-    setup_environment = {
-        **child_environment,
-        "AIO_AUTH_ADMIN_PASSWORD": _ADMIN_PASSWORD,
-    }
-    setup_environment.pop("AIO_API_KEY", None)
-    setup = subprocess.run(
-        [sys.executable, "-m", "server.app.auth.setup"],
-        cwd=Path(__file__).resolve().parents[3],
-        env=setup_environment,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert setup.returncode == 0, setup.stderr
+        with suppress(oracledb.DatabaseError):
+            cursor.execute(f'DROP END USER "{_ADMIN_USERNAME}"')
+        for table in ("AIO_AUTH_AUDIT", "AIO_AUTH_SESSIONS", "AIO_USERS", "AIO_AUTH_AUTHORITY"):
+            with suppress(oracledb.DatabaseError):
+                cursor.execute(f"DELETE FROM {table}")
+        connection.commit()
 
     def _spawn_with_test_log(port, environment, _log_path):
         return original_spawn(port, environment, tmp_path / "local-server.log")
@@ -102,10 +87,64 @@ def test_local_bootstrap_starts_server_with_real_core(oracle_db_container, tmp_p
                 f"http://127.0.0.1:{local_settings.server_port}/v1/readiness",
                 timeout=5,
             )
-            assert readiness.status_code == 503
-            assert readiness.json() == {
-                "detail": "Authentication authority is unavailable: "
-                "Authentication for the configured mode is not initialized"
-            }
+            assert readiness.status_code == 200
+            first_login = httpx.post(
+                f"http://127.0.0.1:{local_settings.server_port}/v1/auth/login",
+                json={"username": _ADMIN_USERNAME, "password": _ADMIN_PASSWORD},
+                timeout=5,
+            )
+            assert first_login.status_code == 200, first_login.text
+            first = first_login.json()
+            headers = {"Authorization": f"Bearer {first['access_token']}"}
+            profile = httpx.get(
+                f"http://127.0.0.1:{local_settings.server_port}/v1/auth/me",
+                headers=headers,
+                timeout=5,
+            )
+            assert profile.status_code == 200
+            assert profile.json()["user_id"] == "f4304c28-4bf6-5e7d-a284-33cc0a5a6c01"
+            logout = httpx.post(
+                f"http://127.0.0.1:{local_settings.server_port}/v1/auth/logout",
+                headers=headers,
+                timeout=5,
+            )
+            assert logout.status_code == 200
+            assert (
+                httpx.get(
+                    f"http://127.0.0.1:{local_settings.server_port}/v1/auth/me",
+                    headers=headers,
+                    timeout=5,
+                ).status_code
+                == 401
+            )
+            password_change = httpx.post(
+                f"http://127.0.0.1:{local_settings.server_port}/v1/auth/password-change",
+                json={
+                    "username": _ADMIN_USERNAME,
+                    "current_password": _ADMIN_PASSWORD,
+                    "new_password": _REPLACEMENT_PASSWORD,
+                },
+                timeout=5,
+            )
+            assert password_change.status_code == 200, password_change.text
+            api.stop_server()
+            assert api.start_server(child_environment) is True
+            second_login = httpx.post(
+                f"http://127.0.0.1:{local_settings.server_port}/v1/auth/login",
+                json={"username": _ADMIN_USERNAME, "password": _REPLACEMENT_PASSWORD},
+                timeout=5,
+            )
+            assert second_login.status_code == 200
+            assert second_login.json()["principal"]["user_id"] == first["principal"]["user_id"]
         finally:
             api.stop_server()
+            with (
+                oracledb.connect(
+                    user=TEST_DB_CONFIG["db_username"],
+                    password=TEST_DB_CONFIG["db_password"],
+                    dsn=TEST_DB_CONFIG["db_dsn"],
+                ) as connection,
+                connection.cursor() as cursor,
+                suppress(oracledb.DatabaseError),
+            ):
+                cursor.execute(f'DROP END USER "{_ADMIN_USERNAME}"')

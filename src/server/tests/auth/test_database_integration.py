@@ -1,15 +1,20 @@
 """Real Oracle checks for repeatable authentication schema installation."""
 
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 
+import oracledb
 import pytest
+from pydantic import SecretStr
 
-from server.app.auth import repository
-from server.app.auth.provisioning import install_provisioning_package
+from server.app.auth import local, repository, users
+from server.app.auth.models import RequestCredential
+from server.app.auth.provisioning import configure_provisioning_authority, install_provisioning_package
 from server.app.auth.setup import _ensure_login_data_role
-from server.app.core.settings import Settings
+from server.app.core.settings import Settings, settings
 from server.app.database.objects import REQUIRED_SCHEMA_INDEXES, REQUIRED_SCHEMA_TABLES, SCHEMA_DDL
+from server.app.database.schemas import DatabaseConfig
 from server.app.database.sql import execute_sql
+from tests.oracle import TEST_DB_CONFIG
 
 pytestmark = [pytest.mark.db, pytest.mark.integration]
 
@@ -47,6 +52,7 @@ async def test_authentication_package_and_authority_setup_are_repeatable(async_o
     conn.autocommit = True
     for ddl in SCHEMA_DDL:
         await execute_sql(conn, ddl)
+    await execute_sql(conn, "DELETE FROM aio_auth_audit")
     await execute_sql(conn, "DELETE FROM aio_auth_sessions")
     await execute_sql(conn, "DELETE FROM aio_users")
     await execute_sql(conn, "DELETE FROM aio_auth_authority")
@@ -82,3 +88,166 @@ async def test_authentication_package_and_authority_setup_are_repeatable(async_o
     assert first.application_schema == second.application_schema
     assert first.initialized == second.initialized
     assert first.admin_database_username == "AIO_M1_ADMIN"
+
+
+async def test_database_members_sessions_password_change_and_revocation(async_oracle_connection, monkeypatch):
+    conn = async_oracle_connection
+    conn.autocommit = True
+    admin_username = "AIO_M2_ADMIN"
+    replacement_admin = "AIO_M2_RECOVERY"
+    member_username = "AIO_M2_MEMBER"
+    admin_password = "M2_Admin_41_Strong"
+    temporary_password = "M2_Temporary_41_Strong"
+    member_password = "M2_Member_42_Strong"
+
+    async def _drop_end_user(username: str) -> None:
+        with suppress(oracledb.DatabaseError):
+            await execute_sql(conn, f'DROP END USER "{username}"', ignored_error_codes=frozenset())
+
+    for ddl in SCHEMA_DDL:
+        await execute_sql(conn, ddl)
+    await execute_sql(conn, "DELETE FROM aio_auth_audit")
+    await execute_sql(conn, "DELETE FROM aio_auth_sessions")
+    await execute_sql(conn, "DELETE FROM aio_users")
+    await execute_sql(conn, "DELETE FROM aio_auth_authority")
+    await _drop_end_user(member_username)
+    await _drop_end_user(replacement_admin)
+    await _drop_end_user(admin_username)
+    await _ensure_login_data_role(conn, "AIO_LOGIN_ROLE")
+    await install_provisioning_package(conn)
+    await execute_sql(conn, f'CREATE END USER "{admin_username}" IDENTIFIED BY "{admin_password}"')
+    await execute_sql(conn, f'GRANT DATA ROLE "AIO_LOGIN_ROLE" TO "{admin_username}"')
+
+    @asynccontextmanager
+    async def _acquire():
+        yield conn
+
+    class Pool:
+        acquire = staticmethod(_acquire)
+
+    core = DatabaseConfig(
+        alias="CORE",
+        username=TEST_DB_CONFIG["db_username"],
+        password=SecretStr(TEST_DB_CONFIG["db_password"]),
+        dsn=TEST_DB_CONFIG["db_dsn"],
+    )
+    core.pool = Pool()  # type: ignore[assignment]
+    core.usable = True
+    monkeypatch.setattr(repository, "require_core_pool", Pool)
+    monkeypatch.setattr(local, "require_core_pool", Pool)
+    monkeypatch.setattr(settings, "database_configs", [core])
+    monkeypatch.setattr(settings, "auth_mode", "local_users")
+    monkeypatch.setattr(settings, "admin_database_username", admin_username)
+
+    app_settings = Settings.model_validate(
+        {
+            "auth_mode": "local_users",
+            "installation_id": "milestone-2-integration",
+            "admin_database_username": admin_username,
+        }
+    )
+    try:
+        await repository.bind_authority(app_settings)
+        admin_session, _ = await local.login_database_user(admin_username, admin_password)
+        await execute_sql(conn, f'CREATE END USER "{replacement_admin}" IDENTIFIED BY "{admin_password}"')
+        await execute_sql(conn, f'GRANT DATA ROLE "AIO_LOGIN_ROLE" TO "{replacement_admin}"')
+        await repository.recover_admin_identity(
+            app_settings.installation_id or "",
+            database_username=replacement_admin,
+        )
+        recovered = await repository.get_user_by_database_username(replacement_admin)
+        assert recovered is not None and recovered.user_id == repository.ADMIN_USER_ID
+        with pytest.raises(local.AuthenticationError):
+            await local.DatabaseSessionAuthenticator().authenticate(
+                RequestCredential(kind="bearer", value=admin_session.token)
+            )
+        recovered_session, recovered_principal = await local.login_database_user(replacement_admin, admin_password)
+        assert recovered_principal.user_id == repository.ADMIN_USER_ID
+        await local.logout_database_session(recovered_session.token)
+
+        member = await users.create_member(member_username, temporary_password, "Member", None)
+        await local.change_database_password(member_username, temporary_password, member_password)
+
+        issued, principal = await local.login_database_user(member_username, member_password, "127.0.0.1")
+        assert principal.user_id == member.user_id
+        digest_rows = await execute_sql(
+            conn,
+            "SELECT token_digest FROM aio_auth_sessions WHERE user_id = :user_id",
+            {"user_id": member.user_id.bytes},
+            max_rows=1,
+        )
+        assert digest_rows and bytes(digest_rows[0][0]) == local.session_token_digest(issued.token)
+
+        second_instance = local.DatabaseSessionAuthenticator()
+        authenticated = await second_instance.authenticate(RequestCredential(kind="bearer", value=issued.token))
+        assert authenticated.user_id == member.user_id
+
+        await users.update_member(member.user_id, True, member.display_name, member.email)
+        with pytest.raises(local.AuthenticationError):
+            await second_instance.authenticate(RequestCredential(kind="bearer", value=issued.token))
+
+        await users.update_member(member.user_id, False, member.display_name, member.email)
+        await users.reset_member_password(member.user_id, temporary_password)
+        await local.change_database_password(member_username, temporary_password, member_password)
+        replacement, _ = await local.login_database_user(member_username, member_password)
+        await local.logout_database_session(replacement.token)
+        with pytest.raises(local.AuthenticationError):
+            await second_instance.authenticate(RequestCredential(kind="bearer", value=replacement.token))
+    finally:
+        await _drop_end_user(member_username)
+        await _drop_end_user(replacement_admin)
+        await _drop_end_user(admin_username)
+        await execute_sql(conn, "DELETE FROM aio_auth_audit")
+        await execute_sql(conn, "DELETE FROM aio_auth_sessions")
+        await execute_sql(conn, "DELETE FROM aio_users")
+        await execute_sql(conn, "DELETE FROM aio_auth_authority")
+
+
+async def test_provisioning_package_holds_end_user_privileges(oracle_db_container, monkeypatch):
+    del oracle_db_container
+    owner = "AIO_M2_PACKAGE_OWNER"
+    member = "AIO_M2_PACKAGE_USER"
+    password = "M2_Package_43_Strong"
+    system = await oracledb.connect_async(
+        user="SYSTEM",
+        password=TEST_DB_CONFIG["db_password"],
+        dsn=TEST_DB_CONFIG["db_dsn"],
+    )
+    system.autocommit = True
+    owner_conn = None
+    try:
+        for statement in (f'DROP END USER "{member}"', f'DROP USER "{owner}" CASCADE'):
+            with suppress(oracledb.DatabaseError):
+                await execute_sql(system, statement, ignored_error_codes=frozenset())
+        await execute_sql(system, f'CREATE USER "{owner}" IDENTIFIED BY "{password}"')
+        await execute_sql(system, f'GRANT CREATE SESSION, CREATE PROCEDURE TO "{owner}"')
+        owner_conn = await oracledb.connect_async(
+            user=owner,
+            password=password,
+            dsn=TEST_DB_CONFIG["db_dsn"],
+        )
+        owner_conn.autocommit = True
+        monkeypatch.setattr("server.app.auth.provisioning.settings.auth_login_data_role", "AIO_LOGIN_ROLE")
+        await _ensure_login_data_role(system, "AIO_LOGIN_ROLE")
+        await install_provisioning_package(owner_conn)
+        await configure_provisioning_authority(system, owner_conn, owner)
+        await configure_provisioning_authority(system, owner_conn, owner)
+
+        with pytest.raises(oracledb.DatabaseError):
+            await execute_sql(
+                owner_conn,
+                f'CREATE END USER "{member}" IDENTIFIED BY "{password}"',
+                ignored_error_codes=frozenset(),
+            )
+        async with owner_conn.cursor() as cursor:
+            await cursor.callproc("AIO_AUTH_ADMIN.CREATE_USER", [member, password])
+            account_status = cursor.var(str, size=128)
+            await cursor.callproc("AIO_AUTH_ADMIN.ACCOUNT_STATUS", [member, account_status])
+            assert account_status.getvalue() == "EXPIRED"
+    finally:
+        if owner_conn is not None:
+            await owner_conn.close()
+        for statement in (f'DROP END USER "{member}"', f'DROP USER "{owner}" CASCADE'):
+            with suppress(oracledb.DatabaseError):
+                await execute_sql(system, statement, ignored_error_codes=frozenset())
+        await system.close()

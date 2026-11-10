@@ -20,6 +20,12 @@ global:
     # -- Oracle local end user mapped to the reserved application Admin.
     adminDatabaseUsername: ""
     loginDataRole: "AIO_LOGIN_ROLE"
+    sessionAbsoluteSeconds: 28800
+    sessionIdleSeconds: 1800
+    sessionLastSeenSeconds: 60
+    sessionMaxPerUser: 10
+    accountStatusCacheSeconds: 30
+    loginMaxConcurrent: 8
     # -- Secret used only by the setup Job to verify the mapped Admin in database-account modes.
     adminPasswordSecretName: ""
     adminPasswordSecretKey: "password"
@@ -99,7 +105,7 @@ utilities:
 server:
   # -- Number of desired pod replicas for the Deployment when autoscaling is disabled
   # NOTE on multi-replica + the embed pipeline:
-  #   * Embed JOB STATUS is shared via the CORE database (aio_embed_jobs),
+  #   * Embed JOB STATUS is shared via the AI Optimizer application database (aio_embed_jobs),
   #     so a `GET /v1/embed/jobs/{job_id}` poll routed to any pod returns
   #     the correct state.
   #   * Embed PIPELINE EXECUTION (and the uploaded source files it

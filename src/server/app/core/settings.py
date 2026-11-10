@@ -79,6 +79,12 @@ class Settings(SettingsBase, BaseSettings):
     installation_id: Optional[str] = Field(default=None, exclude=True)
     admin_database_username: Optional[str] = Field(default=None, exclude=True)
     auth_login_data_role: str = Field(default="AIO_LOGIN_ROLE", exclude=True)
+    auth_session_absolute_seconds: int = Field(default=28_800, ge=300, exclude=True)
+    auth_session_idle_seconds: int = Field(default=1_800, ge=60, exclude=True)
+    auth_session_last_seen_seconds: int = Field(default=60, ge=1, exclude=True)
+    auth_session_max_per_user: int = Field(default=10, ge=1, le=100, exclude=True)
+    auth_account_status_cache_seconds: int = Field(default=30, ge=0, le=300, exclude=True)
+    auth_login_max_concurrent: int = Field(default=8, ge=1, le=100, exclude=True)
     oidc_issuer: Optional[str] = Field(default=None, exclude=True)
     oidc_discovery_url: Optional[str] = Field(default=None, exclude=True)
     oidc_audience: Optional[str] = Field(default=None, exclude=True)
@@ -191,6 +197,14 @@ def validate_auth_configuration(app_settings: Settings = settings) -> None:
         )
 
     _validate_core_database_settings(app_settings)
+    if app_settings.auth_session_idle_seconds > app_settings.auth_session_absolute_seconds:
+        raise CoreDatabaseConfigurationError(
+            "AIO_AUTH_SESSION_IDLE_SECONDS must not exceed AIO_AUTH_SESSION_ABSOLUTE_SECONDS"
+        )
+    if app_settings.auth_session_last_seen_seconds >= app_settings.auth_session_idle_seconds:
+        raise CoreDatabaseConfigurationError(
+            "AIO_AUTH_SESSION_LAST_SEEN_SECONDS must be less than AIO_AUTH_SESSION_IDLE_SECONDS"
+        )
     oidc_fields = {
         "AIO_OIDC_ISSUER": app_settings.oidc_issuer,
         "AIO_OIDC_DISCOVERY_URL": app_settings.oidc_discovery_url,

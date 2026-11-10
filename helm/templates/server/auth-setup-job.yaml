@@ -30,6 +30,18 @@ spec:
               value: {{ .Values.global.env | quote }}
             - name: AIO_AUTH_SETUP_WAIT_SECONDS
               value: "900"
+            - name: AIO_AUTH_SETUP_PRIV_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ai-optimizer.server.databasePrivSecret" . }}
+                  key: {{ default "username" .Values.server.database.privAuthn.usernameKey }}
+                  optional: true
+            - name: AIO_AUTH_SETUP_PRIV_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ai-optimizer.server.databasePrivSecret" . }}
+                  key: {{ default "password" .Values.server.database.privAuthn.passwordKey }}
+                  optional: true
             {{- include "ai-optimizer.server.database.authn" . | nindent 12 }}
             {{- if eq (include "ai-optimizer.server.database.isADBS" .) "true" }}
             - name: AIO_DB_WALLET_PASSWORD

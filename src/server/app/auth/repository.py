@@ -1,6 +1,7 @@
 """Oracle repositories for authentication users, sessions, and authority."""
 
-from uuid import UUID
+from datetime import datetime
+from uuid import UUID, uuid4
 
 import oracledb
 from pydantic import SecretStr
@@ -15,22 +16,32 @@ ADMIN_USER_ID = UUID("f4304c28-4bf6-5e7d-a284-33cc0a5a6c01")
 SESSION_CLEANUP_BATCH_SIZE = 500
 
 
+async def connection_database_identity(conn: oracledb.AsyncConnection) -> str:
+    rows = await execute_sql(
+        conn,
+        "SELECT COALESCE(SYS_CONTEXT('USERENV', 'DB_UNIQUE_NAME'), "
+        "SYS_CONTEXT('USERENV', 'DB_NAME')), "
+        "COALESCE(SYS_CONTEXT('USERENV', 'CON_NAME'), 'NONCDB') FROM DUAL",
+        max_rows=1,
+    )
+    if not rows or not all(rows[0]):
+        raise RuntimeError("Database logical identity is unavailable")
+    return f"{rows[0][0]}:{rows[0][1]}".upper()
+
+
 async def authority_identity() -> tuple[str, str]:
     """Return the stable database and application-schema identity for CORE."""
     pool = require_core_pool()
     async with pool.acquire() as conn:
+        database_identity = await connection_database_identity(conn)
         rows = await execute_sql(
             conn,
-            "SELECT COALESCE(SYS_CONTEXT('USERENV', 'DB_UNIQUE_NAME'), "
-            "SYS_CONTEXT('USERENV', 'DB_NAME')), "
-            "COALESCE(SYS_CONTEXT('USERENV', 'CON_NAME'), 'NONCDB'), "
-            "SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA') FROM DUAL",
+            "SELECT SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA') FROM DUAL",
             max_rows=1,
         )
     if not rows or not all(rows[0]):
         raise RuntimeError("CORE logical identity is unavailable")
-    database_identity = f"{rows[0][0]}:{rows[0][1]}".upper()
-    return database_identity, str(rows[0][2]).upper()
+    return database_identity, str(rows[0][0]).upper()
 
 
 def _configured_authority(app_settings: Settings, identity: tuple[str, str]) -> tuple:
@@ -64,6 +75,19 @@ def _auth_user_from_row(row: tuple) -> AuthUser:
     )
 
 
+def _auth_session_from_row(row: tuple) -> AuthSession:
+    return AuthSession(
+        session_id=UUID(bytes=bytes(row[0])),
+        user_id=UUID(bytes=bytes(row[1])),
+        token_digest=SecretStr(bytes(row[2]).hex()),
+        created=row[3],
+        expires=row[4],
+        last_seen=row[5],
+        revoked=row[6],
+        remote_address=row[7],
+    )
+
+
 async def get_user_by_database_username(username: str) -> AuthUser | None:
     pool = require_core_pool()
     async with pool.acquire() as conn:
@@ -92,6 +116,76 @@ async def get_user_by_oidc_subject(issuer: str, subject: str) -> AuthUser | None
     return _auth_user_from_row(rows[0]) if rows else None
 
 
+async def get_user_by_id(user_id: UUID) -> AuthUser | None:
+    pool = require_core_pool()
+    async with pool.acquire() as conn:
+        rows = await execute_sql(
+            conn,
+            "SELECT user_id, username, auth_source, database_username, issuer, subject, "
+            "display_name, email, role, status, created, updated, last_login "
+            "FROM aio_users WHERE user_id = :user_id",
+            {"user_id": user_id.bytes},
+            max_rows=1,
+        )
+    return _auth_user_from_row(rows[0]) if rows else None
+
+
+async def list_database_users() -> list[AuthUser]:
+    pool = require_core_pool()
+    async with pool.acquire() as conn:
+        rows = await execute_sql(
+            conn,
+            "SELECT user_id, username, auth_source, database_username, issuer, subject, "
+            "display_name, email, role, status, created, updated, last_login "
+            "FROM aio_users WHERE auth_source = 'DATABASE_END_USER' ORDER BY username",
+            max_rows=10_000,
+        )
+    return [_auth_user_from_row(row) for row in rows or []]
+
+
+async def create_database_member(
+    user_id: UUID,
+    database_username: str,
+    display_name: str | None,
+    email: str | None,
+) -> AuthUser:
+    pool = require_core_pool()
+    async with pool.acquire() as conn:
+        await execute_sql(
+            conn,
+            "INSERT INTO aio_users (user_id, username, auth_source, database_username, display_name, email, role) "
+            "VALUES (:user_id, :username, 'DATABASE_END_USER', :database_username, :display_name, :email, 'MEMBER')",
+            {
+                "user_id": user_id.bytes,
+                "username": database_username,
+                "database_username": database_username,
+                "display_name": display_name,
+                "email": email,
+            },
+        )
+        await conn.commit()
+    user = await get_user_by_id(user_id)
+    if user is None:
+        raise RuntimeError("Created authentication user is unavailable")
+    return user
+
+
+async def update_database_member(user_id: UUID, display_name: str | None, email: str | None) -> AuthUser:
+    pool = require_core_pool()
+    async with pool.acquire() as conn:
+        await execute_sql(
+            conn,
+            "UPDATE aio_users SET display_name = :display_name, email = :email, updated = SYSTIMESTAMP "
+            "WHERE user_id = :user_id AND role = 'MEMBER' AND auth_source = 'DATABASE_END_USER'",
+            {"display_name": display_name, "email": email, "user_id": user_id.bytes},
+        )
+        await conn.commit()
+    user = await get_user_by_id(user_id)
+    if user is None or user.role != "member":
+        raise ValueError("Authentication member was not found")
+    return user
+
+
 async def get_session_by_digest(token_digest: bytes) -> AuthSession | None:
     pool = require_core_pool()
     async with pool.acquire() as conn:
@@ -104,17 +198,180 @@ async def get_session_by_digest(token_digest: bytes) -> AuthSession | None:
         )
     if not rows:
         return None
-    row = rows[0]
-    return AuthSession(
-        session_id=UUID(bytes=bytes(row[0])),
-        user_id=UUID(bytes=bytes(row[1])),
-        token_digest=SecretStr(bytes(row[2]).hex()),
-        created=row[3],
-        expires=row[4],
-        last_seen=row[5],
-        revoked=row[6],
-        remote_address=row[7],
-    )
+    return _auth_session_from_row(rows[0])
+
+
+async def create_session(
+    session_id: UUID,
+    user_id: UUID,
+    token_digest: bytes,
+    expires: datetime,
+    remote_address: str | None,
+    max_sessions: int,
+) -> AuthSession:
+    """Create a session and revoke this user's oldest excess sessions."""
+    pool = require_core_pool()
+    async with pool.acquire() as conn:
+        await execute_sql(
+            conn,
+            "INSERT INTO aio_auth_sessions (session_id, user_id, token_digest, expires, remote_address) "
+            "VALUES (:session_id, :user_id, :token_digest, :expires, :remote_address)",
+            {
+                "session_id": session_id.bytes,
+                "user_id": user_id.bytes,
+                "token_digest": token_digest,
+                "expires": expires,
+                "remote_address": remote_address,
+            },
+        )
+        await execute_sql(
+            conn,
+            "UPDATE aio_auth_sessions SET revoked = SYSTIMESTAMP WHERE revoked IS NULL AND session_id IN ("
+            "SELECT session_id FROM (SELECT session_id, ROW_NUMBER() OVER (ORDER BY created DESC) position "
+            "FROM aio_auth_sessions WHERE user_id = :user_id AND revoked IS NULL AND expires > SYSTIMESTAMP) "
+            "WHERE position > :max_sessions)",
+            {"user_id": user_id.bytes, "max_sessions": max_sessions},
+        )
+        await execute_sql(
+            conn,
+            "UPDATE aio_users SET last_login = SYSTIMESTAMP, updated = SYSTIMESTAMP WHERE user_id = :user_id",
+            {"user_id": user_id.bytes},
+        )
+        await conn.commit()
+    session = await get_session_by_digest(token_digest)
+    if session is None:
+        raise RuntimeError("Created authentication session is unavailable")
+    return session
+
+
+async def get_active_session_user(token_digest: bytes, idle_seconds: int) -> tuple[AuthSession, AuthUser] | None:
+    pool = require_core_pool()
+    async with pool.acquire() as conn:
+        rows = await execute_sql(
+            conn,
+            "SELECT s.session_id, s.user_id, s.token_digest, s.created, s.expires, s.last_seen, s.revoked, "
+            "s.remote_address, u.user_id, u.username, u.auth_source, u.database_username, u.issuer, u.subject, "
+            "u.display_name, u.email, u.role, u.status, u.created, u.updated, u.last_login "
+            "FROM aio_auth_sessions s JOIN aio_users u ON u.user_id = s.user_id "
+            "WHERE s.token_digest = :token_digest AND s.revoked IS NULL AND s.expires > SYSTIMESTAMP "
+            "AND s.last_seen > SYSTIMESTAMP - NUMTODSINTERVAL(:idle_seconds, 'SECOND') "
+            "AND u.status = 'ACTIVE'",
+            {"token_digest": token_digest, "idle_seconds": idle_seconds},
+            max_rows=1,
+        )
+    if not rows:
+        return None
+    return _auth_session_from_row(rows[0][:8]), _auth_user_from_row(rows[0][8:])
+
+
+async def touch_session(session_id: UUID, write_interval_seconds: int) -> None:
+    pool = require_core_pool()
+    async with pool.acquire() as conn:
+        await execute_sql(
+            conn,
+            "UPDATE aio_auth_sessions SET last_seen = SYSTIMESTAMP WHERE session_id = :session_id "
+            "AND revoked IS NULL AND last_seen <= SYSTIMESTAMP - NUMTODSINTERVAL(:write_interval, 'SECOND')",
+            {"session_id": session_id.bytes, "write_interval": write_interval_seconds},
+        )
+        await conn.commit()
+
+
+async def revoke_session(token_digest: bytes) -> None:
+    pool = require_core_pool()
+    async with pool.acquire() as conn:
+        await execute_sql(
+            conn,
+            "UPDATE aio_auth_sessions SET revoked = COALESCE(revoked, SYSTIMESTAMP) WHERE token_digest = :token_digest",
+            {"token_digest": token_digest},
+        )
+        await conn.commit()
+
+
+async def revoke_user_sessions(user_id: UUID) -> None:
+    pool = require_core_pool()
+    async with pool.acquire() as conn:
+        await execute_sql(
+            conn,
+            "UPDATE aio_auth_sessions SET revoked = COALESCE(revoked, SYSTIMESTAMP) "
+            "WHERE user_id = :user_id AND revoked IS NULL",
+            {"user_id": user_id.bytes},
+        )
+        await conn.commit()
+
+
+async def recover_admin_identity(
+    installation_id: str,
+    *,
+    database_username: str | None = None,
+    oidc_subject: str | None = None,
+) -> None:
+    """Replace the reserved Admin credential mapping and revoke its sessions."""
+    if (database_username is None) == (oidc_subject is None):
+        raise ValueError("Exactly one replacement Admin identity is required")
+    pool = require_core_pool()
+    async with pool.acquire() as conn:
+        rows = await execute_sql(
+            conn,
+            "SELECT auth_mode, admin_database_username, oidc_admin_subject FROM aio_auth_authority "
+            "WHERE installation_id = :installation_id",
+            {"installation_id": installation_id},
+            max_rows=1,
+        )
+        if not rows:
+            raise ValueError("Authentication authority was not found")
+        auth_mode, old_database_username, old_oidc_subject = rows[0]
+        if database_username is not None:
+            if auth_mode == "OIDC":
+                raise ValueError("Database Admin recovery is unavailable in OIDC mode")
+            replacement = database_username.upper()
+            old_identity = old_database_username
+            await execute_sql(
+                conn,
+                "UPDATE aio_auth_authority SET admin_database_username = :replacement, "
+                "last_validated = SYSTIMESTAMP WHERE installation_id = :installation_id",
+                {"replacement": replacement, "installation_id": installation_id},
+            )
+            await execute_sql(
+                conn,
+                "UPDATE aio_users SET database_username = :replacement, username = 'Admin', "
+                "updated = SYSTIMESTAMP WHERE user_id = :user_id AND role = 'ADMIN'",
+                {"replacement": replacement, "user_id": ADMIN_USER_ID.bytes},
+            )
+        else:
+            if auth_mode != "OIDC":
+                raise ValueError("OIDC Admin recovery requires OIDC mode")
+            replacement = oidc_subject
+            old_identity = old_oidc_subject
+            await execute_sql(
+                conn,
+                "UPDATE aio_auth_authority SET oidc_admin_subject = :replacement, "
+                "last_validated = SYSTIMESTAMP WHERE installation_id = :installation_id",
+                {"replacement": replacement, "installation_id": installation_id},
+            )
+            await execute_sql(
+                conn,
+                "UPDATE aio_users SET subject = :replacement, updated = SYSTIMESTAMP "
+                "WHERE user_id = :user_id AND role = 'ADMIN'",
+                {"replacement": replacement, "user_id": ADMIN_USER_ID.bytes},
+            )
+        await execute_sql(
+            conn,
+            "UPDATE aio_auth_sessions SET revoked = COALESCE(revoked, SYSTIMESTAMP) "
+            "WHERE user_id = :user_id AND revoked IS NULL",
+            {"user_id": ADMIN_USER_ID.bytes},
+        )
+        await execute_sql(
+            conn,
+            "INSERT INTO aio_auth_audit (event_id, event_type, user_id, old_identity, new_identity) "
+            "VALUES (:event_id, 'ADMIN_RECOVERY', :user_id, :old_identity, :new_identity)",
+            {
+                "event_id": uuid4().bytes,
+                "user_id": ADMIN_USER_ID.bytes,
+                "old_identity": old_identity,
+                "new_identity": replacement,
+            },
+        )
+        await conn.commit()
 
 
 async def _cleanup_expired_sessions(conn: oracledb.AsyncConnection, batch_size: int) -> int:

@@ -9,7 +9,7 @@ import sys
 
 import oracledb
 
-from server.app.auth.provisioning import install_provisioning_package
+from server.app.auth.provisioning import configure_provisioning_authority, install_provisioning_package
 from server.app.auth.repository import bind_authority
 from server.app.core.settings import (
     CoreDatabaseConfigurationError,
@@ -70,7 +70,8 @@ async def _validate_local_auth_capabilities(conn: oracledb.AsyncConnection) -> N
     try:
         rows = await execute_sql(
             conn,
-            "SELECT privilege FROM USER_SYS_PRIVS WHERE privilege IN ('CREATE END USER', 'CREATE DATA ROLE')",
+            "SELECT privilege FROM USER_SYS_PRIVS "
+            "WHERE privilege IN ('CREATE END USER', 'ALTER END USER', 'CREATE DATA ROLE')",
             max_rows=10,
         )
     except oracledb.Error:
@@ -78,6 +79,7 @@ async def _validate_local_auth_capabilities(conn: oracledb.AsyncConnection) -> N
     privileges = {row[0] for row in rows or []}
     for privilege, capability in (
         ("CREATE END USER", "CREATE END USER privilege"),
+        ("ALTER END USER", "ALTER END USER privilege"),
         ("CREATE DATA ROLE", "CREATE DATA ROLE privilege"),
     ):
         if privilege not in privileges:
@@ -116,6 +118,58 @@ async def _ensure_login_data_role(conn: oracledb.AsyncConnection, role: str) -> 
     await execute_sql(conn, f'GRANT AIO_DDS_ROLE TO "{role}"')
 
 
+async def _privileged_setup_connection(core_config: DatabaseConfig) -> oracledb.AsyncConnection | None:
+    username = os.getenv("AIO_AUTH_SETUP_PRIV_USERNAME")
+    password = os.environ.pop("AIO_AUTH_SETUP_PRIV_PASSWORD", None)
+    if not username and not password:
+        return None
+    if not username or not password:
+        raise ValueError("AIO_AUTH_SETUP_PRIV_USERNAME and AIO_AUTH_SETUP_PRIV_PASSWORD must be configured together")
+    args = _build_connect_args(core_config)
+    args["user"] = username
+    args["password"] = password
+    return await oracledb.connect_async(**args, tcp_connect_timeout=core_config.tcp_connect_timeout)
+
+
+async def _validate_admin_mapping(
+    conn: oracledb.AsyncConnection,
+    admin_username: str,
+    login_data_role: str,
+    admin_password: str | None,
+) -> bool:
+    created = False
+    if settings.auth_mode != "oidc":
+        admin_rows = await execute_sql(
+            conn,
+            "SELECT account_status FROM dba_end_users WHERE username = :username",
+            {"username": admin_username.upper()},
+            max_rows=1,
+        )
+        if not admin_rows:
+            if not admin_password:
+                raise RuntimeError("A password is required to create the mapped Admin database end user")
+            async with conn.cursor() as cursor:
+                await cursor.callproc("AIO_AUTH_ADMIN.CREATE_USER", [admin_username.upper(), admin_password, 0])
+            created = True
+        else:
+            await execute_sql(conn, f'GRANT DATA ROLE "{login_data_role}" TO "{admin_username.upper()}"')
+        async with conn.cursor() as cursor:
+            account_status = cursor.var(str, size=128)
+            await cursor.callproc("AIO_AUTH_ADMIN.ACCOUNT_STATUS", [admin_username.upper(), account_status])
+            admin_status = account_status.getvalue()
+    else:
+        admin_rows = await execute_sql(
+            conn,
+            "SELECT account_status FROM dba_users WHERE username = :username",
+            {"username": admin_username.upper()},
+            max_rows=1,
+        )
+        admin_status = admin_rows[0][0] if admin_rows else None
+    if admin_status != "OPEN":
+        raise RuntimeError("The mapped Admin Oracle identity is missing or unavailable")
+    return created
+
+
 async def setup_authentication() -> None:
     """Install local-user administration and bind the configured deployment identity."""
     validate_auth_configuration(settings)
@@ -124,6 +178,11 @@ async def setup_authentication() -> None:
         raise ValueError("AIO_ADMIN_DATABASE_USERNAME must be a simple Oracle identifier")
     if admin_username is None:
         raise ValueError("AIO_ADMIN_DATABASE_USERNAME is required")
+    admin_password = None
+    if settings.auth_mode != "oidc":
+        admin_password = os.environ.pop("AIO_AUTH_ADMIN_PASSWORD", None)
+        if not admin_password:
+            admin_password = getpass.getpass(f"Password for mapped Admin end user {admin_username}: ")
     core_config = require_core_database_config()
     await _init_core_database_with_retry(core_config, _core_wait_seconds())
     pool = core_config.pool
@@ -132,32 +191,23 @@ async def setup_authentication() -> None:
     login_data_role = settings.auth_login_data_role.upper()
     if re.fullmatch(r"[A-Z][A-Z0-9_$#]{0,127}", login_data_role) is None:
         raise ValueError("AIO_AUTH_LOGIN_DATA_ROLE must be a simple Oracle identifier")
+    privileged_conn = await _privileged_setup_connection(core_config)
     try:
         async with pool.acquire() as conn:
             conn.autocommit = True
-            await _validate_local_auth_capabilities(conn)
+            await _validate_local_auth_capabilities(privileged_conn or conn)
             await _ensure_connect_role(conn)
             await _ensure_login_data_role(conn, login_data_role)
             await install_provisioning_package(conn)
-            admin_catalog = "dba_users" if settings.auth_mode == "oidc" else "dba_end_users"
-            admin_rows = await execute_sql(
-                conn,
-                f"SELECT account_status FROM {admin_catalog} WHERE username = :username",
-                {"username": admin_username.upper()},
-                max_rows=1,
-            )
-            if not admin_rows or admin_rows[0][0] != "OPEN":
-                raise RuntimeError("The mapped Admin Oracle local end user is missing or unavailable")
-            if settings.auth_mode != "oidc":
-                await execute_sql(conn, f'GRANT DATA ROLE "{login_data_role}" TO "{admin_username.upper()}"')
+            if privileged_conn is not None:
+                await configure_provisioning_authority(privileged_conn, conn, core_config.username or "")
+            admin_created = await _validate_admin_mapping(conn, admin_username, login_data_role, admin_password)
 
-        if settings.auth_mode != "oidc":
-            password = os.environ.pop("AIO_AUTH_ADMIN_PASSWORD", None)
-            if not password:
-                password = getpass.getpass(f"Password for mapped Admin end user {admin_username}: ")
+        local_auto_setup = os.getenv("AIO_AUTH_SETUP_LOCAL_AUTO") == "1"
+        if settings.auth_mode != "oidc" and (admin_created or not local_auto_setup):
             args = _build_connect_args(core_config)
             args["user"] = admin_username.upper()
-            args["password"] = password
+            args["password"] = admin_password
             try:
                 verification = await oracledb.connect_async(
                     **args,
@@ -168,6 +218,8 @@ async def setup_authentication() -> None:
             await verification.close()
         await bind_authority()
     finally:
+        if privileged_conn is not None:
+            await privileged_conn.close()
         await close_pool(pool)
         core_config.pool = None
         core_config.usable = False
