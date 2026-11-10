@@ -74,6 +74,14 @@ def _render(tmp_path: Path, is_obs: bool, byo_url: str) -> str:
                 app_version              = "0.0.0"
                 ssl_enabled              = false
                 client_cookie_secret     = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                auth_installation_id     = "test-installation"
+                oidc_issuer              = "https://identity.example.test"
+                oidc_discovery_url       = "https://identity.example.test/.well-known/openid-configuration"
+                oidc_audience            = "optimizer-api"
+                oidc_required_scopes     = jsonencode(["optimizer.read"])
+                oidc_client_id           = "optimizer-client"
+                oidc_admin_subject       = "admin-subject"
+                oidc_public_server_url   = "https://optimizer.example.test"
                 is_observability_enabled = local.is_observability_enabled
                 ocir_url                 = local.byo_ocir_url
                 object_storage_bucket    = ""

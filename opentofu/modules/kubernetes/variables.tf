@@ -183,6 +183,43 @@ variable "client_cookie_secret" {
   sensitive   = true
 }
 
+variable "auth_installation_id" {
+  type = string
+}
+
+variable "oidc_issuer" {
+  type = string
+}
+
+variable "oidc_discovery_url" {
+  type = string
+}
+
+variable "oidc_audience" {
+  type = string
+}
+
+variable "oidc_required_scopes" {
+  type = set(string)
+}
+
+variable "oidc_client_id" {
+  type = string
+}
+
+variable "oidc_client_secret" {
+  type      = string
+  sensitive = true
+}
+
+variable "oidc_admin_subject" {
+  type = string
+}
+
+variable "oidc_public_server_url" {
+  type = string
+}
+
 variable "object_storage_bucket" {
   type    = string
   default = ""

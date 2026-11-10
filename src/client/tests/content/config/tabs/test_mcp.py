@@ -167,7 +167,7 @@ class TestGetMcpClient:
                 "oracle-ai-optimizer": {
                     "type": "http",
                     "url": "http://test/mcp",
-                    "headers": {"X-API-Key": "test-key"},
+                    "headers": {"Authorization": "Bearer ${AIO_BEARER_TOKEN}"},
                 }
             }
         }

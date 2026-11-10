@@ -58,17 +58,17 @@ def mock_db():
 @pytest.mark.unit
 @pytest.mark.anyio
 async def test_status_requires_auth(app_client):
-    """GET /status rejects requests without an API key."""
+    """GET /status challenges requests without a bearer credential."""
     resp = await app_client.get("/v1/deepsec/status")
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 @pytest.mark.unit
 @pytest.mark.anyio
 async def test_create_data_role_requires_auth(app_client):
-    """POST /data-roles rejects requests without an API key."""
+    """POST /data-roles challenges requests without a bearer credential."""
     resp = await app_client.post("/v1/deepsec/data-roles", json={"name": "r"})
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 # ---------------------------------------------------------------------------
@@ -225,9 +225,9 @@ async def test_revoke_data_role(app_client, auth_headers, mock_db):
 @pytest.mark.unit
 @pytest.mark.anyio
 async def test_grant_data_role_requires_auth(app_client):
-    """POST /data-role-grants rejects requests without an API key."""
+    """POST /data-role-grants challenges requests without a bearer credential."""
     resp = await app_client.post("/v1/deepsec/data-role-grants", json={"grantee": "x", "roles": ["r"]})
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 # ---------------------------------------------------------------------------

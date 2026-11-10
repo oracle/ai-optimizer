@@ -48,9 +48,9 @@ def _populate_configs():
 @pytest.mark.unit
 @pytest.mark.anyio
 async def test_get_client_settings_no_auth(app_client):
-    """Settings endpoint rejects requests without API key."""
+    """Settings endpoint challenges requests without a bearer credential."""
     resp = await app_client.get("/v1/settings")
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 @pytest.mark.unit
@@ -244,9 +244,9 @@ async def test_update_client_settings_dds_field_merge(app_client, auth_headers):
 @pytest.mark.unit
 @pytest.mark.anyio
 async def test_update_client_settings_no_auth(app_client):
-    """PUT /settings rejects requests without API key."""
+    """PUT /settings challenges requests without a bearer credential."""
     resp = await app_client.put("/v1/settings", json={"database": {"alias": "X"}})
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 @pytest.mark.unit
@@ -329,9 +329,9 @@ async def test_client_settings_sees_server_configs(app_client, auth_headers):
 @pytest.mark.unit
 @pytest.mark.anyio
 async def test_post_settings_no_auth(app_client):
-    """POST /settings rejects requests without API key."""
+    """POST /settings challenges requests without a bearer credential."""
     resp = await app_client.post("/v1/settings")
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 @pytest.mark.unit
@@ -451,9 +451,9 @@ async def test_post_then_get_round_trip(app_client, auth_headers):
 @pytest.mark.unit
 @pytest.mark.anyio
 async def test_delete_settings_no_auth(app_client):
-    """DELETE /settings rejects requests without API key."""
+    """DELETE /settings challenges requests without a bearer credential."""
     resp = await app_client.delete("/v1/settings?client=X")
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 @pytest.mark.unit
@@ -553,9 +553,9 @@ def test_lru_eviction_oldest_non_protected():
 @pytest.mark.unit
 @pytest.mark.anyio
 async def test_copy_to_server_no_auth(app_client):
-    """POST /settings/server/copy rejects requests without API key."""
+    """POST /settings/server/copy challenges requests without a bearer credential."""
     resp = await app_client.post("/v1/settings/server/copy")
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 @pytest.mark.unit
@@ -647,9 +647,9 @@ async def test_copy_to_server_core_unavailable_rollback(app_client, auth_headers
 @pytest.mark.unit
 @pytest.mark.anyio
 async def test_reset_no_auth(app_client):
-    """POST /settings/reset rejects requests without API key."""
+    """POST /settings/reset challenges requests without a bearer credential."""
     resp = await app_client.post("/v1/settings/reset")
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 @pytest.mark.unit

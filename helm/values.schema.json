@@ -11,12 +11,30 @@
     "global": {
       "type": "object",
       "properties": {
-        "api": {
+        "authentication": {
           "type": "object",
           "properties": {
-            "apiKey": { "type": "string" },
-            "secretName": { "type": "string" },
-            "secretKey": { "type": "string" }
+            "mode": { "type": "string", "enum": ["", "single_user", "local_users", "oidc"] },
+            "installationId": { "type": "string" },
+            "adminDatabaseUsername": { "type": "string" },
+            "loginDataRole": { "type": "string" },
+            "adminPasswordSecretName": { "type": "string" },
+            "adminPasswordSecretKey": { "type": "string" },
+            "oidc": {
+              "type": "object",
+              "properties": {
+                "issuer": { "type": "string" },
+                "discoveryUrl": { "type": "string" },
+                "audience": { "type": "string" },
+                "requiredScopes": { "type": "array", "items": { "type": "string" } },
+                "clientId": { "type": "string" },
+                "clientSecretName": { "type": "string" },
+                "clientSecretKey": { "type": "string" },
+                "adminSubject": { "type": "string" },
+                "publicServerUrl": { "type": "string" },
+                "providerName": { "type": "string" }
+              }
+            }
           }
         },
         "baseUrlPath": {

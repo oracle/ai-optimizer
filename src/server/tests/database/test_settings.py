@@ -176,8 +176,7 @@ async def test_persist_settings_round_trip_json(core_pool):
     assert restored.env == settings.env
     assert restored.server_port == settings.server_port
     assert restored.log_level == settings.log_level
-    # API_KEY is never returned
-    assert restored.api_key is None
+    assert "api_key" not in restored.model_dump()
 
 
 async def test_persist_settings_stores_real_secret_values(core_pool):
@@ -229,8 +228,7 @@ async def test_load_settings_returns_settings_base(core_pool):
     assert isinstance(result, SettingsBase)
     assert result.env == settings.env
     assert result.log_level == settings.log_level
-    # API_KEY is never returned
-    assert result.api_key is None
+    assert "api_key" not in result.model_dump()
 
 
 async def test_load_settings_empty_table(core_pool):

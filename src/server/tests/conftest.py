@@ -9,6 +9,7 @@ Shared test fixtures.
 import asyncio
 import gc
 import logging
+from uuid import UUID
 
 import oracledb
 import pytest
@@ -90,10 +91,40 @@ async def app_client():
 
 @pytest.fixture
 def auth_headers():
-    """Headers dict with a valid API key."""
-    from server.app.core.secrets import reveal
+    """Headers carrying the test principal's bearer credential."""
+    return {"Authorization": "Bearer test-token"}
 
-    return {"X-API-Key": reveal(settings.api_key)}
+
+@pytest.fixture(autouse=True)
+def _test_authenticated_principal():
+    """Install a deterministic bearer authenticator for endpoint tests."""
+    from server.app.auth.dependencies import AUTHORITY_STATE, set_authority_state
+    from server.app.auth.models import Principal
+    from server.app.auth.service import AUTHENTICATORS, AuthenticationError
+
+    principal = Principal(
+        user_id=UUID("f4304c28-4bf6-5e7d-a284-33cc0a5a6c01"),
+        subject="APP_ADMIN",
+        username="Admin",
+        auth_source="database_end_user",
+        database_username="APP_ADMIN",
+        roles=frozenset({"admin"}),
+        scopes=frozenset(),
+    )
+
+    class TestAuthenticator:
+        async def authenticate(self, credential):
+            if credential.value != "test-token":
+                raise AuthenticationError("Invalid bearer credential")
+            return principal
+
+    original_authenticator = AUTHENTICATORS["single_user"]
+    original_state = (AUTHORITY_STATE.ready, AUTHORITY_STATE.error)
+    AUTHENTICATORS["single_user"] = TestAuthenticator()
+    set_authority_state(True)
+    yield
+    AUTHENTICATORS["single_user"] = original_authenticator
+    set_authority_state(*original_state)
 
 
 # ---------------------------------------------------------------------------

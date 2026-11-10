@@ -13,6 +13,71 @@ variable "deploy_optimizer" {
   default     = true
 }
 
+variable "oidc_issuer" {
+  description = "Exact OCI IAM identity-domain issuer for AI Optimizer."
+  type        = string
+  default     = ""
+}
+
+variable "oidc_discovery_url" {
+  description = "OCI IAM OpenID Connect discovery URL."
+  type        = string
+  default     = ""
+}
+
+variable "oidc_audience" {
+  description = "Audience of access tokens issued for the AI Optimizer API."
+  type        = string
+  default     = ""
+}
+
+variable "oidc_required_scopes" {
+  description = "Scopes required on AI Optimizer access tokens."
+  type        = set(string)
+  default     = []
+}
+
+variable "oidc_client_id" {
+  description = "OCI IAM confidential web-client identifier."
+  type        = string
+  default     = ""
+}
+
+variable "oidc_client_secret" {
+  description = "OCI IAM confidential web-client secret."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "oidc_admin_subject" {
+  description = "Exact OCI IAM subject bound to the reserved Admin user."
+  type        = string
+  default     = ""
+}
+
+variable "oidc_public_server_url" {
+  description = "Public HTTPS URL of the AI Optimizer resource server."
+  type        = string
+  default     = ""
+}
+
+check "optimizer_oidc_required" {
+  assert {
+    condition = !var.deploy_optimizer || alltrue([
+      startswith(var.oidc_issuer, "https://"),
+      startswith(var.oidc_discovery_url, "https://"),
+      trimspace(var.oidc_audience) != "",
+      length(var.oidc_required_scopes) > 0,
+      trimspace(var.oidc_client_id) != "",
+      trimspace(var.oidc_client_secret) != "",
+      trimspace(var.oidc_admin_subject) != "",
+      startswith(var.oidc_public_server_url, "https://"),
+    ])
+    error_message = "OpenTofu AI Optimizer deployments require complete OCI IAM OIDC configuration with HTTPS issuer, discovery, and public server URLs."
+  }
+}
+
 variable "optimizer_version" {
   description = "Version to deploy: 'Stable' (latest release), 'Experimental' (main branch), or 'Branch' (specified Git branch)."
   type        = string

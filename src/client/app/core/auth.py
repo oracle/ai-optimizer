@@ -8,8 +8,8 @@ When ``AIO_CLIENT_PASSWORD`` is unset, access checks are disabled. When set,
 page modules call ``is_authenticated()`` to decide whether to show selected
 widgets and values.
 
-This applies only to the Streamlit UI. The FastAPI server continues to use
-``AIO_API_KEY`` for API access.
+This applies only to the legacy Streamlit UI gate. Server authentication is
+provided by the configured user authority.
 
 Scope
 -----

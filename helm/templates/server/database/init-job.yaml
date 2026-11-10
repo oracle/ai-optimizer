@@ -32,13 +32,6 @@ spec:
         env:
         - name: TNS_ADMIN
           value: /app/tns_admin
-        - name: API_SERVER_HOST
-          value: {{ include "ai-optimizer.server.serviceName" . }}
-        - name: API_SERVER_KEY
-          valueFrom:
-            secretKeyRef:
-              name: {{ include "ai-optimizer.apiSecretName" . }}
-              key: {{ include "ai-optimizer.apiSecretKey" . }}
         - name: PRIV_USERNAME
           valueFrom:
             secretKeyRef:

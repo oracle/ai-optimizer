@@ -81,6 +81,8 @@ jobs:
           DB_NETWORK="test-${{ matrix.build.name }}-network"
           SMOKE_DB_USERNAME="SMOKE"
           SMOKE_DB_PASSWORD="OrA_41_3xPl0d3r"
+          SMOKE_ADMIN_USERNAME="SMOKE_ADMIN"
+          INSTALLATION_ID="image-smoke-${{ matrix.build.name }}"
 
           fail() {
             echo "❌ $NAME: $1"
@@ -130,6 +132,15 @@ jobs:
           GRANT DB_DEVELOPER_ROLE TO SMOKE;
           ALTER USER SMOKE DEFAULT ROLE ALL;
           ALTER USER SMOKE QUOTA UNLIMITED ON USERS;
+          GRANT CREATE DATA ROLE TO SMOKE;
+          GRANT CREATE END USER TO SMOKE;
+          GRANT SELECT ON DBA_DATA_ROLES TO SMOKE;
+          GRANT SELECT ON DBA_END_USERS TO SMOKE;
+          GRANT GRANT ANY DATA ROLE TO SMOKE;
+          CREATE ROLE AIO_DDS_ROLE;
+          GRANT CREATE SESSION TO AIO_DDS_ROLE;
+          GRANT AIO_DDS_ROLE TO SMOKE WITH ADMIN OPTION;
+          CREATE END USER SMOKE_ADMIN IDENTIFIED BY "OrA_41_3xPl0d3r";
           EXIT;
           SQL
           }
@@ -141,7 +152,7 @@ jobs:
               client) PORT=8501; PROBE=/_stcore/health ;;
               server)
                 PORT=8000
-                PROBE=/v1/liveness
+                PROBE=/v1/readiness
                 start_database
                 ;;
               *) fail "unknown component: $COMPONENT" ;;
@@ -154,12 +165,23 @@ jobs:
                 -e "AIO_DB_USERNAME=$SMOKE_DB_USERNAME"
                 -e "AIO_DB_PASSWORD=$SMOKE_DB_PASSWORD"
                 -e AIO_DB_DSN=core-db:1521/FREEPDB1
+                -e AIO_AUTH_MODE=single_user
+                -e "AIO_INSTALLATION_ID=$INSTALLATION_ID"
+                -e "AIO_ADMIN_DATABASE_USERNAME=$SMOKE_ADMIN_USERNAME"
               )
+              SETUP_NAME="$NAME-auth-setup"
+              if ! docker run --name "$SETUP_NAME" \
+                --network "$DB_NETWORK" \
+                "${DATABASE_ENV[@]}" \
+                -e "AIO_AUTH_ADMIN_PASSWORD=$SMOKE_DB_PASSWORD" \
+                "$IMAGE" auth-setup; then
+                docker logs "$SETUP_NAME" 2>&1 || true
+                fail "authentication setup failed"
+              fi
             fi
             docker run -d --name "$NAME" \
               --network "$DB_NETWORK" \
               -p "127.0.0.1::$PORT" \
-              -e AIO_API_KEY=test-key-for-ci \
               "${DATABASE_ENV[@]}" \
               "$IMAGE" "$COMPONENT"
             URL="http://$(docker port "$NAME" "$PORT/tcp")$PROBE"
@@ -197,6 +219,7 @@ jobs:
             docker rm "$NAME" 2>/dev/null || true
           done
           docker rm --force "test-${{ matrix.build.name }}-oracle" 2>/dev/null || true
+          docker rm --force "test-${{ matrix.build.name }}-server-auth-setup" 2>/dev/null || true
           docker network rm "test-${{ matrix.build.name }}-network" 2>/dev/null || true
 
   # Summary job

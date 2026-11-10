@@ -180,8 +180,8 @@ workloads in the cluster.
 CONFIGURATION
 ================================================================================
 
-API Key Secret:
-  kubectl get secret -n {{ .Release.Namespace }} {{ include "ai-optimizer.apiSecretName" . }}
+Authentication mode: {{ .Values.global.authentication.mode }}
+Installation ID: {{ .Values.global.authentication.installationId }}
 
 {{- if .Values.server.database }}
 Database Credentials:

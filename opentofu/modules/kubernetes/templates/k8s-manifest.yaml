@@ -12,11 +12,11 @@ metadata:
 apiVersion: v1
 kind: Secret
 metadata:
-  name: ai-optimizer-api-key-${label}
+  name: ai-optimizer-oidc-${label}
   namespace: ${label}
 type: Opaque
 stringData:
-  apiKey: "${optimizer_api_key}"
+  clientSecret: "${oidc_client_secret}"
 ---
 # Secret containing non-privileged DB User details.
 # Used for Optimizer application connectivity to database.

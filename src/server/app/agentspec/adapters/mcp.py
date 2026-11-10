@@ -32,7 +32,7 @@ def build_mcp_transport(server_url: str, api_key: str) -> StreamableHTTPTranspor
     return StreamableHTTPTransport(
         name="mcp-transport",
         url=_normalize_server_url(server_url),
-        sensitive_headers={"X-API-Key": api_key},
+        sensitive_headers={"Authorization": f"Bearer {api_key}"},
     )
 
 
@@ -41,7 +41,7 @@ def _mcp_client(server_url: str, api_key: str) -> Client:
     server_url = _normalize_server_url(server_url)
     transport = StreamableHttpTransport(
         server_url,
-        headers={"X-API-Key": api_key},
+        headers={"Authorization": f"Bearer {api_key}"},
         verify=verify_for_url(server_url),
     )
     return Client(transport, mode=_MCP_PROTOCOL_VERSION)

@@ -24,18 +24,8 @@ class TestClientSettingsFields:
         # Disable .env file loading by providing _env_file=None
         return ClientSettings(_env_file=None, **kwargs)  # type: ignore[call-arg]
 
-    def test_api_key_none_by_default(self, monkeypatch):
-        """Default api_key is None when env var is absent."""
-        monkeypatch.delenv("AIO_API_KEY", raising=False)
-        s = self._make()
-        assert s.api_key is None
-
-    def test_api_key_accepts_string(self):
-        """Explicit string api_key is preserved (wrapped as SecretStr)."""
-        from client.app.core.secrets import reveal
-
-        s = self._make(api_key="my-secret")
-        assert reveal(s.api_key) == "my-secret"
+    def test_authentication_mode_defaults_to_single_user(self):
+        assert self._make().auth_mode == "single_user"
 
     def test_server_url_default(self):
         """Default server_url is http://localhost."""

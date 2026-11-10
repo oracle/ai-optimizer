@@ -202,85 +202,85 @@ async def _poll_until_terminal(
 
 
 # ---------------------------------------------------------------------------
-# Auth tests — 403 without API key
+# Authentication challenges
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.anyio
 async def test_drop_vs_no_auth(app_client):
-    """DELETE /{vs} rejects requests without API key."""
+    """DELETE /{vs} challenges requests without a bearer credential."""
     resp = await app_client.delete("/v1/embed/test_vs")
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 @pytest.mark.anyio
 async def test_get_files_no_auth(app_client):
-    """GET /{vs}/files rejects requests without API key."""
+    """GET /{vs}/files challenges requests without a bearer credential."""
     resp = await app_client.get("/v1/embed/test_vs/files")
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 @pytest.mark.anyio
 async def test_comment_no_auth(app_client):
-    """PATCH /comment rejects requests without API key."""
+    """PATCH /comment challenges requests without a bearer credential."""
     resp = await app_client.patch("/v1/embed/comment", json={})
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 @pytest.mark.anyio
 async def test_sql_store_no_auth(app_client):
-    """POST /sql/store rejects requests without API key."""
+    """POST /sql/store challenges requests without a bearer credential."""
     resp = await app_client.post("/v1/embed/sql/store", json={"query": "SELECT 1"})
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 @pytest.mark.anyio
 async def test_web_store_no_auth(app_client):
-    """POST /web/store rejects requests without API key."""
+    """POST /web/store challenges requests without a bearer credential."""
     resp = await app_client.post("/v1/embed/web/store", json=["https://example.com"])
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 @pytest.mark.anyio
 async def test_local_store_no_auth(app_client):
-    """POST /local/store rejects requests without API key."""
+    """POST /local/store challenges requests without a bearer credential."""
     resp = await app_client.post("/v1/embed/local/store")
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 @pytest.mark.anyio
 async def test_split_embed_no_auth(app_client):
-    """POST / rejects requests without API key."""
+    """POST / challenges requests without a bearer credential."""
     resp = await app_client.post("/v1/embed/", json={})
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 @pytest.mark.anyio
 async def test_embed_oci_store_no_auth(app_client):
-    """POST /oci/store rejects requests without API key."""
+    """POST /oci/store challenges requests without a bearer credential."""
     resp = await app_client.post("/v1/embed/oci/store", json={})
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 @pytest.mark.anyio
 async def test_refresh_no_auth(app_client):
-    """POST /refresh rejects requests without API key."""
+    """POST /refresh challenges requests without a bearer credential."""
     resp = await app_client.post("/v1/embed/refresh", json={})
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 @pytest.mark.anyio
 async def test_list_jobs_no_auth(app_client):
-    """GET /jobs rejects requests without API key."""
+    """GET /jobs challenges requests without a bearer credential."""
     resp = await app_client.get("/v1/embed/jobs")
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 @pytest.mark.anyio
 async def test_get_job_no_auth(app_client):
-    """GET /jobs/{job_id} rejects requests without API key."""
+    """GET /jobs/{job_id} challenges requests without a bearer credential."""
     resp = await app_client.get("/v1/embed/jobs/abc123")
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 # ---------------------------------------------------------------------------

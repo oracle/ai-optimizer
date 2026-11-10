@@ -13,16 +13,15 @@ from unittest.mock import patch
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from server.app.core.settings import settings
 from server.app.main import app
 
 
 @pytest.mark.unit
 @pytest.mark.anyio
 async def test_openapi_json_requires_auth(app_client):
-    """GET /v1/openapi.json without X-API-Key is rejected."""
+    """GET /v1/openapi.json without a bearer token is rejected."""
     resp = await app_client.get("/v1/openapi.json")
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 @pytest.mark.unit
@@ -40,9 +39,9 @@ async def test_openapi_json_with_valid_key(app_client, auth_headers):
 @pytest.mark.unit
 @pytest.mark.anyio
 async def test_openapi_json_wrong_key(app_client):
-    """GET /v1/openapi.json with a wrong key is rejected."""
+    """The removed shared-key header has no authentication meaning."""
     resp = await app_client.get("/v1/openapi.json", headers={"X-API-Key": "not-the-key"})
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 @pytest.mark.unit
@@ -53,13 +52,11 @@ async def test_openapi_json_injects_root_path_servers():
     Matches FastAPI's built-in /openapi.json behavior so Swagger UI and
     generated clients target the prefixed deployment correctly.
     """
-    assert settings.api_key is not None
-    api_key_value = settings.api_key.get_secret_value()
     async with AsyncClient(
         transport=ASGITransport(app=app, root_path="/api"),
         base_url="http://test",
     ) as client:
-        resp = await client.get("/v1/openapi.json", headers={"X-API-Key": api_key_value})
+        resp = await client.get("/v1/openapi.json", headers={"Authorization": "Bearer test-token"})
     assert resp.status_code == 200
     servers = resp.json().get("servers", [])
     assert {"url": "/api"} in servers
@@ -78,12 +75,12 @@ async def test_openapi_json_no_root_path_no_server_injection(app_client, auth_he
 @pytest.mark.unit
 @pytest.mark.anyio
 async def test_swagger_docs_shell_is_public(app_client):
-    """GET /v1/docs is a public gate page: 200 without auth, with a key input."""
+    """GET /v1/docs is a public gate page with a bearer-token input."""
     resp = await app_client.get("/v1/docs")
     assert resp.status_code == 200
     assert resp.headers["content-type"].startswith("text/html")
     body = resp.text
-    # Page includes the Swagger UI bundle and a key input form.
+    # Page includes the Swagger UI bundle and a token input form.
     assert "SwaggerUIBundle" in body
     assert "swagger-ui" in body
     assert 'id="api-key"' in body

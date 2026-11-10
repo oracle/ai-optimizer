@@ -10,16 +10,25 @@ locals {
 
 locals {
   cloud_init_compute = templatefile("${path.module}/templates/cloudinit-compute.tpl", {
-    compartment_id        = var.compartment_id
-    db_type               = var.db_conn.db_type
-    db_password           = var.db_conn.password
-    db_service            = var.db_conn.service
-    optimizer_version     = var.optimizer_version
-    optimizer_branch      = var.optimizer_branch
-    app_version           = var.app_version
-    install_ollama        = var.vm_is_gpu_shape || var.compute_install_ollama
-    object_storage_bucket = var.object_storage_bucket
-    client_cookie_secret  = var.client_cookie_secret
+    compartment_id         = var.compartment_id
+    db_type                = var.db_conn.db_type
+    db_password            = var.db_conn.password
+    db_service             = var.db_conn.service
+    optimizer_version      = var.optimizer_version
+    optimizer_branch       = var.optimizer_branch
+    app_version            = var.app_version
+    install_ollama         = var.vm_is_gpu_shape || var.compute_install_ollama
+    object_storage_bucket  = var.object_storage_bucket
+    client_cookie_secret   = var.client_cookie_secret
+    auth_installation_id   = var.auth_installation_id
+    oidc_issuer            = var.oidc_issuer
+    oidc_discovery_url     = var.oidc_discovery_url
+    oidc_audience          = var.oidc_audience
+    oidc_required_scopes   = jsonencode(tolist(var.oidc_required_scopes))
+    oidc_client_id         = var.oidc_client_id
+    oidc_client_secret     = var.oidc_client_secret
+    oidc_admin_subject     = var.oidc_admin_subject
+    oidc_public_server_url = var.oidc_public_server_url
   })
 
   cloud_init_database = templatefile("${path.module}/templates/cloudinit-database.tpl", {

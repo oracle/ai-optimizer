@@ -13,9 +13,8 @@ import streamlit as st
 from streamlit import session_state as state
 
 from client.app.core.api import _base_url, api_post, get_server_settings
-from client.app.core.auth import is_authenticated, locked_notice, redacted_password_input
+from client.app.core.auth import is_authenticated, locked_notice
 from client.app.core.helpers import load_chat_history
-from client.app.core.secrets import reveal
 from client.app.core.settings import settings as client_settings
 from net_addressing import LOCAL_HOSTS, WILDCARD_HOSTS, netloc
 
@@ -66,12 +65,7 @@ st.text_input(
     value=_advertised_api_base_url(),
     disabled=True,
 )
-redacted_password_input(
-    "API Server Key:",
-    value=reveal(client_settings.api_key) or "",
-    key="api_server_key",
-    disabled=True,
-)
+st.text_input("Authentication mode:", value=client_settings.auth_mode, disabled=True)
 
 locked_notice()
 

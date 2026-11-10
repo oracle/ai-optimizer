@@ -8,17 +8,15 @@ Application settings loaded from environment variables and .env file.
 
 import asyncio
 import os
-import secrets
 import threading
 from collections import OrderedDict
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from server.app.core.paths import PROJECT_ROOT
 from server.app.core.schemas import ClientSettings
-from server.app.core.secrets import SecretField
 from server.app.database.schemas import DatabaseConfig
 from server.app.mcp.prompts.schemas import PromptConfig
 from server.app.models.schemas import ModelConfig
@@ -55,7 +53,6 @@ class SettingsBase(BaseModel):
     prompt_configs: list[PromptConfig] = []
     client_settings: ClientSettings = ClientSettings()
     nl2sql_available: bool = False
-    api_key: SecretField = Field(default=None, exclude=True)
 
 
 class Settings(SettingsBase, BaseSettings):
@@ -75,6 +72,27 @@ class Settings(SettingsBase, BaseSettings):
     db_wallet_password: Optional[SecretStr] = Field(default=None, exclude=True)
     db_wallet_location: Optional[str] = Field(default=None, exclude=True)
     db_pool_size: int = Field(default=5, ge=1, exclude=True)
+
+    # Authentication authority. Defaults keep module import possible; startup
+    # requires auth_mode to have been supplied explicitly.
+    auth_mode: Literal["single_user", "local_users", "oidc"] = Field(default="single_user", exclude=True)
+    installation_id: Optional[str] = Field(default=None, exclude=True)
+    admin_database_username: Optional[str] = Field(default=None, exclude=True)
+    auth_login_data_role: str = Field(default="AIO_LOGIN_ROLE", exclude=True)
+    oidc_issuer: Optional[str] = Field(default=None, exclude=True)
+    oidc_discovery_url: Optional[str] = Field(default=None, exclude=True)
+    oidc_audience: Optional[str] = Field(default=None, exclude=True)
+    oidc_required_scopes: list[str] = Field(default_factory=list, exclude=True)
+    oidc_client_id: Optional[str] = Field(default=None, exclude=True)
+    oidc_client_secret: Optional[SecretStr] = Field(default=None, exclude=True)
+    oidc_admin_subject: Optional[str] = Field(default=None, exclude=True)
+    oidc_public_server_url: Optional[str] = Field(default=None, exclude=True)
+    oidc_provider_name: Optional[str] = Field(default=None, exclude=True)
+
+    # Removed server-authentication fields remain declared only so pydantic-settings
+    # can reject their environment variables instead of silently ignoring them.
+    api_key: Optional[SecretStr] = Field(default=None, exclude=True)
+    admin_password: Optional[SecretStr] = Field(default=None, exclude=True)
 
     max_clients: int = Field(default=64, ge=1, exclude=True)
     mcp_cache_ttl_seconds: int = Field(default=5, ge=0, exclude=True)
@@ -110,18 +128,15 @@ class Settings(SettingsBase, BaseSettings):
         return self
 
     @model_validator(mode="after")
-    def _generate_api_key_if_missing(self) -> "Settings":
-        if self.api_key is None:
-            object.__setattr__(self, "_api_key_generated", True)
-            self.api_key = SecretStr(secrets.token_urlsafe(32))
-        else:
-            object.__setattr__(self, "_api_key_generated", False)
+    def _reject_removed_authentication_settings(self) -> "Settings":
+        removed = []
+        if self.api_key is not None:
+            removed.append("AIO_API_KEY")
+        if self.admin_password is not None:
+            removed.append("AIO_ADMIN_PASSWORD")
+        if removed:
+            raise ValueError(f"Removed authentication settings are configured: {', '.join(removed)}")
         return self
-
-    @property
-    def api_key_generated(self) -> bool:
-        """True when api_key was auto-generated (AIO_API_KEY not set)."""
-        return getattr(self, "_api_key_generated", False)
 
 
 def _make_core_database_config(app_settings: Settings) -> DatabaseConfig:
@@ -138,8 +153,7 @@ def _make_core_database_config(app_settings: Settings) -> DatabaseConfig:
 settings = Settings()
 
 
-def require_core_database_config(app_settings: Settings = settings) -> DatabaseConfig:
-    """Return the deployment-owned CORE config or raise a sanitized error."""
+def _validate_core_database_settings(app_settings: Settings) -> None:
     missing_checks = (
         ("AIO_DB_USERNAME", not app_settings.db_username),
         (
@@ -152,10 +166,58 @@ def require_core_database_config(app_settings: Settings = settings) -> DatabaseC
     if missing:
         raise CoreDatabaseConfigurationError(f"CORE database configuration is incomplete; missing {', '.join(missing)}")
 
+
+def require_core_database_config(app_settings: Settings = settings) -> DatabaseConfig:
+    """Return the deployment-owned CORE config or raise a sanitized error."""
+    _validate_core_database_settings(app_settings)
     core = _make_core_database_config(app_settings)
     non_core = [config for config in app_settings.database_configs if config.alias.upper() != "CORE"]
     app_settings.database_configs = [core, *non_core]
     return core
+
+
+def validate_auth_configuration(app_settings: Settings = settings) -> None:
+    """Validate the selected authentication authority without exposing secrets."""
+    missing = []
+    if "auth_mode" not in app_settings.model_fields_set:
+        missing.append("AIO_AUTH_MODE")
+    if not app_settings.installation_id or not app_settings.installation_id.strip():
+        missing.append("AIO_INSTALLATION_ID")
+    if not app_settings.admin_database_username or not app_settings.admin_database_username.strip():
+        missing.append("AIO_ADMIN_DATABASE_USERNAME")
+    if missing:
+        raise CoreDatabaseConfigurationError(
+            f"Authentication configuration is incomplete; missing {', '.join(missing)}"
+        )
+
+    _validate_core_database_settings(app_settings)
+    oidc_fields = {
+        "AIO_OIDC_ISSUER": app_settings.oidc_issuer,
+        "AIO_OIDC_DISCOVERY_URL": app_settings.oidc_discovery_url,
+        "AIO_OIDC_AUDIENCE": app_settings.oidc_audience,
+        "AIO_OIDC_REQUIRED_SCOPES": app_settings.oidc_required_scopes,
+        "AIO_OIDC_CLIENT_ID": app_settings.oidc_client_id,
+        "AIO_OIDC_CLIENT_SECRET": app_settings.oidc_client_secret,
+        "AIO_OIDC_ADMIN_SUBJECT": app_settings.oidc_admin_subject,
+        "AIO_OIDC_PUBLIC_SERVER_URL": app_settings.oidc_public_server_url,
+    }
+    if app_settings.auth_mode != "oidc":
+        configured = [name for name, value in oidc_fields.items() if value]
+        if configured:
+            raise CoreDatabaseConfigurationError(f"{', '.join(configured)} require AIO_AUTH_MODE=oidc")
+        return
+
+    oidc_missing = [name for name, value in oidc_fields.items() if not value]
+    if oidc_missing:
+        raise CoreDatabaseConfigurationError(f"OIDC configuration is incomplete; missing {', '.join(oidc_missing)}")
+    if app_settings.env not in {"dev", "test"}:
+        for name, value in (
+            ("AIO_OIDC_ISSUER", app_settings.oidc_issuer),
+            ("AIO_OIDC_DISCOVERY_URL", app_settings.oidc_discovery_url),
+            ("AIO_OIDC_PUBLIC_SERVER_URL", app_settings.oidc_public_server_url),
+        ):
+            if value and not value.startswith("https://"):
+                raise CoreDatabaseConfigurationError(f"{name} must use HTTPS")
 
 
 # ---------------------------------------------------------------------------

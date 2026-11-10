@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException
 
 from _version import __version__
 from server.app.api.v1.schemas.probes import ProbeResponse, StatusResponse
+from server.app.auth.dependencies import AUTHORITY_STATE
 from server.app.database.config import get_core_pool
 from server.app.database.sql import execute_sql
 
@@ -27,6 +28,11 @@ async def liveness_probe():
 @noauth.get("/readiness", response_model=ProbeResponse)
 async def readiness_probe():
     """Return ready after a bounded CORE database round trip."""
+    if not AUTHORITY_STATE.ready:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Authentication authority is unavailable: {AUTHORITY_STATE.error}",
+        )
 
     async def _check_core() -> None:
         pool = get_core_pool()

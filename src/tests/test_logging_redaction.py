@@ -146,6 +146,17 @@ class TestKeyValueRedaction:
         filt.filter(record)
         assert "sk-abc" not in record.getMessage()
 
+    @pytest.mark.parametrize("name", ["AIO_AUTH_ADMIN_PASSWORD", "AIO_OIDC_CLIENT_SECRET"])
+    def test_authentication_secret_env_vars_are_redacted(self, filt, name):
+        record = _make_record(f"{name}=authentication-secret")
+        filt.filter(record)
+        assert "authentication-secret" not in record.getMessage()
+
+    def test_bearer_authorization_header_is_redacted(self, filt):
+        record = _make_record("Authorization: Bearer sensitive-token")
+        filt.filter(record)
+        assert "sensitive-token" not in record.getMessage()
+
     def test_args_redacted_after_format(self, filt):
         record = _make_record("user=%s pwd=%s", ("alice", "shh"))
         filt.filter(record)

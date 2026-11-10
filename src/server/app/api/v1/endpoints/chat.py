@@ -28,7 +28,7 @@ from server.app.api.v1.schemas.chat import (
     VsMetadata,
 )
 from server.app.api.v1.schemas.common import ClientId
-from server.app.core.secrets import reveal
+from server.app.auth.service import current_bearer
 from server.app.core.settings import resolve_client, settings
 from server.app.database.config import DdsConnectionError
 from server.app.runtime.common import LLMConfigurationError, llm_error_detail
@@ -59,7 +59,7 @@ def _internal_mcp_url(
 
 _orchestrator = ChatOrchestrator(
     server_url=_internal_mcp_url(),
-    api_key=lambda: reveal(settings.api_key) or "",
+    api_key=current_bearer,
     resolve_client=resolve_client,
 )
 

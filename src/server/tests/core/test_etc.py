@@ -36,11 +36,9 @@ def _restore_settings():
     saved = {
         "log_level": settings.log_level,
         "server_port": settings.server_port,
-        "api_key": settings.api_key,
         "database_configs": list(settings.database_configs),
         "model_configs": list(settings.model_configs),
         "oci_configs": list(settings.oci_configs),
-        "_api_key_generated": getattr(settings, "_api_key_generated", False),
     }
     yield
     for k, v in saved.items():
@@ -238,38 +236,6 @@ def test_apply_overlay_returns_updated_protected():
     result = apply_overlay(source, protected={"env"})
 
     assert result == {"env", "log_level", "server_port"}
-
-
-# ---------------------------------------------------------------------------
-# apply_overlay — api_key
-# ---------------------------------------------------------------------------
-
-
-def test_apply_overlay_api_key_updates_generated_flag():
-    """Overlaying api_key clears the auto-generated flag."""
-    from server.app.core.secrets import reveal
-
-    object.__setattr__(settings, "_api_key_generated", True)
-
-    source = SettingsBase.model_validate({"api_key": "from_config_file"})
-    apply_overlay(source, protected=set())
-
-    assert reveal(settings.api_key) == "from_config_file"
-    assert settings.api_key_generated is False
-
-
-def test_apply_overlay_api_key_protected():
-    """api_key is NOT overridden when protected."""
-    from pydantic import SecretStr
-
-    from server.app.core.secrets import reveal
-
-    settings.api_key = SecretStr("from_env")
-    source = SettingsBase.model_validate({"api_key": "from_config_file"})
-
-    apply_overlay(source, protected={"api_key"})
-
-    assert reveal(settings.api_key) == "from_env"
 
 
 # ---------------------------------------------------------------------------

@@ -118,6 +118,11 @@ def start_client(script_dir: Path) -> None:
     os.execvp("streamlit", args)
 
 
+def setup_authentication() -> None:
+    """Run the idempotent authentication authority setup command."""
+    os.execvp(sys.executable, [sys.executable, "-m", "server.app.auth.setup"])
+
+
 def main() -> None:
     """Configure the environment and launch the appropriate component."""
     script_dir = Path(__file__).resolve().parent
@@ -132,8 +137,10 @@ def main() -> None:
         start_server(script_dir)
     elif component == "client":
         start_client(script_dir)
+    elif component == "auth-setup":
+        setup_authentication()
     else:
-        print("Usage: entrypoint.py [client|server]", file=sys.stderr)
+        print("Usage: entrypoint.py [client|server|auth-setup]", file=sys.stderr)
         sys.exit(1)
 
 

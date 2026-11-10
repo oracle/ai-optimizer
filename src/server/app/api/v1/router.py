@@ -6,7 +6,6 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 from fastapi import APIRouter, Depends
 
-from server.app.api.deps import verify_api_key
 from server.app.api.v1.endpoints import (
     agentspec,
     chat,
@@ -22,70 +21,73 @@ from server.app.api.v1.endpoints import (
     settings,
     testbed,
 )
+from server.app.auth.dependencies import require_authenticated
+from server.app.auth.router import router as auth_router
 
 router = APIRouter()
 # -- Non Authenticated Endpoints
 router.include_router(probes.noauth, tags=["Probes"])
 router.include_router(docs.noauth, tags=["Docs"])
+router.include_router(auth_router)
 
 # -- Authenticated Endpoints
 router.include_router(
     settings.auth,
     tags=["Settings"],
-    dependencies=[Depends(verify_api_key)],
+    dependencies=[Depends(require_authenticated)],
 )
 router.include_router(
     databases.auth,
     tags=["Databases"],
-    dependencies=[Depends(verify_api_key)],
+    dependencies=[Depends(require_authenticated)],
 )
 router.include_router(
     models.auth,
     tags=["Models"],
-    dependencies=[Depends(verify_api_key)],
+    dependencies=[Depends(require_authenticated)],
 )
 router.include_router(
     oci.auth,
     tags=["OCI Profiles"],
-    dependencies=[Depends(verify_api_key)],
+    dependencies=[Depends(require_authenticated)],
 )
 router.include_router(
     prompts.auth,
     tags=["Prompts"],
-    dependencies=[Depends(verify_api_key)],
+    dependencies=[Depends(require_authenticated)],
 )
 router.include_router(
     agentspec.auth,
     tags=["AgentSpec"],
-    dependencies=[Depends(verify_api_key)],
+    dependencies=[Depends(require_authenticated)],
 )
 router.include_router(
     help_text.auth,
     tags=["Help"],
-    dependencies=[Depends(verify_api_key)],
+    dependencies=[Depends(require_authenticated)],
 )
 router.include_router(
     chat.auth,
     tags=["Chat"],
-    dependencies=[Depends(verify_api_key)],
+    dependencies=[Depends(require_authenticated)],
 )
 router.include_router(
     testbed.auth,
     tags=["Testbed"],
-    dependencies=[Depends(verify_api_key)],
+    dependencies=[Depends(require_authenticated)],
 )
 router.include_router(
     embed.auth,
     tags=["Embed"],
-    dependencies=[Depends(verify_api_key)],
+    dependencies=[Depends(require_authenticated)],
 )
 router.include_router(
     deepsec.auth,
     tags=["Deep Data Security"],
-    dependencies=[Depends(verify_api_key)],
+    dependencies=[Depends(require_authenticated)],
 )
 router.include_router(
     docs.auth,
     tags=["Docs"],
-    dependencies=[Depends(verify_api_key)],
+    dependencies=[Depends(require_authenticated)],
 )

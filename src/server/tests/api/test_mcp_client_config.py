@@ -10,8 +10,9 @@ from unittest.mock import patch
 
 import pytest
 
-from server.app.core.secrets import reveal
 from server.app.core.settings import SettingsBase, settings
+
+BEARER_PLACEHOLDER = "${AIO_BEARER_TOKEN}"
 
 
 @pytest.mark.unit
@@ -58,10 +59,10 @@ async def test_client_config_with_prefix(app_client, auth_headers):
 @pytest.mark.unit
 @pytest.mark.anyio
 async def test_client_config_no_auth(app_client):
-    """Client-config endpoint rejects requests without API key."""
+    """Client-config endpoint rejects requests without a bearer token."""
     resp = await app_client.get("/mcp/client-config")
 
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 @pytest.mark.unit
@@ -81,7 +82,7 @@ async def test_client_config_default(app_client, auth_headers):
     assert server["url"] == expected_url
     assert server["type"] == "streamableHttp"
     assert server["transport"] == "streamable-http"
-    assert server["headers"]["X-API-Key"] == reveal(settings.api_key)
+    assert server["headers"]["Authorization"] == f"Bearer {BEARER_PLACEHOLDER}"
 
 
 @pytest.mark.unit
@@ -97,7 +98,7 @@ async def test_client_config_generic(app_client, auth_headers):
     assert server["type"] == "streamableHttp"
     assert server["transport"] == "streamable-http"
     assert server["url"] == f"http://test{settings.server_url_prefix}/mcp"
-    assert server["headers"]["X-API-Key"] == reveal(settings.api_key)
+    assert server["headers"]["Authorization"] == f"Bearer {BEARER_PLACEHOLDER}"
 
 
 @pytest.mark.unit
@@ -113,7 +114,7 @@ async def test_client_config_cline(app_client, auth_headers):
     assert server["type"] == "streamableHttp"
     assert server["transport"] == "streamable-http"
     assert server["url"] == f"http://test{settings.server_url_prefix}/mcp"
-    assert server["headers"]["X-API-Key"] == reveal(settings.api_key)
+    assert server["headers"]["Authorization"] == f"Bearer {BEARER_PLACEHOLDER}"
 
 
 @pytest.mark.unit
@@ -129,7 +130,7 @@ async def test_client_config_vscode_alias(app_client, auth_headers):
     assert server["type"] == "streamableHttp"
     assert server["transport"] == "streamable-http"
     assert server["url"] == f"http://test{settings.server_url_prefix}/mcp"
-    assert server["headers"]["X-API-Key"] == reveal(settings.api_key)
+    assert server["headers"]["Authorization"] == f"Bearer {BEARER_PLACEHOLDER}"
 
 
 @pytest.mark.unit
@@ -145,7 +146,7 @@ async def test_client_config_langgraph(app_client, auth_headers):
     assert "type" not in server
     assert server["transport"] == "streamable-http"
     assert server["url"] == f"http://test{settings.server_url_prefix}/mcp"
-    assert server["headers"]["X-API-Key"] == reveal(settings.api_key)
+    assert server["headers"]["Authorization"] == f"Bearer {BEARER_PLACEHOLDER}"
 
 
 @pytest.mark.unit
@@ -164,7 +165,7 @@ async def test_client_config_inspector_aliases(app_client, auth_headers, client)
     assert server == {
         "type": "http",
         "url": f"http://test{settings.server_url_prefix}/mcp",
-        "headers": {"X-API-Key": reveal(settings.api_key)},
+        "headers": {"Authorization": f"Bearer {BEARER_PLACEHOLDER}"},
     }
 
 
@@ -178,7 +179,7 @@ async def test_client_config_claude_desktop(app_client, auth_headers):
 
     server = resp.json()["mcpServers"]["oracle-ai-optimizer"]
     expected_url = f"http://test{settings.server_url_prefix}/mcp"
-    expected_header = f"X-API-Key: {reveal(settings.api_key)}"
+    expected_header = f"Authorization: Bearer {BEARER_PLACEHOLDER}"
 
     assert server["command"] == "npx"
     assert server["args"] == [
@@ -207,7 +208,7 @@ async def test_client_config_claude_alias(app_client, auth_headers):
     assert server["args"][2] == f"http://test{settings.server_url_prefix}/mcp"
     assert server["args"][-2:] == [
         "--header",
-        f"X-API-Key: {reveal(settings.api_key)}",
+        f"Authorization: Bearer {BEARER_PLACEHOLDER}",
     ]
 
 

@@ -27,6 +27,16 @@ _DEFAULT_DATABASE_ARGS = (
     "--set",
     "server.database.authn.secretName=test-database-credentials",
 )
+_DEFAULT_AUTH_ARGS = (
+    "--set",
+    "global.authentication.mode=single_user",
+    "--set",
+    "global.authentication.installationId=test-installation",
+    "--set",
+    "global.authentication.adminDatabaseUsername=APP_ADMIN",
+    "--set",
+    "global.authentication.adminPasswordSecretName=test-admin-password",
+)
 
 
 def _default_database_args(args: tuple[str, ...]) -> tuple[str, ...]:
@@ -42,8 +52,7 @@ def _render(*extra_sets: str) -> subprocess.CompletedProcess:
         "template",
         "test",
         str(CHART_DIR),
-        "--set",
-        "global.api.apiKey=dummy-api-key",
+        *_DEFAULT_AUTH_ARGS,
         *_default_database_args(extra_sets),
     ]
     for s in extra_sets:
@@ -58,8 +67,7 @@ def _render_raw(*extra_args: str) -> subprocess.CompletedProcess:
         "template",
         "test",
         str(CHART_DIR),
-        "--set",
-        "global.api.apiKey=dummy-api-key",
+        *_DEFAULT_AUTH_ARGS,
         *_default_database_args(extra_args),
         *extra_args,
     ]
@@ -77,13 +85,56 @@ def _render_with_notes(*extra_sets: str, env: dict | None = None) -> subprocess.
         str(CHART_DIR),
         "--namespace",
         "test-ns",
-        "--set",
-        "global.api.apiKey=dummy-api-key",
+        *_DEFAULT_AUTH_ARGS,
         *_default_database_args(extra_sets),
     ]
     for s in extra_sets:
         cmd.extend(["--set", s])
     return subprocess.run(cmd, capture_output=True, text=True, env=env, check=False)
+
+
+def test_authentication_rejects_oidc_fields_in_database_mode():
+    result = _render("global.authentication.oidc.issuer=https://identity.example.test")
+    assert result.returncode != 0
+    assert "global.authentication.oidc.issuer requires oidc mode" in result.stderr
+
+
+def test_authentication_rejects_non_https_oidc_authority():
+    result = _render(
+        "global.authentication.mode=oidc",
+        "global.authentication.adminPasswordSecretName=",
+        "global.authentication.oidc.issuer=http://identity.example.test",
+        "global.authentication.oidc.discoveryUrl=https://identity.example.test/.well-known/openid-configuration",
+        "global.authentication.oidc.audience=optimizer-api",
+        "global.authentication.oidc.requiredScopes[0]=optimizer.invoke",
+        "global.authentication.oidc.clientId=optimizer-client",
+        "global.authentication.oidc.clientSecretName=oidc-secret",
+        "global.authentication.oidc.adminSubject=admin-subject",
+        "global.authentication.oidc.publicServerUrl=https://optimizer.example.test",
+    )
+    assert result.returncode != 0
+    assert "global.authentication.oidc.issuer must use HTTPS" in result.stderr
+
+
+def test_authentication_setup_runs_after_database_initialization():
+    result = _render(
+        "client.cookieSecret=cccccccccccccccccccccccccccccccc",
+        "server.database.type=SIDB-FREE",
+        "server.database.image.repository=database/free",
+        "server.database.image.tag=1.0.0",
+    )
+    assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
+    jobs = {
+        doc["metadata"]["labels"]["app.kubernetes.io/component"]: doc
+        for doc in _docs(result.stdout)
+        if doc.get("kind") == "Job"
+        and doc.get("metadata", {}).get("labels", {}).get("app.kubernetes.io/component") in {"database", "auth-setup"}
+    }
+
+    assert set(jobs) == {"database", "auth-setup"}
+    assert all("helm.sh/hook" not in job["metadata"].get("annotations", {}) for job in jobs.values())
+    auth_env = jobs["auth-setup"]["spec"]["template"]["spec"]["containers"][0]["env"]
+    assert {item["name"]: item.get("value") for item in auth_env}["AIO_AUTH_SETUP_WAIT_SECONDS"] == "900"
 
 
 def _render_database_contract(*extra_args: str) -> subprocess.CompletedProcess:
@@ -94,8 +145,7 @@ def _render_database_contract(*extra_args: str) -> subprocess.CompletedProcess:
             "template",
             "test",
             str(CHART_DIR),
-            "--set",
-            "global.api.apiKey=dummy-api-key",
+            *_DEFAULT_AUTH_ARGS,
             "--set",
             "client.cookieSecret=cccccccccccccccccccccccccccccccc",
             *extra_args,
@@ -951,10 +1001,7 @@ class TestNotesUninstallDeletesOnlyChartManagedSecrets:
     contract enforced in auth-secret.yaml / priv-secret.yaml.
     """
 
-    _COMMON = (
-        "global.api.apiKey=dummy-api-key",
-        "client.cookieSecret=cccccccccccccccccccccccccccccccc",
-    )
+    _COMMON = ("client.cookieSecret=cccccccccccccccccccccccccccccccc",)
 
     def _notes(self, *extra_sets: str) -> str:
         result = _render_with_notes(*self._COMMON, *extra_sets)
@@ -1908,7 +1955,6 @@ class TestSigNozCleanupHookRbacContract:
     """
 
     _BASE = (
-        "global.api.apiKey=dummy-api-key",
         "client.cookieSecret=cccccccccccccccccccccccccccccccc",
         "signoz.enabled=true",
     )

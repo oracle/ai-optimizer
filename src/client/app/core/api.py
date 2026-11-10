@@ -9,7 +9,6 @@ import contextlib
 import json
 import logging
 import os
-import secrets
 import subprocess
 import sys
 import time
@@ -21,9 +20,7 @@ from urllib.parse import urlparse, urlunparse
 
 import httpx
 import streamlit as st
-from pydantic import SecretStr
 
-from client.app.core.secrets import reveal
 from client.app.core.settings import settings
 from net_addressing import connect_host, netloc, resolve_or_generate_cert, should_inject_server_port, verify_for_url
 
@@ -157,16 +154,6 @@ def start_server(core_environment: Mapping[str, str] | None = None) -> bool:
     pypath = f"{src_dir}{os.pathsep}{existing_pypath}" if existing_pypath else src_dir
     env = {**os.environ, "PYTHONPATH": pypath, **(core_environment or {})}
 
-    # When no API key is configured, generate one so both client and server
-    # share the same key.  Without this the server would auto-generate its
-    # own key and the client would send an empty one → 403.
-    if not settings.api_key:
-        shared_key = secrets.token_urlsafe(32)
-        env["AIO_API_KEY"] = shared_key
-        os.environ["AIO_API_KEY"] = shared_key
-        settings.api_key = SecretStr(shared_key)
-        LOGGER.info("Generated shared AIO API key for all-in-one mode.")
-
     log_path = Path(src_dir) / f"apiserver_{port}.log"
     proc, log_fh = _spawn_server(port, env, log_path)
     settings.server_url = _local_server_origin_url()
@@ -249,7 +236,8 @@ def _base_url(api_prefix: str = "/v1") -> str:
 
 
 def _headers() -> dict:
-    return {"X-API-Key": reveal(settings.api_key) or ""}
+    token = st.session_state.get("auth_token")
+    return {"Authorization": f"Bearer {token}"} if token else {}
 
 
 def api_get(

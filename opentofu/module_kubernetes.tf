@@ -121,6 +121,15 @@ module "kubernetes" {
   namespace                  = local.object_storage_namespace
   object_storage_bucket      = local.object_storage_bucket
   client_cookie_secret       = random_password.client_cookie.result
+  auth_installation_id       = random_uuid.authentication_installation.result
+  oidc_issuer                = var.oidc_issuer
+  oidc_discovery_url         = var.oidc_discovery_url
+  oidc_audience              = var.oidc_audience
+  oidc_required_scopes       = var.oidc_required_scopes
+  oidc_client_id             = var.oidc_client_id
+  oidc_client_secret         = var.oidc_client_secret
+  oidc_admin_subject         = var.oidc_admin_subject
+  oidc_public_server_url     = var.oidc_public_server_url
   providers = {
     oci.home_region = oci.home_region
   }

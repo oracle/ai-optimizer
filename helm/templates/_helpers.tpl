@@ -167,30 +167,52 @@ wait_until() {
 
 
 {{/* ******************************************
-Validate that either global.api.apiKey or global.api.secretName is provided.
+Validate the immutable authentication authority contract.
 *********************************************** */}}
-{{- define "ai-optimizer.apiKeyOrSecretName.required" -}}
-  {{- $apiKey := .Values.global.api.apiKey | trim | default "" -}}
-  {{- $secretName := .Values.global.api.secretName | trim | default "" -}}
-
-  {{- if and (eq $apiKey "") (eq $secretName "") -}}
-    {{- fail "You must specify either global.api.apiKey or global.api.secretName" -}}
+{{- define "ai-optimizer.authentication.validate" -}}
+{{- $auth := .Values.global.authentication | default dict -}}
+{{- $mode := $auth.mode | default "" | trim -}}
+{{- if not (has $mode (list "single_user" "local_users" "oidc")) -}}
+  {{- fail "global.authentication.mode must be one of single_user, local_users, or oidc" -}}
+{{- end -}}
+{{- if eq ($auth.installationId | default "" | trim) "" -}}
+  {{- fail "global.authentication.installationId is required" -}}
+{{- end -}}
+{{- if eq ($auth.adminDatabaseUsername | default "" | trim) "" -}}
+  {{- fail "global.authentication.adminDatabaseUsername is required" -}}
+{{- end -}}
+{{- if eq $mode "oidc" -}}
+  {{- $oidc := $auth.oidc | default dict -}}
+  {{- range $field := list "issuer" "discoveryUrl" "audience" "clientId" "clientSecretName" "adminSubject" "publicServerUrl" -}}
+    {{- if eq (index $oidc $field | default "" | trim) "" -}}
+      {{- fail (printf "global.authentication.oidc.%s is required for oidc mode" $field) -}}
+    {{- end -}}
   {{- end -}}
-
-  {{- if and (ne $apiKey "") (ne $secretName "") -}}
-    {{- fail "You cannot specify both global.api.apiKey and global.api.secretName; please choose one" -}}
+  {{- if eq (len ($oidc.requiredScopes | default list)) 0 -}}
+    {{- fail "global.authentication.oidc.requiredScopes must contain at least one scope" -}}
+  {{- end -}}
+  {{- range $field := list "issuer" "discoveryUrl" "publicServerUrl" -}}
+    {{- if not (hasPrefix "https://" (index $oidc $field | trim)) -}}
+      {{- fail (printf "global.authentication.oidc.%s must use HTTPS" $field) -}}
+    {{- end -}}
+  {{- end -}}
+  {{- if ne ($auth.adminPasswordSecretName | default "" | trim) "" -}}
+    {{- fail "global.authentication.adminPasswordSecretName is only valid for database-account modes" -}}
+  {{- end -}}
+{{- else -}}
+  {{- if eq ($auth.adminPasswordSecretName | default "" | trim) "" -}}
+    {{- fail "global.authentication.adminPasswordSecretName is required for database-account modes" -}}
+  {{- end -}}
+  {{- $oidc := $auth.oidc | default dict -}}
+  {{- range $field := list "issuer" "discoveryUrl" "audience" "clientId" "clientSecretName" "adminSubject" "publicServerUrl" "providerName" -}}
+    {{- if ne (index $oidc $field | default "" | trim) "" -}}
+      {{- fail (printf "global.authentication.oidc.%s requires oidc mode" $field) -}}
+    {{- end -}}
+  {{- end -}}
+  {{- if gt (len ($oidc.requiredScopes | default list)) 0 -}}
+    {{- fail "global.authentication.oidc.requiredScopes requires oidc mode" -}}
   {{- end -}}
 {{- end -}}
-
-{{/* ******************************************
-Define the API Key Secret with Defaults
-*********************************************** */}}
-{{- define "ai-optimizer.apiSecretName" -}}
-{{- .Values.global.api.secretName | default (printf "%s-api-key" (include "ai-optimizer.fullname" .)) -}}
-{{- end }}
-
-{{- define "ai-optimizer.apiSecretKey" -}}
-{{- .Values.global.api.secretKey | default "apiKey" -}}
 {{- end }}
 
 
@@ -449,8 +471,25 @@ Secret-mounted file rather than as pod env entries. Operator-supplied
 `server.envSecret.content` overrides chart defaults via mergeOverwrite.
 *********************************************** */}}
 {{- define "ai-optimizer.server.envContent" -}}
+{{- include "ai-optimizer.authentication.validate" . -}}
 {{- $out := dict -}}
-{{- $_ := set $out "AIO_SERVER_URL_PREFIX" (include "ai-optimizer.getPath" . | trimSuffix "/") -}}
+{{- $auth := .Values.global.authentication -}}
+{{- $_ := set $out "AIO_AUTH_MODE" $auth.mode -}}
+{{- $_ = set $out "AIO_INSTALLATION_ID" $auth.installationId -}}
+{{- $_ = set $out "AIO_ADMIN_DATABASE_USERNAME" $auth.adminDatabaseUsername -}}
+{{- $_ = set $out "AIO_AUTH_LOGIN_DATA_ROLE" ($auth.loginDataRole | default "AIO_LOGIN_ROLE") -}}
+{{- if eq $auth.mode "oidc" -}}
+{{- $oidc := $auth.oidc -}}
+{{- $_ = set $out "AIO_OIDC_ISSUER" $oidc.issuer -}}
+{{- $_ = set $out "AIO_OIDC_DISCOVERY_URL" $oidc.discoveryUrl -}}
+{{- $_ = set $out "AIO_OIDC_AUDIENCE" $oidc.audience -}}
+{{- $_ = set $out "AIO_OIDC_REQUIRED_SCOPES" ($oidc.requiredScopes | toJson) -}}
+{{- $_ = set $out "AIO_OIDC_CLIENT_ID" $oidc.clientId -}}
+{{- $_ = set $out "AIO_OIDC_ADMIN_SUBJECT" $oidc.adminSubject -}}
+{{- $_ = set $out "AIO_OIDC_PUBLIC_SERVER_URL" $oidc.publicServerUrl -}}
+{{- if $oidc.providerName -}}{{- $_ = set $out "AIO_OIDC_PROVIDER_NAME" $oidc.providerName -}}{{- end -}}
+{{- end -}}
+{{- $_ = set $out "AIO_SERVER_URL_PREFIX" (include "ai-optimizer.getPath" . | trimSuffix "/") -}}
 {{- $_ = set $out "AIO_MAX_CLIENTS" (.Values.server.maxClients | toString) -}}
 {{- with .Values.server.ssl -}}
 {{- if .enabled -}}
@@ -484,7 +523,14 @@ Same contract as server.envContent.
 *********************************************** */}}
 {{- define "ai-optimizer.client.envContent" -}}
 {{- $out := dict -}}
-{{- $_ := set $out "AIO_SERVER_URL" (include "ai-optimizer.server.serviceUrl" .) -}}
+{{- $auth := .Values.global.authentication -}}
+{{- $_ := set $out "AIO_AUTH_MODE" $auth.mode -}}
+{{- $_ = set $out "AIO_INSTALLATION_ID" $auth.installationId -}}
+{{- $_ = set $out "AIO_ADMIN_DATABASE_USERNAME" $auth.adminDatabaseUsername -}}
+{{- if and (eq $auth.mode "oidc") $auth.oidc.providerName -}}
+{{- $_ = set $out "AIO_OIDC_PROVIDER_NAME" $auth.oidc.providerName -}}
+{{- end -}}
+{{- $_ = set $out "AIO_SERVER_URL" (include "ai-optimizer.server.serviceUrl" .) -}}
 {{- $_ = set $out "AIO_SERVER_PORT" (.Values.server.service.port | default 8000 | toString) -}}
 {{- with .Values.client.ssl -}}
 {{- if .enabled -}}
@@ -1219,7 +1265,7 @@ SigNoz subchart version exactly.
 
 
 {{- /* Resolved name of the Secret holding the SigNoz admin credentials.
-       Mirrors `global.apiSecretName` / `client.cookieSecretName`: callers
+       Mirrors the client cookie Secret helper: callers
        use this rather than re-applying `default "signoz-authn"` everywhere
        (chart's authn-secret.yaml + the setup Job's volume mount). */ -}}
 {{- define "ai-optimizer.signoz.authnSecretName" -}}

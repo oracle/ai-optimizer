@@ -49,41 +49,41 @@ def mock_refresh_sqlcl():
 @pytest.mark.unit
 @pytest.mark.anyio
 async def test_list_databases_no_auth(app_client):
-    """Databases endpoint rejects requests without API key."""
+    """Databases endpoint challenges requests without a bearer credential."""
     resp = await app_client.get("/v1/databases")
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 @pytest.mark.unit
 @pytest.mark.anyio
 async def test_create_database_no_auth(app_client):
-    """POST databases rejects requests without API key."""
+    """POST databases challenges requests without a bearer credential."""
     resp = await app_client.post("/v1/databases", json={"alias": "X"})
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 @pytest.mark.unit
 @pytest.mark.anyio
 async def test_update_database_no_auth(app_client):
-    """PUT databases rejects requests without API key."""
+    """PUT databases challenges requests without a bearer credential."""
     resp = await app_client.put("/v1/databases/TEST", json={"username": "x"})
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 @pytest.mark.unit
 @pytest.mark.anyio
 async def test_delete_database_no_auth(app_client):
-    """DELETE databases rejects requests without API key."""
+    """DELETE databases challenges requests without a bearer credential."""
     resp = await app_client.delete("/v1/databases/TEST")
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 @pytest.mark.unit
 @pytest.mark.anyio
 async def test_delete_vector_store_no_auth(app_client):
-    """DELETE vector-store rejects requests without API key."""
+    """DELETE vector-store challenges requests without a bearer credential."""
     resp = await app_client.delete("/v1/databases/TEST/vector-stores/VS1")
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 @pytest.mark.unit

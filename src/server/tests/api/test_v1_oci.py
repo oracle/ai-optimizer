@@ -60,9 +60,9 @@ def _reset_model_configs():
 @pytest.mark.unit
 @pytest.mark.anyio
 async def test_list_oci_profiles_no_auth(app_client):
-    """OCI profiles endpoint rejects requests without API key."""
+    """OCI profiles endpoint challenges requests without a bearer credential."""
     resp = await app_client.get("/v1/oci")
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 @pytest.mark.unit

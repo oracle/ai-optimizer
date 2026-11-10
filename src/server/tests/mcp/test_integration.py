@@ -307,7 +307,7 @@ async def test_client_config_structure(app_client, auth_headers):
     assert server_entry["type"] == "streamableHttp"
     assert server_entry["transport"] == "streamable-http"
     assert urlparse(server_entry["url"]).path.endswith("/mcp")
-    assert "X-API-Key" in server_entry["headers"]
+    assert server_entry["headers"]["Authorization"] == "Bearer ${AIO_BEARER_TOKEN}"
 
 
 async def test_mounted_http_modern_protocol_and_authentication(
@@ -318,9 +318,9 @@ async def test_mounted_http_modern_protocol_and_authentication(
 ):
     """The mounted endpoint authenticates and serves the modern MCP protocol."""
     missing = await app_client.post("/mcp/", json={})
-    wrong = await app_client.post("/mcp/", headers={"X-API-Key": "wrong"}, json={})
-    assert missing.status_code == 403
-    assert wrong.status_code == 403
+    wrong = await app_client.post("/mcp/", headers={"Authorization": "Bearer wrong"}, json={})
+    assert missing.status_code == 401
+    assert wrong.status_code == 401
 
     rest_response = await app_client.get("/mcp/tools", headers=auth_headers)
     assert rest_response.status_code == 200
@@ -336,7 +336,7 @@ async def test_mounted_http_modern_protocol_and_authentication(
 
     transport = StreamableHttpTransport(
         server_config["url"],
-        headers=server_config["headers"],
+        headers=auth_headers,
         httpx_client_factory=_asgi_client_factory,
     )
     settings.client_settings.vector_search.rephrase = False

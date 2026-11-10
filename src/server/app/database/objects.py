@@ -118,6 +118,83 @@ SCHEMA_DDL = [
     CREATE INDEX IF NOT EXISTS aio_embed_jobs_target_db_ix
         ON aio_embed_jobs (target_db)
     """,
+    """
+    CREATE TABLE IF NOT EXISTS aio_auth_authority (
+        installation_id          VARCHAR2(255) NOT NULL,
+        auth_mode                VARCHAR2(32) NOT NULL,
+        schema_version           NUMBER(9) NOT NULL,
+        database_identity        VARCHAR2(255) NOT NULL,
+        application_schema       VARCHAR2(128) NOT NULL,
+        admin_database_username  VARCHAR2(128) NOT NULL,
+        oidc_issuer              VARCHAR2(2048),
+        oidc_admin_subject       VARCHAR2(1024),
+        initialized              TIMESTAMP(9) WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
+        last_validated           TIMESTAMP(9) WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
+        CONSTRAINT aio_auth_authority_pk PRIMARY KEY (installation_id),
+        CONSTRAINT aio_auth_authority_mode_ck
+            CHECK (auth_mode IN ('SINGLE_USER', 'LOCAL_USERS', 'OIDC')),
+        CONSTRAINT aio_auth_authority_oidc_ck CHECK (
+            (auth_mode = 'OIDC' AND oidc_issuer IS NOT NULL AND oidc_admin_subject IS NOT NULL)
+            OR (auth_mode <> 'OIDC' AND oidc_issuer IS NULL AND oidc_admin_subject IS NULL)
+        )
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS aio_users (
+        user_id             RAW(16) NOT NULL,
+        username            VARCHAR2(255) NOT NULL,
+        auth_source         VARCHAR2(32) NOT NULL,
+        database_username   VARCHAR2(128),
+        issuer              VARCHAR2(2048),
+        subject             VARCHAR2(1024),
+        display_name        VARCHAR2(255),
+        email               VARCHAR2(320),
+        role                VARCHAR2(16) NOT NULL,
+        status              VARCHAR2(16) DEFAULT 'ACTIVE' NOT NULL,
+        created             TIMESTAMP(9) WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
+        updated             TIMESTAMP(9) WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
+        last_login          TIMESTAMP(9) WITH TIME ZONE,
+        CONSTRAINT aio_users_pk PRIMARY KEY (user_id),
+        CONSTRAINT aio_users_database_uq UNIQUE (database_username),
+        CONSTRAINT aio_users_oidc_uq UNIQUE (issuer, subject),
+        CONSTRAINT aio_users_source_ck CHECK (auth_source IN ('DATABASE_END_USER', 'OIDC')),
+        CONSTRAINT aio_users_role_ck CHECK (role IN ('ADMIN', 'MEMBER')),
+        CONSTRAINT aio_users_status_ck CHECK (status IN ('ACTIVE', 'DISABLED')),
+        CONSTRAINT aio_users_identity_ck CHECK (
+            (auth_source = 'DATABASE_END_USER' AND database_username IS NOT NULL
+                AND issuer IS NULL AND subject IS NULL)
+            OR (auth_source = 'OIDC' AND issuer IS NOT NULL AND subject IS NOT NULL)
+        ),
+        CONSTRAINT aio_users_admin_ck CHECK (
+            role <> 'ADMIN'
+            OR user_id = 'F4304C284BF65E7DA28433CC0A5A6C01'
+        )
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS aio_auth_sessions (
+        session_id      RAW(16) NOT NULL,
+        user_id         RAW(16) NOT NULL,
+        token_digest    RAW(32) NOT NULL,
+        created         TIMESTAMP(9) WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
+        expires         TIMESTAMP(9) WITH TIME ZONE NOT NULL,
+        last_seen       TIMESTAMP(9) WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
+        revoked         TIMESTAMP(9) WITH TIME ZONE,
+        remote_address  VARCHAR2(255),
+        CONSTRAINT aio_auth_sessions_pk PRIMARY KEY (session_id),
+        CONSTRAINT aio_auth_sessions_token_uq UNIQUE (token_digest),
+        CONSTRAINT aio_auth_sessions_user_fk FOREIGN KEY (user_id)
+            REFERENCES aio_users(user_id) ON DELETE CASCADE
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS aio_auth_sessions_user_ix
+        ON aio_auth_sessions (user_id)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS aio_auth_sessions_expiry_ix
+        ON aio_auth_sessions (expires, revoked)
+    """,
 ]
 
 REQUIRED_SCHEMA_TABLES = frozenset(
@@ -127,6 +204,9 @@ REQUIRED_SCHEMA_TABLES = frozenset(
         "AIO_TESTSET_QA",
         "AIO_EVALUATIONS",
         "AIO_EMBED_JOBS",
+        "AIO_AUTH_AUTHORITY",
+        "AIO_USERS",
+        "AIO_AUTH_SESSIONS",
     }
 )
 
@@ -135,5 +215,7 @@ REQUIRED_SCHEMA_INDEXES = frozenset(
         "AIO_EMBED_JOBS_CLIENT_IX",
         "AIO_EMBED_JOBS_STATUS_IX",
         "AIO_EMBED_JOBS_TARGET_DB_IX",
+        "AIO_AUTH_SESSIONS_USER_IX",
+        "AIO_AUTH_SESSIONS_EXPIRY_IX",
     }
 )

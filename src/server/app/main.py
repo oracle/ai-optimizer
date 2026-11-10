@@ -19,9 +19,12 @@ import server.app.core.environ  # noqa: F401, E402  # side-effect: loads .env
 from _version import __version__
 from server.app.api.mcp.router import router as mcp_router
 from server.app.api.v1.router import router as v1_router
+from server.app.auth.dependencies import set_authority_state
+from server.app.auth.repository import verify_authority
+from server.app.auth.service import AuthAuthorityUnavailable, authenticator_ready
 from server.app.core.etc import apply_overlay, load_config_file
-from server.app.core.mcp import MCPApiKeyMiddleware, MCPOriginMiddleware, mcp
-from server.app.core.settings import _client_store, require_core_database_config, settings
+from server.app.core.mcp import MCPOriginMiddleware, mcp
+from server.app.core.settings import _client_store, require_core_database_config, settings, validate_auth_configuration
 from server.app.database.config import CoreDatabaseUnavailable, close_pool
 from server.app.database.registry import init_core_database
 from server.app.database.settings import (
@@ -81,12 +84,18 @@ async def lifespan(_app: FastAPI):
     """FastAPI Lifespan"""
     # --- Phase 1: Bootstrap (.env already loaded at import time) ---
     protected: set[str] = set(settings.model_fields_set)
-    if settings.api_key_generated:
-        protected.discard("api_key")
-
     # --- Phase 2: Init required CORE database ---
     core_db = require_core_database_config()
     await init_core_database(core_db)
+    try:
+        validate_auth_configuration()
+        await verify_authority()
+        if not authenticator_ready():
+            raise AuthAuthorityUnavailable("Authentication for the configured mode is not initialized")
+    except Exception as exc:
+        set_authority_state(False, str(exc))
+    else:
+        set_authority_state(True)
 
     background_tasks: list[asyncio.Task] = []
     try:
@@ -147,15 +156,12 @@ URL_PREFIX = settings.server_url_prefix.strip("/")
 API_PREFIX = "/v1"
 MCP_PREFIX = "/mcp"
 
-mcp_app = mcp.http_app(
-    path="/",
-    middleware=[Middleware(MCPApiKeyMiddleware)],
-)
+mcp_app = mcp.http_app(path="/")
 
 app = FastAPI(
     title="Oracle AI Optimizer and Toolkit",
     version=__version__,
-    # Docs routes are served by the v1 router behind verify_api_key; disable
+    # Docs routes are served by the authenticated v1 router; disable
     # the built-in unauthenticated ones FastAPI would otherwise register.
     docs_url=None,
     openapi_url=None,

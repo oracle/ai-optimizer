@@ -5,8 +5,19 @@
 global:
   env: "iac"
   cleanupPVCs: true
-  api:
-    secretName: "ai-optimizer-api-key-${label}"
+  authentication:
+    mode: "oidc"
+    installationId: "${auth_installation_id}"
+    adminDatabaseUsername: "AI_OPTIMIZER"
+    oidc:
+      issuer: "${oidc_issuer}"
+      discoveryUrl: "${oidc_discovery_url}"
+      audience: "${oidc_audience}"
+      requiredScopes: ${oidc_required_scopes}
+      clientId: "${oidc_client_id}"
+      clientSecretName: "ai-optimizer-oidc-${label}"
+      adminSubject: "${oidc_admin_subject}"
+      publicServerUrl: "${oidc_public_server_url}"
 %{ if ocir_url != "" ~}
   imageRegistry: "${ocir_url}"
 %{ endif ~}

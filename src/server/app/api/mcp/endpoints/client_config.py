@@ -9,7 +9,6 @@ Endpoint returning MCP client configuration.
 from fastapi import APIRouter, HTTPException, Request
 
 from server.app.api.mcp.schemas.client_config import MCPClientConfigResponse
-from server.app.core.secrets import reveal
 from server.app.core.settings import settings
 
 auth = APIRouter()
@@ -31,25 +30,12 @@ def _mcp_url(request: Request) -> str:
     return f"{base}{prefix}/mcp"
 
 
-def _api_key() -> str:
-    """Reveal API key for client configuration."""
-    api_key = reveal(settings.api_key)
-
-    if not api_key:
-        raise HTTPException(
-            status_code=500,
-            detail="MCP API key is not configured.",
-        )
-
-    return api_key
-
-
-def _streamable_http_entry(url: str, api_key: str, include_type: bool = True) -> dict:
+def _streamable_http_entry(url: str, bearer_token: str, include_type: bool = True) -> dict:
     """Return a Streamable HTTP MCP server entry."""
     entry = {
         "transport": "streamable-http",
         "url": url,
-        "headers": {"X-API-Key": api_key},
+        "headers": {"Authorization": f"Bearer {bearer_token}"},
     }
 
     if include_type:
@@ -58,7 +44,7 @@ def _streamable_http_entry(url: str, api_key: str, include_type: bool = True) ->
     return entry
 
 
-def _client_config(client: str, url: str, api_key: str) -> dict:
+def _client_config(client: str, url: str, bearer_token: str) -> dict:
     """Return client-specific MCP configuration."""
     client = client.lower().strip()
 
@@ -67,7 +53,7 @@ def _client_config(client: str, url: str, api_key: str) -> dict:
             "mcpServers": {
                 "oracle-ai-optimizer": _streamable_http_entry(
                     url=url,
-                    api_key=api_key,
+                    bearer_token=bearer_token,
                     include_type=True,
                 )
             }
@@ -78,7 +64,7 @@ def _client_config(client: str, url: str, api_key: str) -> dict:
             "mcpServers": {
                 "oracle-ai-optimizer": _streamable_http_entry(
                     url=url,
-                    api_key=api_key,
+                    bearer_token=bearer_token,
                     include_type=False,
                 )
             }
@@ -90,7 +76,7 @@ def _client_config(client: str, url: str, api_key: str) -> dict:
                 "oracle-ai-optimizer": {
                     "type": "http",
                     "url": url,
-                    "headers": {"X-API-Key": api_key},
+                    "headers": {"Authorization": f"Bearer {bearer_token}"},
                 }
             }
         }
@@ -107,7 +93,7 @@ def _client_config(client: str, url: str, api_key: str) -> dict:
                         "--transport",
                         "http-only",
                         "--header",
-                        f"X-API-Key: {api_key}",
+                        f"Authorization: Bearer {bearer_token}",
                     ],
                 }
             }
@@ -118,7 +104,7 @@ def _client_config(client: str, url: str, api_key: str) -> dict:
             "mcpServers": {
                 "oracle-ai-optimizer": _streamable_http_entry(
                     url=url,
-                    api_key=api_key,
+                    bearer_token=bearer_token,
                     include_type=True,
                 )
             }
@@ -134,6 +120,4 @@ def _client_config(client: str, url: str, api_key: str) -> dict:
 async def get_client_config(request: Request, client: str = "generic"):
     """Return a ready-to-use MCP client configuration object."""
     url = _mcp_url(request)
-    api_key = _api_key()
-
-    return _client_config(client=client, url=url, api_key=api_key)
+    return _client_config(client=client, url=url, bearer_token="${AIO_BEARER_TOKEN}")

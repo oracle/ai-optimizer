@@ -3,6 +3,7 @@
 # spell-checker: ignore nindent tolerations ollama pplx
 {{- include "ai-optimizer.server.database.required" . }}
 {{- include "ai-optimizer.server.otel.validate" . }}
+{{- include "ai-optimizer.authentication.validate" . }}
 
 apiVersion: apps/v1
 kind: Deployment
@@ -50,11 +51,13 @@ spec:
           env:
             - name: AIO_ENV
               value: {{ .Values.global.env | quote }}
-            - name: AIO_API_KEY
+            {{- if eq .Values.global.authentication.mode "oidc" }}
+            - name: AIO_OIDC_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "ai-optimizer.apiSecretName" . }}
-                  key: {{ include "ai-optimizer.apiSecretKey" . }}
+                  name: {{ .Values.global.authentication.oidc.clientSecretName }}
+                  key: {{ .Values.global.authentication.oidc.clientSecretKey | default "clientSecret" }}
+            {{- end }}
             {{- if and .Values.server.database .Values.server.database.type }}
             {{- include "ai-optimizer.server.database.authn" . | nindent 12 }}
               {{- if eq (include "ai-optimizer.server.database.isADBS" .) "true" }}

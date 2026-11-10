@@ -31,7 +31,6 @@ def _mock_settings(**overrides):
     m.server_ssl_cert_file = overrides.get("server_ssl_cert_file", "")
     m.server_ssl_key_file = overrides.get("server_ssl_key_file", "")
     m.server_url_prefix = overrides.get("server_url_prefix", "")
-    m.api_key = overrides.get("api_key", "test-key")
     return m
 
 
@@ -196,23 +195,21 @@ class TestBaseUrl:
 class TestHeaders:
     """Tests for the _headers helper."""
 
-    def test_with_api_key(self):
-        """Verify X-API-Key header is set when api_key is configured."""
-        settings = _mock_settings(api_key="secret123")
-        with patch(f"{MODULE}.settings", settings):
+    def test_with_bearer_token(self):
+        """The current user session token is sent as a bearer credential."""
+        with patch(f"{MODULE}.st.session_state", {"auth_token": "secret123"}):
             from client.app.core.api import _headers
 
             result = _headers()
-        assert result == {"X-API-Key": "secret123"}
+        assert result == {"Authorization": "Bearer secret123"}
 
-    def test_empty_api_key(self):
-        """Verify X-API-Key defaults to empty string when api_key is None."""
-        settings = _mock_settings(api_key=None)
-        with patch(f"{MODULE}.settings", settings):
+    def test_without_bearer_token(self):
+        """Unauthenticated public requests carry no authorization header."""
+        with patch(f"{MODULE}.st.session_state", {}):
             from client.app.core.api import _headers
 
             result = _headers()
-        assert result == {"X-API-Key": ""}
+        assert result == {}
 
 
 # ---------------------------------------------------------------------------
@@ -1022,30 +1019,23 @@ class TestStartServer:
         child_environment = mock_spawn.call_args.args[1]
         assert {key: child_environment[key] for key in core_environment} == core_environment
 
-    def test_generates_api_key_when_none(self):
-        """Verify start_server generates an API key when none is configured."""
+    def test_start_server_does_not_generate_shared_credentials(self):
+        """Local startup forwards configuration without creating a shared key."""
         mock_proc = MagicMock()
         mock_proc.poll.return_value = None
         mock_fh = MagicMock()
-        settings = _mock_settings(api_key=None)
-        # Need to handle the falsy check: `if not settings.api_key`
-        settings.api_key = None
+        settings = _mock_settings()
         with (
             patch(f"{MODULE}._SERVER", {"process": None, "log_file": None}),
             patch(f"{MODULE}.settings", settings),
-            patch(f"{MODULE}._spawn_server", return_value=(mock_proc, mock_fh)),
+            patch(f"{MODULE}._spawn_server", return_value=(mock_proc, mock_fh)) as mock_spawn,
             patch(f"{MODULE}._wait_for_server_ready", return_value=True),
             patch(f"{MODULE}.atexit.register"),
-            patch(f"{MODULE}.secrets.token_urlsafe", return_value="generated-key"),
         ):
             from client.app.core.api import start_server
 
             assert start_server() is True
-        # ``settings.api_key`` is a ``SecretStr`` after migration; reveal it
-        # for the assertion.
-        from client.app.core.secrets import reveal
-
-        assert reveal(settings.api_key) == "generated-key"
+        assert "AIO_API_KEY" not in mock_spawn.call_args.args[1]
 
 
 # ---------------------------------------------------------------------------

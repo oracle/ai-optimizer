@@ -41,17 +41,17 @@ class TestBuildMcpTransport:
         transport = build_mcp_transport("https://x.com", "k")
         assert isinstance(transport, StreamableHTTPTransport)
 
-    def test_sensitive_headers_contains_api_key(self):
-        """Verify X-API-Key is set in sensitive_headers."""
+    def test_sensitive_headers_contains_bearer(self):
+        """Verify the bearer credential is marked sensitive."""
         transport = build_mcp_transport("https://x.com", "secret-key-123")
         headers = dict(transport.sensitive_headers or {})
-        assert "X-API-Key" in headers
+        assert "Authorization" in headers
 
     def test_sensitive_headers_value(self):
-        """Verify sensitive_headers X-API-Key value matches the api_key argument."""
+        """Verify the supplied token is formatted as a bearer credential."""
         transport = build_mcp_transport("https://x.com", "my-secret")
         headers = dict(transport.sensitive_headers or {})
-        assert headers["X-API-Key"] == "my-secret"
+        assert headers["Authorization"] == "Bearer my-secret"
 
 
 def test_mcp_client_uses_sessionless_protocol():
@@ -65,7 +65,7 @@ def test_mcp_client_uses_sessionless_protocol():
 
     transport_class.assert_called_once_with(
         "https://mcp.example.com/endpoint/",
-        headers={"X-API-Key": "secret"},
+        headers={"Authorization": "Bearer secret"},
         verify=False,
     )
     client_class.assert_called_once_with(transport_class.return_value, mode=_MCP_PROTOCOL_VERSION)

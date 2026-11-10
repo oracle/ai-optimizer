@@ -12,22 +12,28 @@ nameOverride: ""
 # -----------------------
 # -- Global Configuration
 global:
-  # -- Either:
-  # 1) Provide the 'apiKey' directly
-  # 2) Provide a secretName referring to an existing Secret containing the API key.
-  api:
-    # -- Key for making API calls to the server.
-    # Recommended to supply at command line or use the secretName to avoid storing in the values file.
-    # Example: "abcd1234opt5678"
-    apiKey: ""
-
-    # -- Name of the Secret that stores the API key.
-    # This allows you to keep the API key out of the values file and manage it securely via Secrets.
-    # Example: "optimizer-api-keys"
-    secretName: ""
-
-    # -- Key name inside the Secret that contains the API key when secretName defined.
-    secretKey: "apiKey"
+  authentication:
+    # -- Authentication authority: single_user, local_users, or oidc.
+    mode: ""
+    # -- Stable deployment identifier retained across upgrades and transport repair.
+    installationId: ""
+    # -- Oracle local end user mapped to the reserved application Admin.
+    adminDatabaseUsername: ""
+    loginDataRole: "AIO_LOGIN_ROLE"
+    # -- Secret used only by the setup Job to verify the mapped Admin in database-account modes.
+    adminPasswordSecretName: ""
+    adminPasswordSecretKey: "password"
+    oidc:
+      issuer: ""
+      discoveryUrl: ""
+      audience: ""
+      requiredScopes: []
+      clientId: ""
+      clientSecretName: ""
+      clientSecretKey: "clientSecret"
+      adminSubject: ""
+      publicServerUrl: ""
+      providerName: ""
 
   # -- URL path appended to the host.
   # Example: "/test" results in URLs like http://hostname/test/...
@@ -385,7 +391,7 @@ server:
   # The chart always creates this Secret with the AIO_* settings derived
   # from chart values (server URL prefix,
   # max clients, SSL, OKE workload identity, Ollama URL). Pod env keeps
-  # only AIO_ENV (bootstrap) and secretKeyRef bindings (AIO_API_KEY,
+  # only AIO_ENV (bootstrap) and secretKeyRef bindings (authentication,
   # AIO_DB_*, model API keys). pydantic-settings reads the file directly,
   # and load_dotenv(override=False) means pod env still wins where set.
   #
@@ -549,7 +555,7 @@ client:
   # of password / passwordSecretName / passwordAutoGenerate may be set; the
   # chart fails the render when more than one is active. With none set, the
   # additional UI access check is disabled. Applies to the Streamlit client
-  # UI only; API access continues to be governed by AIO_API_KEY.
+  # UI only; API access is governed by the configured authentication authority.
   password: ""
   # -- Name of a pre-existing Secret containing the shared password (BYO).
   # The chart references it but does not create or manage its lifecycle.
@@ -612,7 +618,7 @@ client:
   # -- Environment configuration mounted as a Secret at /app/src/.env.{global.env}.
   # The chart always creates this Secret with the AIO_* settings derived
   # from chart values (server URL, server port, client SSL). Pod env
-  # keeps only AIO_ENV plus the secretKeyRef bindings for AIO_API_KEY
+  # keeps only AIO_ENV plus required secretKeyRef bindings
   # and AIO_CLIENT_COOKIE_SECRET.
   #
   # Use this block to add operator overrides — extra AIO_* entries get

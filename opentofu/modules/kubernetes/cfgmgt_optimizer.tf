@@ -20,6 +20,14 @@ locals {
     app_version              = var.app_version
     ssl_enabled              = var.ssl_enabled
     client_cookie_secret     = var.client_cookie_secret
+    auth_installation_id     = var.auth_installation_id
+    oidc_issuer              = var.oidc_issuer
+    oidc_discovery_url       = var.oidc_discovery_url
+    oidc_audience            = var.oidc_audience
+    oidc_required_scopes     = jsonencode(tolist(var.oidc_required_scopes))
+    oidc_client_id           = var.oidc_client_id
+    oidc_admin_subject       = var.oidc_admin_subject
+    oidc_public_server_url   = var.oidc_public_server_url
     is_observability_enabled = var.is_observability_enabled
     ocir_url                 = var.byo_ocir_url
     object_storage_bucket    = var.object_storage_bucket

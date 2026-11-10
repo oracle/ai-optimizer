@@ -18,7 +18,7 @@ locals {
     db_username              = var.db_conn.username
     db_password              = var.db_conn.password
     db_service               = var.db_conn.service
-    optimizer_api_key        = random_string.optimizer_api_key.result
+    oidc_client_secret       = var.oidc_client_secret
     deploy_buildkit          = var.byo_ocir_url == ""
     deploy_optimizer         = var.deploy_optimizer
     optimizer_version        = var.optimizer_version

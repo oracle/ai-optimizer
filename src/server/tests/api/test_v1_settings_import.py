@@ -66,9 +66,9 @@ def mock_register_mcp_prompts():
 
 
 async def test_import_no_auth(app_client):
-    """POST /import without API key returns 403."""
+    """POST /import without a bearer credential returns 401."""
     resp = await app_client.post(ENDPOINT, json={})
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 # ---------------------------------------------------------------------------
@@ -668,7 +668,7 @@ async def test_import_scalar_log_level(app_client, auth_headers, mock_persist):
 
 
 async def test_import_ignores_protected_fields(app_client, auth_headers, mock_persist):
-    """Fields not in SettingsImport schema (env, api_key, etc.) are silently dropped."""
+    """Fields outside SettingsImport are silently dropped."""
     payload = {"env": "production", "api_key": "hacked", "server_port": 9999}
 
     resp = await app_client.post(ENDPOINT, json=payload, headers=auth_headers)
@@ -676,7 +676,6 @@ async def test_import_ignores_protected_fields(app_client, auth_headers, mock_pe
     assert resp.status_code == 200
     # Protected fields should not have changed
     assert settings.env != "production"
-    assert settings.api_key != "hacked"
     assert settings.server_port != 9999
 
 

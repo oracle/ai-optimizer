@@ -55,11 +55,6 @@ spec:
               value: {{ include "ai-optimizer.server.serviceUrl" . }}
             - name: AIO_SERVER_PORT
               value: {{ .Values.server.service.port | default 8000 | quote }}
-            - name: AIO_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "ai-optimizer.apiSecretName" . }}
-                  key: {{ include "ai-optimizer.apiSecretKey" . }}
             - name: AIO_CLIENT_COOKIE_SECRET
               valueFrom:
                 secretKeyRef:

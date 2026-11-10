@@ -346,6 +346,22 @@ class TestMain:
             entrypoint.main()
         mock_start.assert_called_once()
 
+    def test_dispatches_to_authentication_setup(self, monkeypatch):
+        """main should call setup_authentication for the setup component."""
+        import sys
+        from unittest.mock import patch
+
+        monkeypatch.setattr(sys, "argv", ["entrypoint.py", "auth-setup"])
+        with (
+            patch.object(entrypoint, "setup_pythonpath"),
+            patch.object(entrypoint, "load_env_file"),
+            patch.object(entrypoint, "prepare_oci_config"),
+            patch.object(entrypoint, "detect_component", return_value="auth-setup"),
+            patch.object(entrypoint, "setup_authentication") as mock_setup,
+        ):
+            entrypoint.main()
+        mock_setup.assert_called_once_with()
+
     def test_unknown_component_exits(self, monkeypatch):
         """main should sys.exit(1) for an unknown component."""
         import sys
