@@ -8,6 +8,39 @@ sidebar_position: 40
 {/* Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl. */}
 
+## v2.5.1 — 16 November 2026
+
+This release makes Oracle AI Database a required service, updates Testbed evaluation and MCP support, and improves vector store refresh workflows.
+
+### Upgrade considerations
+
+- Python 3.12, 3.13, and 3.14 are supported, excluding Python 3.14.1. Python 3.11 is no longer supported.
+- The Server requires a complete Oracle AI Database configuration and a successful connection at startup. Standalone deployments use the `AIO_DB_USERNAME`, `AIO_DB_PASSWORD`, and `AIO_DB_DSN` environment variables. The local client and all-in-one container provide a setup page when these values are absent.
+- The required database connection uses the reserved `CORE` alias and is controlled by the deployment configuration. Helm deployments must configure `server.database`.
+- External MCP clients must support the sessionless MCP `2026-07-28` protocol and Streamable HTTP transport.
+
+### Highlights
+
+- **Testbed evaluation:** Test set generation and evaluation now use Giskard v3. Test sets and evaluation reports are stored in Oracle AI Database, including previous reports that can be reviewed from the client.
+- **MCP:** MCP support has been updated to FastMCP v4 with deterministic tool catalogs, configurable private cache hints, and current wire-format conventions. Vector Search requests can select a specific vector store with the `collection_alias` tool argument.
+- **Split and Embed:** Re-uploading a local file replaces its existing chunks after the new content is embedded. Failed or empty replacements preserve the previous document.
+- **Deployment:** The Helm chart includes expanded database modes and examples, can generate and retain the Streamlit signed-cookie secret, and provides additional high-availability, ingress TLS, and OCI deployment overlays.
+- **Dependencies:** Application, documentation, and build dependencies have been refreshed.
+
+For the complete set of changes, see [`v2.5.0...v2.5.1`](https://github.com/oracle/ai-optimizer/compare/v2.5.0...v2.5.1).
+
+## v2.5.0 — 18 September 2026
+
+This release removes the matplotlib dependency, updates Testbed report rendering, and improves OCI GenAI streaming compatibility.
+
+### Highlights
+
+- **Testbed reporting:** The overall correctness gauge now uses scalable SVG rendering. Q&A generation, evaluation, and report exports operate without matplotlib.
+- **OCI GenAI streaming:** Improved compatibility with compressed streaming responses while preserving custom request headers.
+- **Dependencies:** Refreshed application dependencies, including the OCI SDK, LangChain Core, PyTorch, and Transformers, along with development tools.
+
+For the complete set of changes, see [`v2.4.1...v2.5.0`](https://github.com/oracle/ai-optimizer/compare/v2.4.1...v2.5.0).
+
 ## v2.4.1 — 20 August 2026
 
 This maintenance release improves the Oracle Backend as a Service (OBaaS) deployment, the mortgage demonstration, and client configuration workflows.
