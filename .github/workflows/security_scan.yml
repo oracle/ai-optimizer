@@ -141,7 +141,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Run Macaron Security Analysis
-        uses: oracle/macaron@794eec32782979f577efb5ff71d585f683a3550f # v0.25.0
+        uses: oracle/macaron@5d8f162a5d33f91a7048e861f1ff946a9791fe64 # v0.26.0
         with:
           repo_path: "https://github.com/${{ github.repository }}"
           branch: ${{ github.head_ref || github.ref_name }}
