@@ -9,6 +9,7 @@ Application settings loaded from environment variables and .env file.
 import asyncio
 import os
 import threading
+import warnings
 from collections import OrderedDict
 from typing import Literal, Optional
 
@@ -73,30 +74,18 @@ class Settings(SettingsBase, BaseSettings):
     db_wallet_location: Optional[str] = Field(default=None, exclude=True)
     db_pool_size: int = Field(default=5, ge=1, exclude=True)
 
-    # Authentication authority. Defaults keep module import possible; startup
-    # requires auth_mode to have been supplied explicitly.
-    auth_mode: Literal["single_user", "local_users", "oidc"] = Field(default="single_user", exclude=True)
-    installation_id: Optional[str] = Field(default=None, exclude=True)
-    admin_database_username: Optional[str] = Field(default=None, exclude=True)
-    auth_login_data_role: str = Field(default="AIO_LOGIN_ROLE", exclude=True)
     auth_session_absolute_seconds: int = Field(default=28_800, ge=300, exclude=True)
     auth_session_idle_seconds: int = Field(default=1_800, ge=60, exclude=True)
-    auth_session_last_seen_seconds: int = Field(default=60, ge=1, exclude=True)
     auth_session_max_per_user: int = Field(default=10, ge=1, le=100, exclude=True)
     auth_account_status_cache_seconds: int = Field(default=30, ge=0, le=300, exclude=True)
-    auth_login_max_concurrent: int = Field(default=8, ge=1, le=100, exclude=True)
     oidc_issuer: Optional[str] = Field(default=None, exclude=True)
-    oidc_discovery_url: Optional[str] = Field(default=None, exclude=True)
     oidc_audience: Optional[str] = Field(default=None, exclude=True)
     oidc_required_scopes: list[str] = Field(default_factory=list, exclude=True)
     oidc_client_id: Optional[str] = Field(default=None, exclude=True)
     oidc_client_secret: Optional[SecretStr] = Field(default=None, exclude=True)
     oidc_admin_subject: Optional[str] = Field(default=None, exclude=True)
     oidc_public_server_url: Optional[str] = Field(default=None, exclude=True)
-    oidc_provider_name: Optional[str] = Field(default=None, exclude=True)
 
-    # Removed server-authentication fields remain declared only so pydantic-settings
-    # can reject their environment variables instead of silently ignoring them.
     api_key: Optional[SecretStr] = Field(default=None, exclude=True)
     admin_password: Optional[SecretStr] = Field(default=None, exclude=True)
 
@@ -134,15 +123,34 @@ class Settings(SettingsBase, BaseSettings):
         return self
 
     @model_validator(mode="after")
-    def _reject_removed_authentication_settings(self) -> "Settings":
+    def _warn_removed_authentication_settings(self) -> "Settings":
         removed = []
         if self.api_key is not None:
             removed.append("AIO_API_KEY")
         if self.admin_password is not None:
             removed.append("AIO_ADMIN_PASSWORD")
         if removed:
-            raise ValueError(f"Removed authentication settings are configured: {', '.join(removed)}")
+            warnings.warn(
+                f"Deprecated authentication settings are ignored and unused: {', '.join(removed)}. "
+                "Remove them from the environment.",
+                UserWarning,
+                stacklevel=2,
+            )
         return self
+
+    @property
+    def auth_mode(self) -> Literal["local_users", "oidc"]:
+        """Derive the credential authority from OIDC configuration."""
+        oidc_values = (
+            self.oidc_issuer,
+            self.oidc_audience,
+            self.oidc_required_scopes,
+            self.oidc_client_id,
+            self.oidc_client_secret.get_secret_value() if self.oidc_client_secret else None,
+            self.oidc_admin_subject,
+            self.oidc_public_server_url,
+        )
+        return "oidc" if any(oidc_values) else "local_users"
 
 
 def _make_core_database_config(app_settings: Settings) -> DatabaseConfig:
@@ -182,56 +190,48 @@ def require_core_database_config(app_settings: Settings = settings) -> DatabaseC
     return core
 
 
-def validate_auth_configuration(app_settings: Settings = settings) -> None:
-    """Validate the selected authentication authority without exposing secrets."""
-    missing = []
-    if "auth_mode" not in app_settings.model_fields_set:
-        missing.append("AIO_AUTH_MODE")
-    if not app_settings.installation_id or not app_settings.installation_id.strip():
-        missing.append("AIO_INSTALLATION_ID")
-    if not app_settings.admin_database_username or not app_settings.admin_database_username.strip():
-        missing.append("AIO_ADMIN_DATABASE_USERNAME")
-    if missing:
-        raise CoreDatabaseConfigurationError(
-            f"Authentication configuration is incomplete; missing {', '.join(missing)}"
-        )
-
+def validate_auth_authority_configuration(app_settings: Settings = settings) -> None:
+    """Validate settings required to persist the authentication authority."""
     _validate_core_database_settings(app_settings)
+    if app_settings.auth_mode == "local_users":
+        return
+    issuer = app_settings.oidc_issuer
+    required_fields = {
+        "AIO_OIDC_ISSUER": issuer,
+        "AIO_OIDC_ADMIN_SUBJECT": app_settings.oidc_admin_subject,
+    }
+    missing = [name for name, value in required_fields.items() if not value]
+    if missing:
+        raise CoreDatabaseConfigurationError(f"OIDC configuration is incomplete; missing {', '.join(missing)}")
+    if app_settings.env not in {"dev", "test"} and issuer and not issuer.startswith("https://"):
+        raise CoreDatabaseConfigurationError("AIO_OIDC_ISSUER must use HTTPS")
+
+
+def validate_auth_configuration(app_settings: Settings = settings) -> None:
+    """Validate the selected authentication runtime without exposing secrets."""
+    validate_auth_authority_configuration(app_settings)
     if app_settings.auth_session_idle_seconds > app_settings.auth_session_absolute_seconds:
         raise CoreDatabaseConfigurationError(
             "AIO_AUTH_SESSION_IDLE_SECONDS must not exceed AIO_AUTH_SESSION_ABSOLUTE_SECONDS"
         )
-    if app_settings.auth_session_last_seen_seconds >= app_settings.auth_session_idle_seconds:
-        raise CoreDatabaseConfigurationError(
-            "AIO_AUTH_SESSION_LAST_SEEN_SECONDS must be less than AIO_AUTH_SESSION_IDLE_SECONDS"
-        )
-    oidc_fields = {
-        "AIO_OIDC_ISSUER": app_settings.oidc_issuer,
-        "AIO_OIDC_DISCOVERY_URL": app_settings.oidc_discovery_url,
+    oidc_required_fields = {
         "AIO_OIDC_AUDIENCE": app_settings.oidc_audience,
         "AIO_OIDC_REQUIRED_SCOPES": app_settings.oidc_required_scopes,
         "AIO_OIDC_CLIENT_ID": app_settings.oidc_client_id,
-        "AIO_OIDC_CLIENT_SECRET": app_settings.oidc_client_secret,
-        "AIO_OIDC_ADMIN_SUBJECT": app_settings.oidc_admin_subject,
+        "AIO_OIDC_CLIENT_SECRET": (
+            app_settings.oidc_client_secret.get_secret_value() if app_settings.oidc_client_secret else None
+        ),
         "AIO_OIDC_PUBLIC_SERVER_URL": app_settings.oidc_public_server_url,
     }
-    if app_settings.auth_mode != "oidc":
-        configured = [name for name, value in oidc_fields.items() if value]
-        if configured:
-            raise CoreDatabaseConfigurationError(f"{', '.join(configured)} require AIO_AUTH_MODE=oidc")
+    if app_settings.auth_mode == "local_users":
         return
 
-    oidc_missing = [name for name, value in oidc_fields.items() if not value]
+    oidc_missing = [name for name, value in oidc_required_fields.items() if not value]
     if oidc_missing:
         raise CoreDatabaseConfigurationError(f"OIDC configuration is incomplete; missing {', '.join(oidc_missing)}")
     if app_settings.env not in {"dev", "test"}:
-        for name, value in (
-            ("AIO_OIDC_ISSUER", app_settings.oidc_issuer),
-            ("AIO_OIDC_DISCOVERY_URL", app_settings.oidc_discovery_url),
-            ("AIO_OIDC_PUBLIC_SERVER_URL", app_settings.oidc_public_server_url),
-        ):
-            if value and not value.startswith("https://"):
-                raise CoreDatabaseConfigurationError(f"{name} must use HTTPS")
+        if app_settings.oidc_public_server_url and not app_settings.oidc_public_server_url.startswith("https://"):
+            raise CoreDatabaseConfigurationError("AIO_OIDC_PUBLIC_SERVER_URL must use HTTPS")
 
 
 # ---------------------------------------------------------------------------

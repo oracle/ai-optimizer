@@ -7,18 +7,27 @@ sidebar_position: 10
 {/* Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl. */}
 
-AI Optimizer Server authenticates `single_user` and `local_users` deployments through a short-lived Oracle AI Database local end-user connection.
+AI Optimizer Server authenticates `local_users` deployments through a short-lived Oracle AI Database connection.
 
-Deployment setup binds one database end user to the reserved `Admin` identity. `Admin` keeps the same application user ID when signing out and back in.
+Deployment setup binds one database user to the reserved `Admin` identity. `Admin` keeps the same application user ID when signing out and back in.
 
 The bare-metal client and all-in-one container initialize the reserved Admin identity during first startup using the application-database password.
 
-## Database account modes
+## Database authentication
 
-- `single_user` accepts only the mapped Admin account. Member-management routes are unavailable.
-- `local_users` lets Admin create member end users, lock or unlock accounts, and issue temporary password resets.
+The Oracle account configured by `AIO_DB_USERNAME` is the reserved Admin and can always sign in. When that account has the required end-user administration privileges, Admin can create member end users, lock or unlock accounts, and issue temporary password resets.
 
-AI Optimizer authenticates managed accounts carrying the configured application login data role.
+AI Optimizer authenticates members carrying the `AIO_LOGIN_ROLE` data role.
+
+## User settings
+
+Each account has its own persisted model, tool, database, and OCI selections. The same account restores those selections after signing in again. Chat history, embedding jobs, evaluations, and Deep Data Security sessions are scoped to the signed-in account.
+
+## Authorization
+
+Members can use their own settings, chat, history, evaluations, and read-only tools. Admin can also change shared databases, models, OCI profiles, prompts, vector stores, Deep Data Security policy, and deployment settings.
+
+MCP uses the same bearer identity. Read-only MCP capabilities are available to members; database-changing SQLcl capabilities require Admin.
 
 ## Sessions
 
@@ -26,12 +35,12 @@ AI Optimizer authenticates managed accounts carrying the configured application 
 
 The configured AI Optimizer application database stores only a domain-separated SHA-256 digest of each token. Sessions have absolute and idle expiry, a per-user limit, and bounded cleanup. Account status is cached for at most `AIO_AUTH_ACCOUNT_STATUS_CACHE_SECONDS`; application-mediated account locks and password resets revoke existing sessions immediately across Server instances sharing the same application database.
 
-New and reset member passwords are temporary and expired by Oracle AI Database. Change them with `POST /v1/auth/password-change`; password rules and failure accounting come from the database profile.
+New and reset member passwords are temporary and expired by Oracle AI Database. Members change them with `POST /v1/auth/password-change`; password rules and failure accounting come from the database profile. Admin password changes use database administration so `AIO_DB_PASSWORD` can be updated at the same time.
 
 Out-of-band password changes leave existing bearer sessions active until logout, idle expiry, or absolute expiry. Out-of-band database account locks are observed after the account-status cache interval.
 
-## Offline Admin recovery
+## Admin credential recovery
 
-Run `python -m server.app.auth.recovery` from an operator environment with the deployment configuration and direct access to the AI Optimizer application database. For database-account modes, provide `AIO_RECOVERY_ADMIN_DATABASE_USERNAME` and enter the replacement account password at the protected prompt. The command verifies the replacement managed end user, preserves the reserved Admin user ID, revokes existing Admin sessions, and records an audit event. Before restarting, update the mapping in [`AIO_ADMIN_DATABASE_USERNAME`](./env-vars#authentication) or Helm's [`global.authentication.adminDatabaseUsername`](../advanced-guides/k8s-helm#create-a-values-file).
+For `local_users`, recover the `AIO_DB_USERNAME` account using database administration. Update `AIO_DB_PASSWORD`, or the backing Helm database Secret, and restart AI Optimizer. The reserved Admin identity remains unchanged.
 
-An authenticated Admin can use `PUT /v1/auth/admin/database-mapping` with the current Admin password and replacement managed-account credentials. The operation revokes every Admin session and requires sign-in through the replacement account. Apply the replacement mapping to the deployment configuration before its next restart.
+For OIDC, run `python -m server.app.auth.recovery` with `AIO_RECOVERY_OIDC_ADMIN_SUBJECT` from an operator environment with the deployment configuration and direct access to the AI Optimizer application database. The command replaces the Admin subject, preserves the reserved Admin user ID, revokes existing Admin sessions, and records an audit event. Set `AIO_OIDC_ADMIN_SUBJECT` to the replacement subject before restarting AI Optimizer.

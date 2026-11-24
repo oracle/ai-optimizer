@@ -21,77 +21,75 @@ from server.app.api.v1.endpoints import (
     settings,
     testbed,
 )
-from server.app.auth.dependencies import require_authenticated
+from server.app.auth.policy import enforce_route_policy
 from server.app.auth.router import router as auth_router
 from server.app.auth.router import users_router
-from server.app.core.settings import settings as app_settings
 
 router = APIRouter()
 # -- Non Authenticated Endpoints
 router.include_router(probes.noauth, tags=["Probes"])
 router.include_router(docs.noauth, tags=["Docs"])
 router.include_router(auth_router)
-if app_settings.auth_mode == "local_users":
-    router.include_router(users_router)
+router.include_router(users_router)
 
 # -- Authenticated Endpoints
 router.include_router(
     settings.auth,
     tags=["Settings"],
-    dependencies=[Depends(require_authenticated)],
+    dependencies=[Depends(enforce_route_policy)],
 )
 router.include_router(
     databases.auth,
     tags=["Databases"],
-    dependencies=[Depends(require_authenticated)],
+    dependencies=[Depends(enforce_route_policy)],
 )
 router.include_router(
     models.auth,
     tags=["Models"],
-    dependencies=[Depends(require_authenticated)],
+    dependencies=[Depends(enforce_route_policy)],
 )
 router.include_router(
     oci.auth,
     tags=["OCI Profiles"],
-    dependencies=[Depends(require_authenticated)],
+    dependencies=[Depends(enforce_route_policy)],
 )
 router.include_router(
     prompts.auth,
     tags=["Prompts"],
-    dependencies=[Depends(require_authenticated)],
+    dependencies=[Depends(enforce_route_policy)],
 )
 router.include_router(
     agentspec.auth,
     tags=["AgentSpec"],
-    dependencies=[Depends(require_authenticated)],
+    dependencies=[Depends(enforce_route_policy)],
 )
 router.include_router(
     help_text.auth,
     tags=["Help"],
-    dependencies=[Depends(require_authenticated)],
+    dependencies=[Depends(enforce_route_policy)],
 )
 router.include_router(
     chat.auth,
     tags=["Chat"],
-    dependencies=[Depends(require_authenticated)],
+    dependencies=[Depends(enforce_route_policy)],
 )
 router.include_router(
     testbed.auth,
     tags=["Testbed"],
-    dependencies=[Depends(require_authenticated)],
+    dependencies=[Depends(enforce_route_policy)],
 )
 router.include_router(
     embed.auth,
     tags=["Embed"],
-    dependencies=[Depends(require_authenticated)],
+    dependencies=[Depends(enforce_route_policy)],
 )
 router.include_router(
     deepsec.auth,
     tags=["Deep Data Security"],
-    dependencies=[Depends(require_authenticated)],
+    dependencies=[Depends(enforce_route_policy)],
 )
 router.include_router(
     docs.auth,
     tags=["Docs"],
-    dependencies=[Depends(require_authenticated)],
+    dependencies=[Depends(enforce_route_policy)],
 )

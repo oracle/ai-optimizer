@@ -13,25 +13,12 @@ nameOverride: ""
 # -- Global Configuration
 global:
   authentication:
-    # -- Authentication authority: single_user, local_users, or oidc.
-    mode: ""
-    # -- Stable deployment identifier retained across upgrades and transport repair.
-    installationId: ""
-    # -- Oracle local end user mapped to the reserved application Admin.
-    adminDatabaseUsername: ""
-    loginDataRole: "AIO_LOGIN_ROLE"
     sessionAbsoluteSeconds: 28800
     sessionIdleSeconds: 1800
-    sessionLastSeenSeconds: 60
     sessionMaxPerUser: 10
     accountStatusCacheSeconds: 30
-    loginMaxConcurrent: 8
-    # -- Secret used only by the setup Job to verify the mapped Admin in database-account modes.
-    adminPasswordSecretName: ""
-    adminPasswordSecretKey: "password"
     oidc:
       issuer: ""
-      discoveryUrl: ""
       audience: ""
       requiredScopes: []
       clientId: ""
@@ -39,7 +26,6 @@ global:
       clientSecretKey: "clientSecret"
       adminSubject: ""
       publicServerUrl: ""
-      providerName: ""
 
   # -- URL path appended to the host.
   # Example: "/test" results in URLs like http://hostname/test/...

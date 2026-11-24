@@ -14,31 +14,21 @@
         "authentication": {
           "type": "object",
           "properties": {
-            "mode": { "type": "string", "enum": ["", "single_user", "local_users", "oidc"] },
-            "installationId": { "type": "string" },
-            "adminDatabaseUsername": { "type": "string" },
-            "loginDataRole": { "type": "string" },
             "sessionAbsoluteSeconds": { "type": "integer", "minimum": 300 },
             "sessionIdleSeconds": { "type": "integer", "minimum": 60 },
-            "sessionLastSeenSeconds": { "type": "integer", "minimum": 1 },
             "sessionMaxPerUser": { "type": "integer", "minimum": 1, "maximum": 100 },
             "accountStatusCacheSeconds": { "type": "integer", "minimum": 0, "maximum": 300 },
-            "loginMaxConcurrent": { "type": "integer", "minimum": 1, "maximum": 100 },
-            "adminPasswordSecretName": { "type": "string" },
-            "adminPasswordSecretKey": { "type": "string" },
             "oidc": {
               "type": "object",
               "properties": {
                 "issuer": { "type": "string" },
-                "discoveryUrl": { "type": "string" },
                 "audience": { "type": "string" },
                 "requiredScopes": { "type": "array", "items": { "type": "string" } },
                 "clientId": { "type": "string" },
                 "clientSecretName": { "type": "string" },
                 "clientSecretKey": { "type": "string" },
                 "adminSubject": { "type": "string" },
-                "publicServerUrl": { "type": "string" },
-                "providerName": { "type": "string" }
+                "publicServerUrl": { "type": "string" }
               }
             }
           }

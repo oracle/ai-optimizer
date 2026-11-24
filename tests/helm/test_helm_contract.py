@@ -27,12 +27,7 @@ _DEFAULT_DATABASE_ARGS = (
     "--set",
     "server.database.authn.secretName=test-database-credentials",
 )
-_DEFAULT_AUTH_ARGS = (
-    "--set",
-    "global.authentication.adminDatabaseUsername=APP_ADMIN",
-    "--set",
-    "global.authentication.adminPasswordSecretName=test-admin-password",
-)
+_DEFAULT_AUTH_ARGS = ()
 
 
 def _default_database_args(args: tuple[str, ...]) -> tuple[str, ...]:
@@ -92,14 +87,12 @@ def _render_with_notes(*extra_sets: str, env: dict | None = None) -> subprocess.
 def test_authentication_rejects_partial_oidc_configuration():
     result = _render("global.authentication.oidc.issuer=https://identity.example.test")
     assert result.returncode != 0
-    assert "global.authentication.oidc.discoveryUrl is required when OIDC is configured" in result.stderr
+    assert "global.authentication.oidc.audience is required when OIDC is configured" in result.stderr
 
 
 def test_authentication_rejects_non_https_oidc_authority():
     result = _render(
-        "global.authentication.adminPasswordSecretName=",
         "global.authentication.oidc.issuer=http://identity.example.test",
-        "global.authentication.oidc.discoveryUrl=https://identity.example.test/.well-known/openid-configuration",
         "global.authentication.oidc.audience=optimizer-api",
         "global.authentication.oidc.requiredScopes[0]=optimizer.invoke",
         "global.authentication.oidc.clientId=optimizer-client",
@@ -109,6 +102,36 @@ def test_authentication_rejects_non_https_oidc_authority():
     )
     assert result.returncode != 0
     assert "global.authentication.oidc.issuer must use HTTPS" in result.stderr
+
+
+def test_oidc_client_secret_is_not_sent_to_authentication_setup():
+    result = _render(
+        "global.authentication.oidc.issuer=https://identity.example.test",
+        "global.authentication.oidc.audience=optimizer-api",
+        "global.authentication.oidc.requiredScopes[0]=optimizer.invoke",
+        "global.authentication.oidc.clientId=optimizer-client",
+        "global.authentication.oidc.clientSecretName=oidc-secret",
+        "global.authentication.oidc.adminSubject=admin-subject",
+        "global.authentication.oidc.publicServerUrl=https://optimizer.example.test",
+    )
+    assert result.returncode == 0, result.stderr
+    docs = _docs(result.stdout)
+    auth_job = next(
+        doc
+        for doc in docs
+        if doc.get("kind") == "Job"
+        and doc.get("metadata", {}).get("labels", {}).get("app.kubernetes.io/component") == "auth-setup"
+    )
+    server = next(
+        doc
+        for doc in docs
+        if doc.get("kind") == "Deployment"
+        and doc.get("metadata", {}).get("labels", {}).get("app.kubernetes.io/component") == "server"
+    )
+    auth_env = {item["name"] for item in auth_job["spec"]["template"]["spec"]["containers"][0]["env"]}
+    server_env = {item["name"] for item in server["spec"]["template"]["spec"]["containers"][0]["env"]}
+    assert "AIO_OIDC_CLIENT_SECRET" not in auth_env
+    assert "AIO_OIDC_CLIENT_SECRET" in server_env
 
 
 def test_authentication_setup_runs_after_database_initialization():
@@ -128,9 +151,10 @@ def test_authentication_setup_runs_after_database_initialization():
 
     assert set(jobs) == {"database", "auth-setup"}
     assert all("helm.sh/hook" not in job["metadata"].get("annotations", {}) for job in jobs.values())
-    auth_env = jobs["auth-setup"]["spec"]["template"]["spec"]["containers"][0]["env"]
+    auth_container = jobs["auth-setup"]["spec"]["template"]["spec"]["containers"][0]
+    assert auth_container["args"] == ["--wait-seconds", "900"]
+    auth_env = auth_container["env"]
     auth_env_by_name = {item["name"]: item for item in auth_env}
-    assert auth_env_by_name["AIO_AUTH_SETUP_WAIT_SECONDS"]["value"] == "900"
     assert auth_env_by_name["AIO_AUTH_SETUP_PRIV_USERNAME"]["valueFrom"]["secretKeyRef"]
     assert auth_env_by_name["AIO_AUTH_SETUP_PRIV_PASSWORD"]["valueFrom"]["secretKeyRef"]
 
@@ -165,10 +189,8 @@ def test_authentication_session_limits_render_to_server_environment():
     result = _render(
         "global.authentication.sessionAbsoluteSeconds=3600",
         "global.authentication.sessionIdleSeconds=600",
-        "global.authentication.sessionLastSeenSeconds=15",
         "global.authentication.sessionMaxPerUser=3",
         "global.authentication.accountStatusCacheSeconds=0",
-        "global.authentication.loginMaxConcurrent=4",
     )
     assert result.returncode == 0, result.stderr
     env_secret = next(
@@ -180,10 +202,8 @@ def test_authentication_session_limits_render_to_server_environment():
     content = next(iter(env_secret["stringData"].values()))
     assert "AIO_AUTH_SESSION_ABSOLUTE_SECONDS=3600" in content
     assert "AIO_AUTH_SESSION_IDLE_SECONDS=600" in content
-    assert "AIO_AUTH_SESSION_LAST_SEEN_SECONDS=15" in content
     assert "AIO_AUTH_SESSION_MAX_PER_USER=3" in content
     assert "AIO_AUTH_ACCOUNT_STATUS_CACHE_SECONDS=0" in content
-    assert "AIO_AUTH_LOGIN_MAX_CONCURRENT=4" in content
 
 
 def _render_database_contract(*extra_args: str) -> subprocess.CompletedProcess:

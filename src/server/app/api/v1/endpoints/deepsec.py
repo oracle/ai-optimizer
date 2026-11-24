@@ -9,14 +9,13 @@ it never touches the internal aio_* CORE tables.
 # spell-checker:ignore deepsec oracledb
 
 import logging
-from typing import Annotated, Awaitable, Callable
+from typing import Awaitable, Callable
 
 import oracledb
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, HTTPException
 
 from server.app.api.v1.endpoints.databases import register_database
 from server.app.api.v1.schemas.chat import MessageResponse
-from server.app.api.v1.schemas.common import ClientId
 from server.app.api.v1.schemas.deepsec import (
     ConnectAsRequest,
     ConnectAsResponse,
@@ -31,6 +30,7 @@ from server.app.api.v1.schemas.deepsec import (
     EndUserCreate,
     SchemaObject,
 )
+from server.app.auth.dependencies import WorkspaceKey
 from server.app.auth.repository import (
     authority_identity,
     connection_database_identity,
@@ -101,19 +101,19 @@ async def _reject_authentication_member_change(client: str, username: str) -> No
 
 
 @auth.get("/status", response_model=DeepSecStatus)
-async def deepsec_status(client: Annotated[ClientId, Header()] = "server") -> DeepSecStatus:
+async def deepsec_status(client: WorkspaceKey) -> DeepSecStatus:
     """Report Deep Data Security availability and the user's capability matrix."""
     return DeepSecStatus.model_validate(await _run(client, deepsec_db.get_status))
 
 
 @auth.get("/objects", response_model=list[SchemaObject])
-async def deepsec_objects(client: Annotated[ClientId, Header()] = "server") -> list[SchemaObject]:
+async def deepsec_objects(client: WorkspaceKey) -> list[SchemaObject]:
     """List the user's tables/views that a data grant can target."""
     return [SchemaObject.model_validate(o) for o in await _run(client, deepsec_db.list_objects)]
 
 
 @auth.get("/objects/{object_name}/columns", response_model=list[str])
-async def deepsec_object_columns(object_name: str, client: Annotated[ClientId, Header()] = "server") -> list[str]:
+async def deepsec_object_columns(object_name: str, client: WorkspaceKey) -> list[str]:
     """List columns for one of the user's tables/views."""
     return await _run(client, lambda conn: deepsec_db.list_object_columns(conn, object_name))
 
@@ -124,18 +124,18 @@ async def deepsec_object_columns(object_name: str, client: Annotated[ClientId, H
 
 
 @auth.get("/data-roles", response_model=list[DataRole])
-async def list_data_roles(client: Annotated[ClientId, Header()] = "server") -> list[DataRole]:
+async def list_data_roles(client: WorkspaceKey) -> list[DataRole]:
     return [DataRole.model_validate(r) for r in await _run(client, deepsec_db.list_data_roles)]
 
 
 @auth.post("/data-roles", response_model=MessageResponse)
-async def create_data_role(body: DataRoleCreate, client: Annotated[ClientId, Header()] = "server") -> MessageResponse:
+async def create_data_role(body: DataRoleCreate, client: WorkspaceKey) -> MessageResponse:
     await _run(client, lambda conn: deepsec_db.create_data_role(conn, body.name, body.mapped_to))
     return MessageResponse(message=f"Data role created: {body.name}")
 
 
 @auth.delete("/data-roles/{name}", response_model=MessageResponse)
-async def drop_data_role(name: str, client: Annotated[ClientId, Header()] = "server") -> MessageResponse:
+async def drop_data_role(name: str, client: WorkspaceKey) -> MessageResponse:
     await _run(client, lambda conn: deepsec_db.drop_data_role(conn, name))
     return MessageResponse(message=f"Data role dropped: {name}")
 
@@ -146,12 +146,12 @@ async def drop_data_role(name: str, client: Annotated[ClientId, Header()] = "ser
 
 
 @auth.get("/end-users", response_model=list[EndUser])
-async def list_end_users(client: Annotated[ClientId, Header()] = "server") -> list[EndUser]:
+async def list_end_users(client: WorkspaceKey) -> list[EndUser]:
     return [EndUser.model_validate(u) for u in await _run(client, deepsec_db.list_end_users)]
 
 
 @auth.post("/end-users", response_model=MessageResponse)
-async def create_end_user(body: EndUserCreate, client: Annotated[ClientId, Header()] = "server") -> MessageResponse:
+async def create_end_user(body: EndUserCreate, client: WorkspaceKey) -> MessageResponse:
     await _reject_authentication_member_change(client, body.name)
     # End users are provisioned with the same password as the connected database user.
     db_config = get_client_db_config(client)
@@ -163,7 +163,7 @@ async def create_end_user(body: EndUserCreate, client: Annotated[ClientId, Heade
 
 
 @auth.delete("/end-users/{name}", response_model=MessageResponse)
-async def drop_end_user(name: str, client: Annotated[ClientId, Header()] = "server") -> MessageResponse:
+async def drop_end_user(name: str, client: WorkspaceKey) -> MessageResponse:
     await _reject_authentication_member_change(client, name)
     await _run(client, lambda conn: deepsec_db.drop_end_user(conn, name))
     # Tear down the connect-as connection for this end user ON THE CURRENT BASE only —
@@ -188,7 +188,7 @@ def _managed_alias(base_alias: str, end_user: str) -> str:
 
 
 @auth.post("/connect-as", response_model=ConnectAsResponse)
-async def dds_connect_as(body: ConnectAsRequest, client: Annotated[ClientId, Header()] = "server") -> ConnectAsResponse:
+async def dds_connect_as(body: ConnectAsRequest, client: WorkspaceKey) -> ConnectAsResponse:
     """Register a runtime-only managed connection authenticating as a DDS end user.
 
     The connection copies the owner's password/dsn/wallet (DDS end users share the owner's
@@ -248,7 +248,7 @@ async def dds_connect_as(body: ConnectAsRequest, client: Annotated[ClientId, Hea
 
 
 @auth.delete("/connect-as", response_model=MessageResponse)
-async def dds_clear_connect_as(client: Annotated[ClientId, Header()] = "server") -> MessageResponse:
+async def dds_clear_connect_as(client: WorkspaceKey) -> MessageResponse:
     """Tear down this client's connect-as managed connection and clear its DDS setting.
 
     Scoped to the client's exact managed alias — clearing one end user's connection must not
@@ -269,14 +269,12 @@ async def dds_clear_connect_as(client: Annotated[ClientId, Header()] = "server")
 
 
 @auth.get("/data-role-grants", response_model=list[DataRoleGrant])
-async def list_data_role_grants(client: Annotated[ClientId, Header()] = "server") -> list[DataRoleGrant]:
+async def list_data_role_grants(client: WorkspaceKey) -> list[DataRoleGrant]:
     return [DataRoleGrant.model_validate(g) for g in await _run(client, deepsec_db.list_data_role_grants)]
 
 
 @auth.post("/data-role-grants", response_model=MessageResponse)
-async def grant_data_role(
-    body: DataRoleGrantCreate, client: Annotated[ClientId, Header()] = "server"
-) -> MessageResponse:
+async def grant_data_role(body: DataRoleGrantCreate, client: WorkspaceKey) -> MessageResponse:
     if not body.roles:
         raise HTTPException(status_code=400, detail="At least one data role is required")
     await _run(client, lambda conn: deepsec_db.grant_data_role(conn, body.roles, body.grantee))
@@ -284,9 +282,7 @@ async def grant_data_role(
 
 
 @auth.delete("/data-role-grants/{grantee}/{role}", response_model=MessageResponse)
-async def revoke_data_role(
-    grantee: str, role: str, client: Annotated[ClientId, Header()] = "server"
-) -> MessageResponse:
+async def revoke_data_role(grantee: str, role: str, client: WorkspaceKey) -> MessageResponse:
     await _run(client, lambda conn: deepsec_db.revoke_data_role(conn, role, grantee))
     return MessageResponse(message=f"Data role {role} revoked from {grantee}")
 
@@ -297,12 +293,12 @@ async def revoke_data_role(
 
 
 @auth.get("/data-grants", response_model=list[DataGrant])
-async def list_data_grants(client: Annotated[ClientId, Header()] = "server") -> list[DataGrant]:
+async def list_data_grants(client: WorkspaceKey) -> list[DataGrant]:
     return [DataGrant.model_validate(g) for g in await _run(client, deepsec_db.list_data_grants)]
 
 
 @auth.post("/data-grants", response_model=MessageResponse)
-async def create_data_grant(body: DataGrantCreate, client: Annotated[ClientId, Header()] = "server") -> MessageResponse:
+async def create_data_grant(body: DataGrantCreate, client: WorkspaceKey) -> MessageResponse:
     await _run(
         client,
         lambda conn: deepsec_db.create_data_grant(
@@ -321,6 +317,6 @@ async def create_data_grant(body: DataGrantCreate, client: Annotated[ClientId, H
 
 
 @auth.delete("/data-grants/{name}", response_model=MessageResponse)
-async def drop_data_grant(name: str, client: Annotated[ClientId, Header()] = "server") -> MessageResponse:
+async def drop_data_grant(name: str, client: WorkspaceKey) -> MessageResponse:
     await _run(client, lambda conn: deepsec_db.drop_data_grant(conn, name))
     return MessageResponse(message=f"Data grant dropped: {name}")

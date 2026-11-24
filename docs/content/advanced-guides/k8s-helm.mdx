@@ -94,17 +94,13 @@ podman push ${REGISTRY}/ai-optimizer-client:${APP_VERSION}
 podman push ${REGISTRY}/ai-optimizer-server:${APP_VERSION}
 ```
 
-### Create Kubernetes Secrets
+### Create the Kubernetes Namespace
 
-Create a namespace and the Secret containing the managed deployment's initial Admin password:
+Create the deployment namespace:
 
 ```bash
 kubectl create namespace ai-optimizer
-kubectl -n ai-optimizer create secret generic optimizer-admin-password \
-  --from-literal=password='<admin-password>'
 ```
-
-The Admin signs in with this password and the database username selected in the Helm values below.
 
 The chart generates the Client cookie-signing Secret on first install and reuses it during live Helm upgrades. For offline `helm template` or client-side GitOps rendering, create an external Secret to keep the value stable across deployments:
 
@@ -136,13 +132,6 @@ Then create `deploy/values.yaml` with the following starter configuration.
 Replace `<registry-host>/<registry-namespace>` with the `${REGISTRY}` value used to tag and push the images, and replace `<version>` with the `${APP_VERSION}` value used to build them.
 
 ```yaml
-global:
-  authentication:
-    mode: single_user
-    installationId: optimizer-production
-    adminDatabaseUsername: OPTIMIZER_ADMIN
-    adminPasswordSecretName: optimizer-admin-password
-
 server:
   image:
     repository: <registry-host>/<registry-namespace>/ai-optimizer-server
@@ -154,7 +143,7 @@ client:
     tag: "<version>"
 ```
 
-`adminDatabaseUsername` names the Oracle local end user mapped to the sole AI Optimizer Admin. Keep the name stable across upgrades. Use a distinct name for each AI Optimizer deployment connected to the same Oracle database. Set `mode: local_users` when this Admin will manage additional platform users.
+With Oracle database authentication, the `server.database.authn` user is the AI Optimizer Admin. The Admin can manage additional platform users when the database account has the required end-user administration privileges.
 
 Add `client.cookieSecretName: optimizer-cookie-key` only when using the external Secret workflow described above.
 

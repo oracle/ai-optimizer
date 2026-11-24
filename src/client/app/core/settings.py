@@ -33,10 +33,6 @@ class ClientSettings(BaseSettings):
     server_ssl_cert_file: str = ""
     server_ssl_key_file: str = ""
     server_url_prefix: str = ""
-    auth_mode: str = "single_user"
-    installation_id: Optional[str] = None
-    admin_database_username: Optional[str] = None
-    oidc_provider_name: Optional[str] = None
 
     @field_validator("server_url_prefix")
     @classmethod

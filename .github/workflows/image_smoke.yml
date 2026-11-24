@@ -81,8 +81,6 @@ jobs:
           DB_NETWORK="test-${{ matrix.build.name }}-network"
           SMOKE_DB_USERNAME="SMOKE"
           SMOKE_DB_PASSWORD="OrA_41_3xPl0d3r"
-          SMOKE_ADMIN_USERNAME="SMOKE_ADMIN"
-          INSTALLATION_ID="image-smoke-${{ matrix.build.name }}"
 
           fail() {
             echo "❌ $NAME: $1"
@@ -140,7 +138,6 @@ jobs:
           CREATE ROLE AIO_DDS_ROLE;
           GRANT CREATE SESSION TO AIO_DDS_ROLE;
           GRANT AIO_DDS_ROLE TO SMOKE WITH ADMIN OPTION;
-          CREATE END USER SMOKE_ADMIN IDENTIFIED BY "OrA_41_3xPl0d3r";
           EXIT;
           SQL
           }
@@ -165,15 +162,11 @@ jobs:
                 -e "AIO_DB_USERNAME=$SMOKE_DB_USERNAME"
                 -e "AIO_DB_PASSWORD=$SMOKE_DB_PASSWORD"
                 -e AIO_DB_DSN=core-db:1521/FREEPDB1
-                -e AIO_AUTH_MODE=single_user
-                -e "AIO_INSTALLATION_ID=$INSTALLATION_ID"
-                -e "AIO_ADMIN_DATABASE_USERNAME=$SMOKE_ADMIN_USERNAME"
               )
               SETUP_NAME="$NAME-auth-setup"
               if ! docker run --name "$SETUP_NAME" \
                 --network "$DB_NETWORK" \
                 "${DATABASE_ENV[@]}" \
-                -e "AIO_AUTH_ADMIN_PASSWORD=$SMOKE_DB_PASSWORD" \
                 "$IMAGE" auth-setup; then
                 docker logs "$SETUP_NAME" 2>&1 || true
                 fail "authentication setup failed"

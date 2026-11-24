@@ -18,13 +18,6 @@
 #     `server.database.privAuthn.secretName` at it. The chart runs an
 #     init Job that creates the application user with a random password
 #     and stores it in the auth Secret.
-global:
-  authentication:
-    mode: single_user
-    installationId: kind-other
-    adminDatabaseUsername: OPTIMIZER_ADMIN
-    adminPasswordSecretName: optimizer-admin-password
-
 server:
   replicaCount: 1
   image:

@@ -16,7 +16,7 @@ pytestmark = pytest.mark.unit
 
 def _settings(**overrides) -> Settings:
     values = {
-        "admin_database_username": "APP_ADMIN",
+        "db_username": "APP_ADMIN",
     }
     values.update(overrides)
     return Settings.model_validate(values)
@@ -56,7 +56,7 @@ async def test_authority_accepts_transport_repair_to_same_logical_core(monkeypat
     execute = AsyncMock(
         side_effect=[
             [authority],
-            [(app_settings.admin_database_username, "DATABASE_END_USER", None, None)],
+            [(app_settings.db_username, "DATABASE_END_USER", None, None)],
             [("PACKAGE",), ("PACKAGE BODY",)],
             None,
         ]
@@ -97,14 +97,14 @@ async def test_oidc_authority_refuses_wrong_admin_subject(monkeypatch):
     execute = AsyncMock(
         side_effect=[
             [authority],
-            [(app_settings.admin_database_username, "OIDC", app_settings.oidc_issuer, "different-admin")],
+            [(None, "OIDC", app_settings.oidc_issuer, "different-admin")],
         ]
     )
     monkeypatch.setattr(repository, "authority_identity", AsyncMock(return_value=("LOGICAL_DB", "APP_SCHEMA")))
     monkeypatch.setattr(repository, "require_core_pool", lambda: _pool_for(object()))
     monkeypatch.setattr(repository, "execute_sql", execute)
 
-    with pytest.raises(ValueError, match="Reserved Admin database mapping"):
+    with pytest.raises(ValueError, match="Reserved Admin identity"):
         await repository.verify_authority(app_settings)
 
 
@@ -165,18 +165,32 @@ async def test_cleanup_is_bounded_and_committed(monkeypatch):
     conn.commit.assert_awaited_once()
 
 
-async def test_admin_recovery_preserves_reserved_user_and_revokes_sessions(monkeypatch):
+async def test_oidc_admin_recovery_preserves_reserved_user_and_revokes_sessions(monkeypatch):
     conn = SimpleNamespace(commit=AsyncMock())
-    execute = AsyncMock(side_effect=[[("LOCAL_USERS", "OLD_ADMIN", None)], None, None, None, None])
+    execute = AsyncMock(side_effect=[[("OIDC", "old-subject")], None, None, None, None])
     monkeypatch.setattr(repository, "require_core_pool", lambda: _pool_for(conn))
     monkeypatch.setattr(repository, "execute_sql", execute)
 
-    await repository.recover_admin_identity(database_username="NEW_ADMIN")
+    await repository.recover_oidc_admin_subject("new-subject")
 
     statements = [call.args[1] for call in execute.await_args_list]
     assert any("UPDATE aio_users" in statement for statement in statements)
     assert any("UPDATE aio_auth_sessions" in statement for statement in statements)
     assert any("INSERT INTO aio_auth_audit" in statement for statement in statements)
     admin_update = next(call for call in execute.await_args_list if "UPDATE aio_users" in call.args[1])
-    assert admin_update.args[2]["user_id"] == repository.ADMIN_USER_ID.bytes
+    assert admin_update.args[2] == {
+        "replacement": "new-subject",
+        "user_id": repository.ADMIN_USER_ID.bytes,
+    }
     conn.commit.assert_awaited_once()
+
+
+async def test_oidc_admin_recovery_rejects_database_authentication(monkeypatch):
+    conn = SimpleNamespace(commit=AsyncMock())
+    monkeypatch.setattr(repository, "require_core_pool", lambda: _pool_for(conn))
+    monkeypatch.setattr(repository, "execute_sql", AsyncMock(return_value=[("LOCAL_USERS", None)]))
+
+    with pytest.raises(ValueError, match="requires OIDC mode"):
+        await repository.recover_oidc_admin_subject("new-subject")
+
+    conn.commit.assert_not_awaited()

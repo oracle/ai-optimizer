@@ -12,6 +12,7 @@ from typing import Optional
 
 from langchain_oracledb.vectorstores.oraclevs import DistanceStrategy
 
+from server.app.auth.workspace import mcp_workspace_key
 from server.app.core.mcp import mcp
 from server.app.core.settings import resolve_client
 from server.app.database.config import DdsConnectionError
@@ -150,6 +151,7 @@ def register_discovery_tool():
         """List available vector storage tables in the database."""
         LOGGER.info("VS Discovery (Thread ID: %s, Filter: %s)", thread_id, filter_enabled_models)
         try:
-            return await _vs_discovery_impl(filter_enabled_models, client=thread_id)
+            client = await mcp_workspace_key(thread_id)
+            return await _vs_discovery_impl(filter_enabled_models, client=client)
         except DdsConnectionError as ex:
             return VectorStoreListResponse(parsed_tables=[], status="error", error=str(ex))

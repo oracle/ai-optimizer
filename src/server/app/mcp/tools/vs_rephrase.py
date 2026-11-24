@@ -13,6 +13,7 @@ from typing import Union
 from langchain_core.prompts import PromptTemplate
 from litellm.exceptions import APIConnectionError
 
+from server.app.auth.workspace import mcp_workspace_key
 from server.app.core.mcp import mcp
 from server.app.core.settings import resolve_client
 from server.app.mcp.prompts.registry import find_prompt
@@ -170,4 +171,5 @@ def register_rephrase_tool():
     ) -> RephrasePrompt:
         """Rephrase user question using conversation history for better vector search retrieval."""
         LOGGER.info("VS Rephrase (Thread ID: %s)", thread_id)
-        return await _vs_rephrase_impl(question, chat_history, client=thread_id)
+        client = await mcp_workspace_key(thread_id)
+        return await _vs_rephrase_impl(question, chat_history, client=client)

@@ -71,28 +71,11 @@ async def test_missing_database_capabilities_hide_member_management(app_client, 
     assert response.status_code == 404
 
 
-async def test_admin_database_mapping_requires_both_credentials_and_revokes_sessions(
-    app_client,
-    auth_headers,
-    monkeypatch,
-):
-    verify = AsyncMock(side_effect=["APP_ADMIN", "NEW_ADMIN"])
-    recover = AsyncMock()
-    monkeypatch.setattr("server.app.auth.router.settings.admin_database_username", "APP_ADMIN")
-    monkeypatch.setattr("server.app.auth.router.verify_database_credentials", verify)
-    monkeypatch.setattr("server.app.auth.router.repository.recover_admin_identity", recover)
-
+async def test_admin_database_mapping_endpoint_is_not_exposed(app_client, auth_headers):
     response = await app_client.put(
         "/v1/auth/admin/database-mapping",
         headers=auth_headers,
-        json={
-            "current_password": "current-secret",
-            "database_username": "new_admin",
-            "replacement_password": "replacement-secret",
-        },
+        json={},
     )
 
-    assert response.status_code == 200
-    assert verify.await_args_list[0].args == ("APP_ADMIN", "current-secret")
-    assert verify.await_args_list[1].args == ("NEW_ADMIN", "replacement-secret")
-    recover.assert_awaited_once_with(database_username="NEW_ADMIN")
+    assert response.status_code == 404

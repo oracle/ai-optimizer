@@ -20,9 +20,7 @@ locals {
     install_ollama         = var.vm_is_gpu_shape || var.compute_install_ollama
     object_storage_bucket  = var.object_storage_bucket
     client_cookie_secret   = var.client_cookie_secret
-    auth_installation_id   = var.auth_installation_id
     oidc_issuer            = var.oidc_issuer
-    oidc_discovery_url     = var.oidc_discovery_url
     oidc_audience          = var.oidc_audience
     oidc_required_scopes   = jsonencode(tolist(var.oidc_required_scopes))
     oidc_client_id         = var.oidc_client_id

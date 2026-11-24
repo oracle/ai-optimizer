@@ -25,11 +25,10 @@ spec:
           image: {{ include "ai-optimizer.image" (dict "image" .Values.server.image "global" .Values.global "appVersion" .Chart.AppVersion) | quote }}
           imagePullPolicy: {{ .Values.server.image.pullPolicy | default "IfNotPresent" }}
           command: ["python", "-m", "server.app.auth.setup"]
+          args: ["--wait-seconds", "900"]
           env:
             - name: AIO_ENV
               value: {{ .Values.global.env | quote }}
-            - name: AIO_AUTH_SETUP_WAIT_SECONDS
-              value: "900"
             - name: AIO_AUTH_SETUP_PRIV_USERNAME
               valueFrom:
                 secretKeyRef:
@@ -49,19 +48,6 @@ spec:
                 secretKeyRef:
                   name: {{ include "ai-optimizer.server.database.adbWalletPassSecret" . }}
                   key: {{ include "ai-optimizer.server.database.adbWalletPassSecretKey" . }}
-            {{- end }}
-            {{- if ne .Values.global.authentication.mode "oidc" }}
-            - name: AIO_AUTH_ADMIN_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.global.authentication.adminPasswordSecretName }}
-                  key: {{ .Values.global.authentication.adminPasswordSecretKey | default "password" }}
-            {{- else }}
-            - name: AIO_OIDC_CLIENT_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.global.authentication.oidc.clientSecretName }}
-                  key: {{ .Values.global.authentication.oidc.clientSecretKey | default "clientSecret" }}
             {{- end }}
           volumeMounts:
             - name: env-config

@@ -19,12 +19,6 @@ variable "oidc_issuer" {
   default     = ""
 }
 
-variable "oidc_discovery_url" {
-  description = "OCI IAM OpenID Connect discovery URL."
-  type        = string
-  default     = ""
-}
-
 variable "oidc_audience" {
   description = "Audience of access tokens issued for the AI Optimizer API."
   type        = string
@@ -66,7 +60,6 @@ check "optimizer_oidc_required" {
   assert {
     condition = !var.deploy_optimizer || alltrue([
       startswith(var.oidc_issuer, "https://"),
-      startswith(var.oidc_discovery_url, "https://"),
       trimspace(var.oidc_audience) != "",
       length(var.oidc_required_scopes) > 0,
       trimspace(var.oidc_client_id) != "",
@@ -74,7 +67,7 @@ check "optimizer_oidc_required" {
       trimspace(var.oidc_admin_subject) != "",
       startswith(var.oidc_public_server_url, "https://"),
     ])
-    error_message = "OpenTofu AI Optimizer deployments require complete OCI IAM OIDC configuration with HTTPS issuer, discovery, and public server URLs."
+    error_message = "OpenTofu AI Optimizer deployments require complete OCI IAM OIDC configuration with HTTPS issuer and public server URLs."
   }
 }
 

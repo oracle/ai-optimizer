@@ -103,18 +103,21 @@ Values supplied through `AIO_*` variables are reapplied at startup. Interface ch
 
 ### Authentication
 
+Oracle database authentication is used when no `AIO_OIDC_*` variables are configured. Setting any `AIO_OIDC_*` variable selects OIDC; startup then requires the complete OIDC configuration shown below.
+
 | Variable | Description | Default |
 | --- | --- | --- |
-| `AIO_AUTH_MODE` | Authentication authority: `single_user`, `local_users`, or `oidc`. Local client startup defaults to `single_user`. | _(required)_ |
-| `AIO_INSTALLATION_ID` | Stable deployment identifier bound to the authentication authority in the AI Optimizer application database. Local client startup supplies a stable default. | _(required)_ |
-| `AIO_ADMIN_DATABASE_USERNAME` | Oracle database identity mapped to the reserved Admin user. Local client startup creates this mapping automatically. | Local client: automatic; otherwise required |
-| `AIO_AUTH_LOGIN_DATA_ROLE` | Data role identifying application-managed local end users. | `AIO_LOGIN_ROLE` |
 | `AIO_AUTH_SESSION_ABSOLUTE_SECONDS` | Maximum database-account bearer-session lifetime. | `28800` |
 | `AIO_AUTH_SESSION_IDLE_SECONDS` | Maximum session inactivity before rejection. | `1800` |
-| `AIO_AUTH_SESSION_LAST_SEEN_SECONDS` | Minimum interval between persisted activity updates. | `60` |
 | `AIO_AUTH_SESSION_MAX_PER_USER` | Maximum active sessions retained for one user. | `10` |
 | `AIO_AUTH_ACCOUNT_STATUS_CACHE_SECONDS` | Maximum delay for observing an out-of-band database account-state change. | `30` |
-| `AIO_AUTH_LOGIN_MAX_CONCURRENT` | Maximum concurrent direct database login attempts per Server process. | `8` |
+| `AIO_OIDC_ISSUER` | Exact issuer accepted for OIDC access tokens and used for standard provider discovery. | _(none)_ |
+| `AIO_OIDC_AUDIENCE` | Audience required in access tokens issued for AI Optimizer Server. | _(none)_ |
+| `AIO_OIDC_REQUIRED_SCOPES` | JSON array of scopes required in access tokens. | _(none)_ |
+| `AIO_OIDC_CLIENT_ID` | OIDC client identifier used by the web client. | _(none)_ |
+| `AIO_OIDC_CLIENT_SECRET` | OIDC client secret used by the web client. | _(none)_ |
+| `AIO_OIDC_ADMIN_SUBJECT` | Exact OIDC subject mapped to the reserved Admin user. | _(none)_ |
+| `AIO_OIDC_PUBLIC_SERVER_URL` | Public HTTPS URL of AI Optimizer Server used for OIDC metadata and redirects. | _(none)_ |
 
 ### Client
 

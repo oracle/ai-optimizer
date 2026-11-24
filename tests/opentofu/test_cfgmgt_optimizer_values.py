@@ -75,7 +75,6 @@ def _render(tmp_path: Path, is_obs: bool, byo_url: str) -> str:
                 ssl_enabled              = false
                 client_cookie_secret     = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
                 oidc_issuer              = "https://identity.example.test"
-                oidc_discovery_url       = "https://identity.example.test/.well-known/openid-configuration"
                 oidc_audience            = "optimizer-api"
                 oidc_required_scopes     = jsonencode(["optimizer.read"])
                 oidc_client_id           = "optimizer-client"

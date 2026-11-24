@@ -1,15 +1,14 @@
 """Constrained Oracle package for local end-user administration."""
 
 import hashlib
-import re
 
 import oracledb
 
-from server.app.core.settings import settings
 from server.app.database.quoting import quote_identifier
 from server.app.database.sql import execute_sql
 
 _PACKAGE_ROLE_PREFIX = "AIO_AUTH_PACKAGE_"
+LOGIN_DATA_ROLE = "AIO_LOGIN_ROLE"
 
 
 def package_role_name(application_schema: str) -> str:
@@ -89,14 +88,21 @@ PROVISIONING_DDL = (
 )
 
 
+async def provisioning_package_available(conn: oracledb.AsyncConnection) -> bool:
+    rows = await execute_sql(
+        conn,
+        "SELECT object_type FROM user_objects WHERE object_name = 'AIO_AUTH_ADMIN' "
+        "AND object_type IN ('PACKAGE', 'PACKAGE BODY') AND status = 'VALID'",
+        max_rows=2,
+    )
+    return {row[0] for row in rows or []} == {"PACKAGE", "PACKAGE BODY"}
+
+
 async def install_provisioning_package(conn: oracledb.AsyncConnection) -> None:
-    """Install the constrained package using the configured login data role."""
-    role = settings.auth_login_data_role.upper()
-    if re.fullmatch(r"[A-Z][A-Z0-9_$#]{0,127}", role) is None:
-        raise ValueError("AIO_AUTH_LOGIN_DATA_ROLE must be a simple Oracle identifier")
+    """Install the constrained local-user administration package."""
     async with conn.cursor() as cursor:
         for ddl in PROVISIONING_DDL:
-            await cursor.execute(ddl.replace("@@LOGIN_ROLE@@", role))
+            await cursor.execute(ddl.replace("@@LOGIN_ROLE@@", LOGIN_DATA_ROLE))
 
 
 async def configure_provisioning_authority(

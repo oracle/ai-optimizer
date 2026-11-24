@@ -149,10 +149,8 @@ class TestKeyValueRedaction:
     @pytest.mark.parametrize(
         "name",
         [
-            "AIO_AUTH_ADMIN_PASSWORD",
             "AIO_AUTH_SETUP_PRIV_PASSWORD",
             "AIO_OIDC_CLIENT_SECRET",
-            "AIO_RECOVERY_ADMIN_PASSWORD",
         ],
     )
     def test_authentication_secret_env_vars_are_redacted(self, filt, name):

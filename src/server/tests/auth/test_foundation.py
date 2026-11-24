@@ -12,14 +12,18 @@ from server.app.auth.models import Principal, RequestCredential, workspace_key
 from server.app.auth.provisioning import configure_provisioning_authority, package_role_name
 from server.app.auth.service import AUTHENTICATORS, authenticator_ready, request_auth_context
 from server.app.auth.setup import (
-    _core_wait_seconds,
     _ensure_connect_role,
     _ensure_login_data_role,
     _init_core_database_with_retry,
     _install_local_user_management,
     _missing_local_user_management_capabilities,
 )
-from server.app.core.settings import CoreDatabaseConfigurationError, Settings, validate_auth_configuration
+from server.app.core.settings import (
+    CoreDatabaseConfigurationError,
+    Settings,
+    validate_auth_authority_configuration,
+    validate_auth_configuration,
+)
 from server.app.database.registry import CoreDatabaseInitializationError
 
 pytestmark = pytest.mark.unit
@@ -27,7 +31,6 @@ pytestmark = pytest.mark.unit
 
 def _settings(**overrides) -> Settings:
     values = {
-        "admin_database_username": "APP_ADMIN",
         "db_username": "APP_SCHEMA",
         "db_password": SecretStr("schema-password"),
         "db_dsn": "localhost:1521/FREEPDB1",
@@ -101,14 +104,6 @@ def test_authenticator_readiness_requires_registered_provider(monkeypatch):
     assert authenticator_ready("oidc") is True
 
 
-@pytest.mark.parametrize("value", ["invalid", "-1"])
-def test_authentication_setup_rejects_invalid_core_wait(monkeypatch, value):
-    monkeypatch.setenv("AIO_AUTH_SETUP_WAIT_SECONDS", value)
-
-    with pytest.raises(ValueError, match="AIO_AUTH_SETUP_WAIT_SECONDS"):
-        _core_wait_seconds()
-
-
 async def test_authentication_setup_retries_until_core_is_initialized(monkeypatch):
     initialize = AsyncMock(side_effect=[CoreDatabaseInitializationError("not ready"), None])
     sleep = AsyncMock()
@@ -119,12 +114,6 @@ async def test_authentication_setup_retries_until_core_is_initialized(monkeypatc
 
     assert initialize.await_count == 2
     sleep.assert_awaited_once_with(0)
-
-
-def test_authentication_configuration_requires_admin_mapping():
-    with pytest.raises(CoreDatabaseConfigurationError) as exc_info:
-        validate_auth_configuration(_settings(admin_database_username=None))
-    assert "AIO_ADMIN_DATABASE_USERNAME" in str(exc_info.value)
 
 
 def test_authentication_validation_preserves_initialized_core_pool():
@@ -141,7 +130,7 @@ def test_authentication_validation_preserves_initialized_core_pool():
 
 def test_authentication_authority_is_derived_from_oidc_configuration():
     assert _settings().auth_mode == "local_users"
-    assert _settings(oidc_provider_name="Corporate identity").auth_mode == "oidc"
+    assert _settings(oidc_issuer="https://identity.example.test").auth_mode == "oidc"
 
 
 def test_partial_oidc_configuration_is_rejected():
@@ -155,10 +144,6 @@ def test_partial_oidc_configuration_is_rejected():
         (
             {"auth_session_absolute_seconds": 300, "auth_session_idle_seconds": 301},
             "AIO_AUTH_SESSION_IDLE_SECONDS",
-        ),
-        (
-            {"auth_session_idle_seconds": 60, "auth_session_last_seen_seconds": 60},
-            "AIO_AUTH_SESSION_LAST_SEEN_SECONDS",
         ),
     ],
 )
@@ -183,15 +168,28 @@ def test_removed_auth_environment_variables_are_ignored_with_warning(monkeypatch
 
 
 def test_oidc_configuration_requires_trust_and_client_configuration():
-    with pytest.raises(CoreDatabaseConfigurationError, match="AIO_OIDC_DISCOVERY_URL"):
-        validate_auth_configuration(_settings(oidc_issuer="https://identity.example.test"))
+    with pytest.raises(CoreDatabaseConfigurationError, match="AIO_OIDC_AUDIENCE"):
+        validate_auth_configuration(
+            _settings(
+                oidc_issuer="https://identity.example.test",
+                oidc_admin_subject="exact-subject",
+            )
+        )
+
+
+def test_oidc_authority_setup_does_not_require_client_secret():
+    validate_auth_authority_configuration(
+        _settings(
+            oidc_issuer="https://identity.example.test",
+            oidc_admin_subject="exact-subject",
+        )
+    )
 
 
 def test_valid_oidc_configuration_requires_https_trust():
     app_settings = _settings(
         env="prd",
         oidc_issuer="http://identity.example.test",
-        oidc_discovery_url="https://identity.example.test/.well-known/openid-configuration",
         oidc_audience="optimizer-api",
         oidc_required_scopes=["openid", "profile"],
         oidc_client_id="optimizer-client",

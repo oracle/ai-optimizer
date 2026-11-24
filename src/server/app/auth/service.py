@@ -28,7 +28,6 @@ class _PendingAuthenticator:
 
 
 AUTHENTICATORS: dict[AuthMode, Authenticator] = {
-    "single_user": _PendingAuthenticator(),
     "local_users": _PendingAuthenticator(),
     "oidc": _PendingAuthenticator(),
 }

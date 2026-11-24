@@ -10,19 +10,19 @@ import asyncio
 import logging
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Header, HTTPException, Query, Request, Response
+from fastapi import APIRouter, Header, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 
 from runtime_config_fields import RUNTIME_ONLY_FIELDS
 from server.app.api.v1.endpoints.chat import get_orchestrator
 from server.app.api.v1.persistence import persistence_succeeded
-from server.app.api.v1.schemas.common import ClientId
 from server.app.api.v1.schemas.settings import (
     ImportSectionResult,
     SettingsImport,
     SettingsImportResult,
     SettingsResponse,
 )
+from server.app.auth.dependencies import WorkspaceKey
 from server.app.core.constants import PERSIST_FAIL_DETAIL as _PERSIST_FAIL
 from server.app.core.etc import upsert_list_field
 from server.app.core.schemas import (
@@ -46,10 +46,12 @@ from server.app.database.registry import refresh_db_vector_stores
 from server.app.database.schemas import DatabaseSensitive, DatabaseUpdate
 from server.app.database.settings import (
     delete_row,
+    delete_user_settings,
     hide_managed_db_configs,
     load_settings,
     persist_client_settings,
     persist_settings,
+    persist_settings_with_client,
 )
 from server.app.mcp.prompts.registry import load_factory_prompts, reconcile_prompt_customizations, register_mcp_prompts
 from server.app.models.connectivity import check_model_reachability
@@ -143,7 +145,7 @@ SENSITIVE_FIELDS = {
 
 @auth.get("", response_model=SettingsResponse, response_model_exclude_unset=True)
 async def get_client_settings(
-    client: Annotated[ClientId, Query()] = "CONFIGURED",
+    client: WorkspaceKey,
 ):
     """Return application settings combined with client settings.
 
@@ -170,8 +172,8 @@ async def get_client_settings(
 @auth.post("/export", response_model=None)
 async def export_settings(
     request: Request,
+    client: WorkspaceKey,
     confirm: Annotated[str, Header(alias="X-Confirm-Export")] = "",
-    client: Annotated[ClientId, Query()] = "CONFIGURED",
 ):
     """Return an explicit settings export."""
     if confirm.lower() != "true":
@@ -233,10 +235,11 @@ def _reconcile_ll_model_tokens(current: LLModelSettings, incoming: LLModelSettin
 
 
 @auth.put("", response_model=ClientSettings)
-async def update_client_settings(body: ClientSettingsUpdate, client: Annotated[ClientId, Query()] = "CONFIGURED"):
-    """Update client settings in memory."""
+async def update_client_settings(body: ClientSettingsUpdate, client: WorkspaceKey):
+    """Update and persist the authenticated user's settings."""
     async with _settings_lock:
         cs = resolve_client(client)
+        previous = cs.model_copy(deep=True)
         if body.ll_model is not None:
             _reconcile_ll_model_tokens(cs.ll_model, body.ll_model)
         for field in body.model_fields_set:
@@ -250,11 +253,14 @@ async def update_client_settings(body: ClientSettingsUpdate, client: Annotated[C
                     setattr(target, sub_field, getattr(incoming, sub_field))
             else:
                 setattr(cs, field, getattr(body, field))
+        if not await persistence_succeeded(persist_client_settings(client, cs)):
+            _client_store[client] = previous
+            raise HTTPException(status_code=503, detail=_PERSIST_FAIL)
         return cs
 
 
 @auth.post("", response_model=SettingsResponse, status_code=201, response_model_exclude_unset=True)
-async def create_client_settings(client: Annotated[ClientId, Query()] = "CONFIGURED"):
+async def create_client_settings(client: WorkspaceKey):
     """Create a new client session from persisted CONFIGURED defaults."""
     async with _settings_lock:
         if client in _client_store:
@@ -276,7 +282,7 @@ async def create_client_settings(client: Annotated[ClientId, Query()] = "CONFIGU
 
 
 @auth.post("/server/copy", response_model=ClientSettings)
-async def copy_to_server(client: Annotated[ClientId, Query()] = "CONFIGURED"):
+async def copy_to_server(client: WorkspaceKey):
     """Copy a source client's client_settings to the SERVER client."""
     async with _settings_lock:
         source_cs = resolve_client(client)
@@ -296,7 +302,7 @@ async def copy_to_server(client: Annotated[ClientId, Query()] = "CONFIGURED"):
 
 
 @auth.post("/import", response_model=SettingsImportResult)
-async def import_settings(body: SettingsImport, client: Annotated[ClientId, Query()] = "CONFIGURED"):
+async def import_settings(body: SettingsImport, client: WorkspaceKey):
     """Import a partial or full configuration with incoming-wins semantics.
 
     Payloads exported from older versions (e.g. v2.0.3's ``database_configs``
@@ -390,7 +396,12 @@ async def import_settings(body: SettingsImport, client: Annotated[ClientId, Quer
             await check_model_reachability()
 
         # --- Persist once — rollback everything on failure ---
-        if not await persistence_succeeded(persist_settings(oci_user_touched=oci_touched)):
+        operation = (
+            persist_settings_with_client(client, _client_store[client], oci_user_touched=oci_touched)
+            if body.client_settings is not None
+            else persist_settings(oci_user_touched=oci_touched)
+        )
+        if not await persistence_succeeded(operation):
             (settings.database_configs, settings.model_configs, settings.oci_configs, settings.log_level) = (
                 snapshot["db"],
                 snapshot["models"],
@@ -462,7 +473,9 @@ async def reset_to_factory():
                 if not await persistence_succeeded(persist_client_settings(key, cs)):
                     raise HTTPException(status_code=503, detail=_PERSIST_FAIL)
 
-        # 5. Evict non-protected client sessions
+        # 5. Remove persisted and cached user workspaces
+        if not await persistence_succeeded(delete_user_settings()):
+            raise HTTPException(status_code=503, detail=_PERSIST_FAIL)
         for key in [k for k in _client_store if k not in _PROTECTED_CLIENTS]:
             del _client_store[key]
 
@@ -474,7 +487,7 @@ async def reset_to_factory():
 
 
 @auth.delete("", status_code=204)
-async def delete_client_settings(client: Annotated[ClientId, Query()]):
+async def delete_client_settings(client: WorkspaceKey):
     """Delete a client session from the in-memory store and the database."""
     async with _settings_lock:
         if client in _PROTECTED_CLIENTS:

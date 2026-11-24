@@ -7,27 +7,27 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 from fastapi import APIRouter, Depends
 
 from server.app.api.mcp.endpoints import client_config, probes, prompts, resources, tools
-from server.app.auth.dependencies import require_authenticated
+from server.app.auth.policy import enforce_route_policy
 
 router = APIRouter()
 router.include_router(probes.noauth, tags=["Probes"])
 router.include_router(
     prompts.auth,
     tags=["Prompts", "Model Context Protocol"],
-    dependencies=[Depends(require_authenticated)],
+    dependencies=[Depends(enforce_route_policy)],
 )
 router.include_router(
     tools.auth,
     tags=["Model Context Protocol"],
-    dependencies=[Depends(require_authenticated)],
+    dependencies=[Depends(enforce_route_policy)],
 )
 router.include_router(
     resources.auth,
     tags=["Model Context Protocol"],
-    dependencies=[Depends(require_authenticated)],
+    dependencies=[Depends(enforce_route_policy)],
 )
 router.include_router(
     client_config.auth,
     tags=["Model Context Protocol"],
-    dependencies=[Depends(require_authenticated)],
+    dependencies=[Depends(enforce_route_policy)],
 )

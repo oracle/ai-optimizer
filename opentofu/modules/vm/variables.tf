@@ -144,15 +144,7 @@ variable "client_cookie_secret" {
   sensitive   = true
 }
 
-variable "auth_installation_id" {
-  type = string
-}
-
 variable "oidc_issuer" {
-  type = string
-}
-
-variable "oidc_discovery_url" {
   type = string
 }
 

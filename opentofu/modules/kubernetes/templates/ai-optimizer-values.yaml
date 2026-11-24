@@ -6,12 +6,8 @@ global:
   env: "iac"
   cleanupPVCs: true
   authentication:
-    mode: "oidc"
-    installationId: "${auth_installation_id}"
-    adminDatabaseUsername: "AI_OPTIMIZER"
     oidc:
       issuer: "${oidc_issuer}"
-      discoveryUrl: "${oidc_discovery_url}"
       audience: "${oidc_audience}"
       requiredScopes: ${oidc_required_scopes}
       clientId: "${oidc_client_id}"

@@ -111,6 +111,17 @@ async def test_password_reset_revokes_shared_sessions(monkeypatch):
     revoke.assert_awaited_once_with(_USER_ID)
 
 
+async def test_admin_password_change_is_managed_outside_the_application(monkeypatch):
+    verify = AsyncMock()
+    monkeypatch.setattr(repository, "get_user_by_database_username", AsyncMock(return_value=_user(role="admin")))
+    monkeypatch.setattr(local, "verify_database_credentials", verify)
+
+    with pytest.raises(local.AuthenticationError):
+        await local.change_database_password("APP_MEMBER", "current-secret", "new-secret")
+
+    verify.assert_not_awaited()
+
+
 async def test_member_creation_reconciles_existing_managed_account(monkeypatch):
     member = _user()
     admin_call = AsyncMock()

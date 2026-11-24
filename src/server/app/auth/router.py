@@ -5,18 +5,15 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from server.app.auth import repository
-from server.app.auth.dependencies import AUTHORITY_STATE, require_admin, require_authenticated
+from server.app.auth.dependencies import AUTHORITY_STATE, require_admin
 from server.app.auth.local import (
     change_database_password,
-    database_account_status,
     login_database_user,
     logout_database_session,
-    normalize_database_username,
-    verify_database_credentials,
 )
 from server.app.auth.models import AuthContext, Principal
+from server.app.auth.policy import enforce_route_policy
 from server.app.auth.schemas import (
-    AdminDatabaseMappingRequest,
     AuthConfigResponse,
     DatabaseLoginRequest,
     DatabasePasswordChangeRequest,
@@ -28,7 +25,13 @@ from server.app.auth.schemas import (
     UserUpdateRequest,
 )
 from server.app.auth.service import AuthenticationError
-from server.app.auth.users import create_member, database_user_status, reset_member_password, update_member
+from server.app.auth.users import (
+    create_member,
+    database_user_status,
+    require_local_user_management,
+    reset_member_password,
+    update_member,
+)
 from server.app.core.settings import settings
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -75,7 +78,6 @@ async def auth_config() -> AuthConfigResponse:
             mode="oidc",
             credential_authority="oidc",
             login_method="authorization_code",
-            provider_name=settings.oidc_provider_name,
         )
     return AuthConfigResponse(
         mode=settings.auth_mode,
@@ -113,46 +115,23 @@ async def password_change(body: DatabasePasswordChangeRequest) -> MessageRespons
 
 
 @router.post("/logout", response_model=MessageResponse)
-async def logout(context: AuthContext = Depends(require_authenticated)) -> MessageResponse:
+async def logout(context: AuthContext = Depends(enforce_route_policy)) -> MessageResponse:
     if context.principal.auth_source == "database_end_user":
         await logout_database_session(context.credential.value)
     return MessageResponse(message="Signed out")
 
 
 @router.get("/me", response_model=Principal)
-async def me(context: AuthContext = Depends(require_authenticated)) -> Principal:
+async def me(context: AuthContext = Depends(enforce_route_policy)) -> Principal:
     return context.principal
-
-
-@router.put("/admin/database-mapping", response_model=MessageResponse)
-async def replace_admin_database_mapping(
-    body: AdminDatabaseMappingRequest,
-    context: AuthContext = Depends(require_admin),
-) -> MessageResponse:
-    _require_database_mode()
-    current_username = context.principal.database_username
-    if current_username is None:
-        raise _login_failure()
-    try:
-        replacement = normalize_database_username(body.database_username)
-        await verify_database_credentials(current_username, body.current_password.get_secret_value())
-        await verify_database_credentials(replacement, body.replacement_password.get_secret_value())
-        if await database_account_status(replacement) != "OPEN":
-            raise AuthenticationError("Replacement database identity is unavailable")
-        await repository.recover_admin_identity(
-            settings.installation_id or "",
-            database_username=replacement,
-        )
-    except AuthenticationError:
-        raise _login_failure() from None
-    settings.admin_database_username = replacement
-    return MessageResponse(message="Admin database mapping replaced; sign in again")
 
 
 @users_router.get("", response_model=list[DatabaseUserResponse])
 async def list_users(_context: AuthContext = Depends(require_admin)) -> list[DatabaseUserResponse]:
-    if settings.auth_mode != "local_users":
-        raise HTTPException(status_code=404, detail="Local user management is unavailable")
+    try:
+        await require_local_user_management()
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from None
     users = await repository.list_database_users()
     return [_user_response(user, await database_user_status(user)) for user in users]
 

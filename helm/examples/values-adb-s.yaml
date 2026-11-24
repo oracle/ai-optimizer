@@ -4,13 +4,6 @@
 # Production baseline using an external Autonomous Database. Create the named
 # Kubernetes Secrets before installing and replace the OCI values for your
 # environment.
-global:
-  authentication:
-    mode: single_user
-    installationId: adb-s-production
-    adminDatabaseUsername: OPTIMIZER_ADMIN
-    adminPasswordSecretName: optimizer-admin-password
-
 server:
   database:
     type: ADB-S

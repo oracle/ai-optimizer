@@ -25,6 +25,8 @@ _GENERIC_LOGIN_ERROR = "Database credentials are invalid or the account is unava
 _MAX_LOGIN_BACKOFF_SECONDS = 5.0
 _MAX_LOGIN_ATTEMPT_KEYS = 10_000
 _MAX_ACCOUNT_STATUS_CACHE_ENTRIES = 10_000
+_MAX_CONCURRENT_LOGINS = 8
+_LAST_SEEN_INTERVAL_SECONDS = min(60, max(1, settings.auth_session_idle_seconds // 2))
 
 
 def normalize_database_username(username: str) -> str:
@@ -70,10 +72,20 @@ async def verify_database_credentials(username: str, password: str, new_password
 async def database_account_status(username: str) -> str:
     canonical = normalize_database_username(username)
     pool = require_core_pool()
-    async with pool.acquire() as conn, conn.cursor() as cursor:
-        status = cursor.var(str, size=128)
-        await cursor.callproc("AIO_AUTH_ADMIN.ACCOUNT_STATUS", [canonical, status])
-        value = status.getvalue()
+    try:
+        async with pool.acquire() as conn, conn.cursor() as cursor:
+            status = cursor.var(str, size=128)
+            await cursor.callproc("AIO_AUTH_ADMIN.ACCOUNT_STATUS", [canonical, status])
+            value = status.getvalue()
+    except oracledb.Error:
+        user = await repository.get_user_by_database_username(canonical)
+        if user is not None and user.role == "admin":
+            return "OPEN"
+        raise
+    if str(value or "MISSING").upper() == "MISSING":
+        user = await repository.get_user_by_database_username(canonical)
+        if user is not None and user.role == "admin":
+            return "OPEN"
     return str(value or "MISSING").upper()
 
 
@@ -121,7 +133,7 @@ class DatabaseSessionAuthenticator:
         if not account_open:
             raise AuthenticationError("Invalid bearer credential")
         try:
-            await repository.touch_session(session.session_id, settings.auth_session_last_seen_seconds)
+            await repository.touch_session(session.session_id, _LAST_SEEN_INTERVAL_SECONDS)
         except (CoreDatabaseUnavailable, oracledb.Error):
             raise AuthAuthorityUnavailable("Database authentication session authority is unavailable") from None
         return Principal(
@@ -137,7 +149,7 @@ class DatabaseSessionAuthenticator:
 
 
 _DATABASE_AUTHENTICATOR = DatabaseSessionAuthenticator()
-_LOGIN_LIMIT = asyncio.Semaphore(settings.auth_login_max_concurrent)
+_LOGIN_LIMIT = asyncio.Semaphore(_MAX_CONCURRENT_LOGINS)
 
 
 class _LoginAttemptLimiter:
@@ -169,8 +181,8 @@ _LOGIN_ATTEMPTS = _LoginAttemptLimiter()
 
 
 def initialize_database_authenticator() -> None:
-    if settings.auth_mode in {"single_user", "local_users"}:
-        register_authenticator(settings.auth_mode, _DATABASE_AUTHENTICATOR)
+    if settings.auth_mode == "local_users":
+        register_authenticator("local_users", _DATABASE_AUTHENTICATOR)
 
 
 def invalidate_account_status(username: str) -> None:
@@ -202,7 +214,7 @@ async def login_database_user(
     await _LOGIN_ATTEMPTS.wait(attempt_key)
     try:
         user = await repository.get_user_by_database_username(canonical)
-        if user is None or user.status != "active" or (settings.auth_mode == "single_user" and user.role != "admin"):
+        if user is None or user.status != "active":
             raise AuthenticationError(_GENERIC_LOGIN_ERROR)
         async with _LOGIN_LIMIT:
             await verify_database_credentials(canonical, password)
@@ -229,7 +241,7 @@ async def login_database_user(
 async def change_database_password(username: str, current_password: str, new_password: str) -> None:
     canonical = normalize_database_username(username)
     user = await repository.get_user_by_database_username(canonical)
-    if user is None or user.status != "active" or (settings.auth_mode == "single_user" and user.role != "admin"):
+    if user is None or user.status != "active" or user.role == "admin":
         raise AuthenticationError(_GENERIC_LOGIN_ERROR)
     async with _LOGIN_LIMIT:
         await verify_database_credentials(canonical, current_password, new_password)

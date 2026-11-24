@@ -3,13 +3,6 @@
 # spell-checker: ignore sidb ollama
 
 # Example Helm Values for Containerized SIDB
-global:
-  authentication:
-    mode: single_user
-    installationId: kind-sidb-free
-    adminDatabaseUsername: OPTIMIZER_ADMIN
-    adminPasswordSecretName: optimizer-admin-password
-
 server:
   replicaCount: 1
   image:

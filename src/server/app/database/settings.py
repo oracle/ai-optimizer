@@ -65,6 +65,25 @@ _DELETE_SQL = """
 DELETE FROM aio_settings WHERE client = :client
 """
 
+_DELETE_USER_SETTINGS_SQL = """
+DELETE FROM aio_settings
+WHERE client NOT IN (:configured, :factory, :server)
+"""
+
+
+async def _execute_settings_upsert(
+    conn: oracledb.AsyncConnection,
+    client: str,
+    payload: dict,
+    is_current: bool,
+) -> None:
+    await execute_sql(
+        conn,
+        _UPSERT_SQL,
+        {"client": client, "settings": payload, "is_current": 1 if is_current else 0},
+        input_sizes={"settings": oracledb.DB_TYPE_JSON},
+    )
+
 
 async def _upsert_settings_row(
     pool: oracledb.AsyncConnectionPool,
@@ -77,12 +96,7 @@ async def _upsert_settings_row(
     """Upsert *payload* into aio_settings for *client*."""
     try:
         async with pool.acquire() as conn:
-            await execute_sql(
-                conn,
-                _UPSERT_SQL,
-                {"client": client, "settings": payload, "is_current": 1 if is_current else 0},
-                input_sizes={"settings": oracledb.DB_TYPE_JSON},
-            )
+            await _execute_settings_upsert(conn, client, payload, is_current)
             await conn.commit()
         LOGGER.info("%s persisted to aio_settings (client=%s)", label, client)
         return True
@@ -91,13 +105,12 @@ async def _upsert_settings_row(
         raise SettingsPersistenceError(f"{label} persistence failed for client={client}") from None
 
 
-async def persist_settings(
+async def _settings_payload(
     client: str = "CONFIGURED",
-    is_current: bool = True,
     *,
     oci_user_touched: Optional[Mapping[str, Iterable[str]]] = None,
-) -> bool:
-    """Serialize current settings and upsert into aio_settings.
+) -> dict:
+    """Serialize current application settings for persistence.
 
     ``oci_user_touched`` maps an OCI auth_profile (case-insensitive) to the set
     of GenAI fields the caller just explicitly changed. When a touched field's
@@ -105,8 +118,6 @@ async def persist_settings(
     and removes the override from the row instead of carrying the prior value
     forward.
     """
-    pool = require_core_pool()
-
     payload = SettingsBase.model_validate(settings).model_dump(
         mode="json",
         context={REVEAL_KEY: True},
@@ -158,6 +169,23 @@ async def persist_settings(
             oci_entries.append(entry)
     payload[_OCI_OVERLAY_KEY] = oci_entries
 
+    return payload
+
+
+def _client_settings_payload(cs: ClientSettings) -> dict:
+    return {"client_settings": cs.model_dump(mode="json", context={REVEAL_KEY: True}, exclude={"deep_data_security"})}
+
+
+async def persist_settings(
+    client: str = "CONFIGURED",
+    is_current: bool = True,
+    *,
+    oci_user_touched: Optional[Mapping[str, Iterable[str]]] = None,
+) -> bool:
+    """Serialize current settings and upsert into aio_settings."""
+    pool = require_core_pool()
+    payload = await _settings_payload(client, oci_user_touched=oci_user_touched)
+
     return await _upsert_settings_row(
         pool,
         client,
@@ -165,6 +193,28 @@ async def persist_settings(
         is_current,
         label="Settings",
     )
+
+
+async def persist_settings_with_client(
+    client: str,
+    cs: ClientSettings,
+    *,
+    oci_user_touched: Optional[Mapping[str, Iterable[str]]] = None,
+) -> bool:
+    """Persist shared settings and one user workspace atomically."""
+    pool = require_core_pool()
+    settings_payload = await _settings_payload("CONFIGURED", oci_user_touched=oci_user_touched)
+    client_payload = _client_settings_payload(cs)
+    try:
+        async with pool.acquire() as conn:
+            await _execute_settings_upsert(conn, "CONFIGURED", settings_payload, True)
+            await _execute_settings_upsert(conn, client, client_payload, False)
+            await conn.commit()
+        LOGGER.info("Settings and client settings persisted to aio_settings (client=%s)", client)
+        return True
+    except Exception as exc:
+        LOGGER.error("Settings import persistence failed for client=%s: %s", client, exc)
+        raise SettingsPersistenceError(f"Settings import persistence failed for client={client}") from None
 
 
 async def _load_raw_settings(client: str, *, op: str) -> Optional[dict]:
@@ -283,9 +333,7 @@ async def persist_client_settings(
     pool = require_core_pool()
 
     # deep_data_security is runtime/session-scoped — never persisted.
-    payload = {
-        "client_settings": cs.model_dump(mode="json", context={REVEAL_KEY: True}, exclude={"deep_data_security"})
-    }
+    payload = _client_settings_payload(cs)
 
     return await _upsert_settings_row(
         pool,
@@ -312,3 +360,18 @@ async def delete_row(client: str) -> None:
     except Exception as exc:
         LOGGER.warning("delete_row: Failed to delete for client=%s: %s", client, exc)
         raise SettingsPersistenceError(f"Settings row deletion failed for client={client}") from None
+
+
+async def delete_user_settings() -> bool:
+    """Delete every persisted workspace outside the reserved server rows."""
+    pool = require_core_pool()
+    binds = {"configured": "CONFIGURED", "factory": "FACTORY", "server": "server"}
+    try:
+        async with pool.acquire() as conn:
+            await execute_sql(conn, _DELETE_USER_SETTINGS_SQL, binds)
+            await conn.commit()
+        LOGGER.info("Deleted persisted user workspaces from aio_settings")
+        return True
+    except Exception as exc:
+        LOGGER.warning("Failed to delete persisted user workspaces: %s", exc)
+        raise SettingsPersistenceError("User workspace deletion failed") from None

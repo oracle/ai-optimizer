@@ -43,7 +43,7 @@ If you start the bare-metal client or all-in-one container without the three req
 
 Settings entered on the bare-metal setup page last until the client stops. The all-in-one container stores them in its application-data volume.
 
-In the default `single_user` mode, this startup also initializes authentication and creates the mapped Admin database identity.
+In the default `local_users` mode, this startup also initializes authentication and maps the configured database user to Admin.
 
 :::note[Standalone Server]
 The setup page is provided by the client. If you run the [Server](../server/intro) directly, set the database environment variables before starting it.

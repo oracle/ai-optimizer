@@ -7,7 +7,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
-AuthMode = Literal["single_user", "local_users", "oidc"]
+AuthMode = Literal["local_users", "oidc"]
 AuthRole = Literal["admin", "member"]
 
 
@@ -67,12 +67,10 @@ class AuthAuthority(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    installation_id: str
     auth_mode: AuthMode
     schema_version: int
     database_identity: str
     application_schema: str
-    admin_database_username: str
     oidc_issuer: str | None = None
     oidc_admin_subject: str | None = None
     initialized: datetime

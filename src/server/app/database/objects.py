@@ -120,19 +120,19 @@ SCHEMA_DDL = [
     """,
     """
     CREATE TABLE IF NOT EXISTS aio_auth_authority (
-        installation_id          VARCHAR2(255) NOT NULL,
+        authority_id             NUMBER(1) DEFAULT 1 NOT NULL,
         auth_mode                VARCHAR2(32) NOT NULL,
         schema_version           NUMBER(9) NOT NULL,
         database_identity        VARCHAR2(255) NOT NULL,
         application_schema       VARCHAR2(128) NOT NULL,
-        admin_database_username  VARCHAR2(128) NOT NULL,
         oidc_issuer              VARCHAR2(2048),
         oidc_admin_subject       VARCHAR2(1024),
         initialized              TIMESTAMP(9) WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
         last_validated           TIMESTAMP(9) WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
-        CONSTRAINT aio_auth_authority_pk PRIMARY KEY (installation_id),
+        CONSTRAINT aio_auth_authority_pk PRIMARY KEY (authority_id),
+        CONSTRAINT aio_auth_authority_singleton_ck CHECK (authority_id = 1),
         CONSTRAINT aio_auth_authority_mode_ck
-            CHECK (auth_mode IN ('SINGLE_USER', 'LOCAL_USERS', 'OIDC')),
+            CHECK (auth_mode IN ('LOCAL_USERS', 'OIDC')),
         CONSTRAINT aio_auth_authority_oidc_ck CHECK (
             (auth_mode = 'OIDC' AND oidc_issuer IS NOT NULL AND oidc_admin_subject IS NOT NULL)
             OR (auth_mode <> 'OIDC' AND oidc_issuer IS NULL AND oidc_admin_subject IS NULL)

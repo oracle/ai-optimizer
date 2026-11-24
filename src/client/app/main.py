@@ -109,7 +109,7 @@ def _start_local_server() -> None:
         with st.spinner("Starting server...", show_time=True):
             started = start_server(resolved.config.child_environment())
         if started:
-            state.settings = get_server_settings(client=state.optimizer_client)
+            state.settings = get_server_settings()
             if state.settings is not None:
                 return
         state["_local_core_startup_failed"] = True
@@ -154,7 +154,7 @@ _clear_local_core_secrets()
 if state.get("settings") is None:
     st.sidebar.space(size="small")
     with st.sidebar.spinner("Connecting to server...", show_time=True):
-        state.settings = get_server_settings(client=state.optimizer_client)
+        state.settings = get_server_settings()
     if state.settings is None and _server_module_available():
         _start_local_server()
 

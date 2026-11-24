@@ -1,12 +1,14 @@
 """Fail-closed FastAPI authentication dependencies."""
 
 from dataclasses import dataclass
+from typing import Annotated
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from server.app.auth.models import AuthContext
 from server.app.auth.service import AuthAuthorityUnavailable, AuthenticationError, request_auth_context
+from server.app.auth.workspace import ensure_workspace
 
 
 @dataclass
@@ -52,3 +54,32 @@ async def require_admin(context: AuthContext = Depends(require_authenticated)) -
     if "admin" not in context.principal.roles:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Administrator role required")
     return context
+
+
+async def require_workspace_context(
+    request: Request,
+    context: AuthContext = Depends(require_authenticated),
+) -> AuthContext:
+    """Resolve the authenticated user's persistent workspace."""
+    if "client" in request.query_params or "client" in request.headers:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The client selector has been removed; the authenticated user selects the workspace",
+        )
+    try:
+        await ensure_workspace(context.workspace_key)
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="User workspace is unavailable",
+        ) from None
+    return context
+
+
+async def require_workspace(context: AuthContext = Depends(require_workspace_context)) -> str:
+    """Return the authenticated user's server-owned workspace key."""
+    return context.workspace_key
+
+
+WorkspaceKey = Annotated[str, Depends(require_workspace)]
+WorkspaceContext = Annotated[AuthContext, Depends(require_workspace_context)]

@@ -19,18 +19,17 @@ import shutil
 import tempfile
 from enum import Enum
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Optional
 from urllib.parse import urlparse
 
 import oracledb
-from fastapi import APIRouter, Body, File, Header, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Body, File, HTTPException, Query, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import HttpUrl
 
 from server.app.api.v1.endpoints._helpers import _safe_filename_or_400
 from server.app.api.v1.endpoints.oci import _find_oci_profile
 from server.app.api.v1.schemas.chat import MessageResponse
-from server.app.api.v1.schemas.common import ClientId
 from server.app.api.v1.schemas.embed import (
     EmbedJobAccepted,
     EmbedJobInfo,
@@ -41,6 +40,7 @@ from server.app.api.v1.schemas.embed import (
     VectorStoreRefreshRequest,
     VectorStoreRefreshStatus,
 )
+from server.app.auth.dependencies import WorkspaceKey
 from server.app.core.client_locks import _client_lock
 from server.app.core.constants import SUPPORTED_EXTENSIONS
 from server.app.core.error_detail import response_error_detail
@@ -258,7 +258,7 @@ def _get_client_db_config(client: str):
 )
 async def embed_drop_vs(
     vs: str,
-    client: Annotated[ClientId, Header()] = "server",
+    client: WorkspaceKey,
 ) -> MessageResponse:
     """Drop a vector store table."""
     LOGGER.debug("Received %s embed_drop_vs: %s", client, vs)
@@ -298,7 +298,7 @@ async def embed_drop_vs(
 )
 async def embed_get_files(
     vs: str,
-    client: Annotated[ClientId, Header()] = "server",
+    client: WorkspaceKey,
 ) -> JSONResponse:
     """Get list of files in a vector store with statistics."""
     LOGGER.debug("Received %s embed_get_files: %s", client, vs)
@@ -324,7 +324,7 @@ async def embed_get_files(
 )
 async def comment_vs(
     request: VectorStoreConfig,
-    client: Annotated[ClientId, Header()] = "server",
+    client: WorkspaceKey,
 ) -> MessageResponse:
     """Update the comment on an existing vector store."""
     LOGGER.info("Received comment_vs - request: %s", request)
@@ -361,7 +361,7 @@ async def comment_vs(
 )
 async def store_sql_file(
     request: SqlStoreRequest,
-    client: Annotated[ClientId, Header()] = "server",
+    client: WorkspaceKey,
 ) -> JSONResponse:
     """Store contents from a SQL query result as a file for embedding."""
     LOGGER.debug("Received store_sql_file - query: %s, db_alias: %s", request.query, request.db_alias)
@@ -398,6 +398,7 @@ async def store_sql_file(
     description="Store Web Files for Embedding.",
 )
 async def store_web_file(
+    client: WorkspaceKey,
     request: list[HttpUrl] = Body(
         ...,
         examples=[
@@ -407,7 +408,6 @@ async def store_web_file(
             ]
         ],
     ),
-    client: Annotated[ClientId, Header()] = "server",
 ) -> JSONResponse:
     """Store contents from web URLs for embedding."""
     LOGGER.debug("Received store_web_file - request: %s", request)
@@ -493,8 +493,8 @@ async def store_web_file(
     description="Store Local Files for Embedding.",
 )
 async def store_local_file(
+    client: WorkspaceKey,
     files: list[UploadFile] = File(...),
-    client: Annotated[ClientId, Header()] = "server",
 ) -> JSONResponse:
     """Store uploaded local files for embedding (supports ZIP extraction).
 
@@ -580,8 +580,8 @@ async def store_local_file(
 )
 async def embed_oci_store(
     request: OciEmbedRequest,
+    client: WorkspaceKey,
     rate_limit: int = 0,
-    client: Annotated[ClientId, Header()] = "server",
 ) -> EmbedJobAccepted:
     """Download bucket objects and schedule the embed pipeline in one call.
 
@@ -1033,8 +1033,8 @@ async def _submit_split_embed_under_lock(
 )
 async def split_embed(
     request: VectorStoreConfig,
+    client: WorkspaceKey,
     rate_limit: int = 0,
-    client: Annotated[ClientId, Header()] = "server",
 ) -> EmbedJobAccepted:
     """Claim the corpus files synchronously, then schedule the pipeline.
 
@@ -1108,7 +1108,7 @@ def _require_core_pool() -> None:
     response_model=list[EmbedJobInfo],
 )
 async def list_embed_jobs(
-    client: Annotated[ClientId, Header()] = "server",
+    client: WorkspaceKey,
     active_only: bool = Query(
         default=False,
         description=(
@@ -1147,7 +1147,7 @@ async def list_embed_jobs(
 )
 async def get_embed_job(
     job_id: str,
-    client: Annotated[ClientId, Header()] = "server",
+    client: WorkspaceKey,
 ) -> EmbedJobInfo:
     """Return current job state. Jobs are scoped per Client header.
 
@@ -1190,7 +1190,7 @@ async def get_embed_job(
 )
 async def refresh_vector_store(
     request: VectorStoreRefreshRequest,
-    client: Annotated[ClientId, Header()] = "server",
+    client: WorkspaceKey,
 ) -> VectorStoreRefreshStatus:
     """Refresh an existing vector store with new/modified documents from an OCI bucket."""
     LOGGER.debug("Received refresh_vector_store - request: %s", request)

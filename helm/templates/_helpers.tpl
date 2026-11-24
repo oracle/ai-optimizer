@@ -169,48 +169,38 @@ wait_until() {
 {{/* ******************************************
 Validate the immutable authentication authority contract.
 *********************************************** */}}
+{{- define "ai-optimizer.authentication.isOidc" -}}
+{{- $auth := .Values.global.authentication | default dict -}}
+{{- $oidc := $auth.oidc | default dict -}}
+{{- $configured := false -}}
+{{- range $field := list "issuer" "audience" "clientId" "clientSecretName" "adminSubject" "publicServerUrl" -}}
+  {{- if ne (index $oidc $field | default "" | trim) "" -}}
+    {{- $configured = true -}}
+  {{- end -}}
+{{- end -}}
+{{- if gt (len ($oidc.requiredScopes | default list)) 0 -}}
+  {{- $configured = true -}}
+{{- end -}}
+{{- if $configured -}}true{{- else -}}false{{- end -}}
+{{- end }}
+
 {{- define "ai-optimizer.authentication.validate" -}}
 {{- $auth := .Values.global.authentication | default dict -}}
-{{- $mode := $auth.mode | default "" | trim -}}
-{{- if not (has $mode (list "single_user" "local_users" "oidc")) -}}
-  {{- fail "global.authentication.mode must be one of single_user, local_users, or oidc" -}}
-{{- end -}}
-{{- if eq ($auth.installationId | default "" | trim) "" -}}
-  {{- fail "global.authentication.installationId is required" -}}
-{{- end -}}
-{{- if eq ($auth.adminDatabaseUsername | default "" | trim) "" -}}
-  {{- fail "global.authentication.adminDatabaseUsername is required" -}}
-{{- end -}}
-{{- if eq $mode "oidc" -}}
+{{- $isOidc := eq (include "ai-optimizer.authentication.isOidc" . | trim) "true" -}}
+{{- if $isOidc -}}
   {{- $oidc := $auth.oidc | default dict -}}
-  {{- range $field := list "issuer" "discoveryUrl" "audience" "clientId" "clientSecretName" "adminSubject" "publicServerUrl" -}}
+  {{- range $field := list "issuer" "audience" "clientId" "clientSecretName" "adminSubject" "publicServerUrl" -}}
     {{- if eq (index $oidc $field | default "" | trim) "" -}}
-      {{- fail (printf "global.authentication.oidc.%s is required for oidc mode" $field) -}}
+      {{- fail (printf "global.authentication.oidc.%s is required when OIDC is configured" $field) -}}
     {{- end -}}
   {{- end -}}
   {{- if eq (len ($oidc.requiredScopes | default list)) 0 -}}
-    {{- fail "global.authentication.oidc.requiredScopes must contain at least one scope" -}}
+    {{- fail "global.authentication.oidc.requiredScopes must contain at least one scope when OIDC is configured" -}}
   {{- end -}}
-  {{- range $field := list "issuer" "discoveryUrl" "publicServerUrl" -}}
+  {{- range $field := list "issuer" "publicServerUrl" -}}
     {{- if not (hasPrefix "https://" (index $oidc $field | trim)) -}}
       {{- fail (printf "global.authentication.oidc.%s must use HTTPS" $field) -}}
     {{- end -}}
-  {{- end -}}
-  {{- if ne ($auth.adminPasswordSecretName | default "" | trim) "" -}}
-    {{- fail "global.authentication.adminPasswordSecretName is only valid for database-account modes" -}}
-  {{- end -}}
-{{- else -}}
-  {{- if eq ($auth.adminPasswordSecretName | default "" | trim) "" -}}
-    {{- fail "global.authentication.adminPasswordSecretName is required for database-account modes" -}}
-  {{- end -}}
-  {{- $oidc := $auth.oidc | default dict -}}
-  {{- range $field := list "issuer" "discoveryUrl" "audience" "clientId" "clientSecretName" "adminSubject" "publicServerUrl" "providerName" -}}
-    {{- if ne (index $oidc $field | default "" | trim) "" -}}
-      {{- fail (printf "global.authentication.oidc.%s requires oidc mode" $field) -}}
-    {{- end -}}
-  {{- end -}}
-  {{- if gt (len ($oidc.requiredScopes | default list)) 0 -}}
-    {{- fail "global.authentication.oidc.requiredScopes requires oidc mode" -}}
   {{- end -}}
 {{- end -}}
 {{- end }}
@@ -474,26 +464,18 @@ Secret-mounted file rather than as pod env entries. Operator-supplied
 {{- include "ai-optimizer.authentication.validate" . -}}
 {{- $out := dict -}}
 {{- $auth := .Values.global.authentication -}}
-{{- $_ := set $out "AIO_AUTH_MODE" $auth.mode -}}
-{{- $_ = set $out "AIO_INSTALLATION_ID" $auth.installationId -}}
-{{- $_ = set $out "AIO_ADMIN_DATABASE_USERNAME" $auth.adminDatabaseUsername -}}
-{{- $_ = set $out "AIO_AUTH_LOGIN_DATA_ROLE" ($auth.loginDataRole | default "AIO_LOGIN_ROLE") -}}
-{{- $_ = set $out "AIO_AUTH_SESSION_ABSOLUTE_SECONDS" ($auth.sessionAbsoluteSeconds | default 28800 | toString) -}}
+{{- $_ := set $out "AIO_AUTH_SESSION_ABSOLUTE_SECONDS" ($auth.sessionAbsoluteSeconds | default 28800 | toString) -}}
 {{- $_ = set $out "AIO_AUTH_SESSION_IDLE_SECONDS" ($auth.sessionIdleSeconds | default 1800 | toString) -}}
-{{- $_ = set $out "AIO_AUTH_SESSION_LAST_SEEN_SECONDS" ($auth.sessionLastSeenSeconds | default 60 | toString) -}}
 {{- $_ = set $out "AIO_AUTH_SESSION_MAX_PER_USER" ($auth.sessionMaxPerUser | default 10 | toString) -}}
 {{- $_ = set $out "AIO_AUTH_ACCOUNT_STATUS_CACHE_SECONDS" ($auth.accountStatusCacheSeconds | toString) -}}
-{{- $_ = set $out "AIO_AUTH_LOGIN_MAX_CONCURRENT" ($auth.loginMaxConcurrent | default 8 | toString) -}}
-{{- if eq $auth.mode "oidc" -}}
+{{- if eq (include "ai-optimizer.authentication.isOidc" . | trim) "true" -}}
 {{- $oidc := $auth.oidc -}}
 {{- $_ = set $out "AIO_OIDC_ISSUER" $oidc.issuer -}}
-{{- $_ = set $out "AIO_OIDC_DISCOVERY_URL" $oidc.discoveryUrl -}}
 {{- $_ = set $out "AIO_OIDC_AUDIENCE" $oidc.audience -}}
 {{- $_ = set $out "AIO_OIDC_REQUIRED_SCOPES" ($oidc.requiredScopes | toJson) -}}
 {{- $_ = set $out "AIO_OIDC_CLIENT_ID" $oidc.clientId -}}
 {{- $_ = set $out "AIO_OIDC_ADMIN_SUBJECT" $oidc.adminSubject -}}
 {{- $_ = set $out "AIO_OIDC_PUBLIC_SERVER_URL" $oidc.publicServerUrl -}}
-{{- if $oidc.providerName -}}{{- $_ = set $out "AIO_OIDC_PROVIDER_NAME" $oidc.providerName -}}{{- end -}}
 {{- end -}}
 {{- $_ = set $out "AIO_SERVER_URL_PREFIX" (include "ai-optimizer.getPath" . | trimSuffix "/") -}}
 {{- $_ = set $out "AIO_MAX_CLIENTS" (.Values.server.maxClients | toString) -}}
@@ -529,14 +511,7 @@ Same contract as server.envContent.
 *********************************************** */}}
 {{- define "ai-optimizer.client.envContent" -}}
 {{- $out := dict -}}
-{{- $auth := .Values.global.authentication -}}
-{{- $_ := set $out "AIO_AUTH_MODE" $auth.mode -}}
-{{- $_ = set $out "AIO_INSTALLATION_ID" $auth.installationId -}}
-{{- $_ = set $out "AIO_ADMIN_DATABASE_USERNAME" $auth.adminDatabaseUsername -}}
-{{- if and (eq $auth.mode "oidc") $auth.oidc.providerName -}}
-{{- $_ = set $out "AIO_OIDC_PROVIDER_NAME" $auth.oidc.providerName -}}
-{{- end -}}
-{{- $_ = set $out "AIO_SERVER_URL" (include "ai-optimizer.server.serviceUrl" .) -}}
+{{- $_ := set $out "AIO_SERVER_URL" (include "ai-optimizer.server.serviceUrl" .) -}}
 {{- $_ = set $out "AIO_SERVER_PORT" (.Values.server.service.port | default 8000 | toString) -}}
 {{- with .Values.client.ssl -}}
 {{- if .enabled -}}

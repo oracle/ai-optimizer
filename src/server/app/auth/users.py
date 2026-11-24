@@ -7,6 +7,7 @@ import oracledb
 from server.app.auth import repository
 from server.app.auth.local import database_account_status, invalidate_account_status, normalize_database_username
 from server.app.auth.models import AuthUser
+from server.app.auth.provisioning import provisioning_package_available
 from server.app.core.settings import settings
 from server.app.database.config import require_core_pool
 
@@ -16,7 +17,16 @@ def require_local_users_mode() -> None:
         raise LookupError("Local user management is unavailable")
 
 
+async def require_local_user_management() -> None:
+    require_local_users_mode()
+    pool = require_core_pool()
+    async with pool.acquire() as conn:
+        if not await provisioning_package_available(conn):
+            raise LookupError("Local user management is unavailable for the configured database account")
+
+
 async def _call_admin(action: str, username: str, password: str | None = None) -> None:
+    await require_local_user_management()
     pool = require_core_pool()
     async with pool.acquire() as conn, conn.cursor() as cursor:
         if action == "CREATE":

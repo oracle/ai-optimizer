@@ -96,7 +96,7 @@ def auth_headers():
 
 
 @pytest.fixture(autouse=True)
-def _test_authenticated_principal():
+def _test_authenticated_principal(monkeypatch):
     """Install a deterministic bearer authenticator for endpoint tests."""
     from server.app.auth.dependencies import AUTHORITY_STATE, set_authority_state
     from server.app.auth.models import Principal
@@ -118,12 +118,17 @@ def _test_authenticated_principal():
                 raise AuthenticationError("Invalid bearer credential")
             return principal
 
-    original_authenticator = AUTHENTICATORS["single_user"]
+    original_authenticator = AUTHENTICATORS["local_users"]
     original_state = (AUTHORITY_STATE.ready, AUTHORITY_STATE.error)
-    AUTHENTICATORS["single_user"] = TestAuthenticator()
+    AUTHENTICATORS["local_users"] = TestAuthenticator()
+
+    async def _workspace_ready(_key: str) -> None:
+        return None
+
+    monkeypatch.setattr("server.app.auth.dependencies.ensure_workspace", _workspace_ready)
     set_authority_state(True)
     yield
-    AUTHENTICATORS["single_user"] = original_authenticator
+    AUTHENTICATORS["local_users"] = original_authenticator
     set_authority_state(*original_state)
 
 

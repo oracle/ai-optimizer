@@ -36,8 +36,6 @@ resource "random_password" "client_cookie" {
   }
 }
 
-resource "random_uuid" "authentication_installation" {}
-
 resource "terraform_data" "byo_db_validation" {
   count = var.byo_db_type == "" ? 0 : 1
 

@@ -72,8 +72,6 @@ _SERVER_READY_POLL_INTERVAL = 5.0
 
 
 _SRC_DIR = Path(__file__).resolve().parents[3]
-_LOCAL_INSTALLATION_ID = "aio-local-single-user"
-_LOCAL_ADMIN_USERNAME = "AIO_LOCAL_ADMIN"
 
 
 def _server_module_available() -> bool:
@@ -115,23 +113,13 @@ def _spawn_server(port: str, env: dict, log_path: Path) -> tuple[subprocess.Pope
     return proc, log_fh
 
 
-def _prepare_local_single_user(env: dict[str, str]) -> bool:
-    if env.setdefault("AIO_AUTH_MODE", settings.auth_mode) != "single_user":
+def _prepare_local_authentication(env: dict[str, str]) -> bool:
+    if any(key.startswith("AIO_OIDC_") and value for key, value in env.items()):
         return True
-    env.setdefault("AIO_INSTALLATION_ID", settings.installation_id or _LOCAL_INSTALLATION_ID)
-    env.setdefault("AIO_ADMIN_DATABASE_USERNAME", settings.admin_database_username or _LOCAL_ADMIN_USERNAME)
-    admin_password = env.pop("AIO_AUTH_ADMIN_PASSWORD", None) or env.get("AIO_DB_PASSWORD")
-    if not admin_password:
-        LOGGER.error("Local authentication setup requires the application database password")
-        return False
     setup = subprocess.run(
         [sys.executable, "-m", "server.app.auth.setup"],
         cwd=_SRC_DIR,
-        env={
-            **env,
-            "AIO_AUTH_ADMIN_PASSWORD": admin_password,
-            "AIO_AUTH_SETUP_LOCAL_AUTO": "1",
-        },
+        env=env,
         capture_output=True,
         text=True,
         check=False,
@@ -182,7 +170,7 @@ def start_server(core_environment: Mapping[str, str] | None = None) -> bool:
     existing_pypath = os.environ.get("PYTHONPATH", "")
     pypath = f"{src_dir}{os.pathsep}{existing_pypath}" if existing_pypath else src_dir
     env = {**os.environ, "PYTHONPATH": pypath, **(core_environment or {})}
-    if core_environment is not None and not _prepare_local_single_user(env):
+    if core_environment is not None and not _prepare_local_authentication(env):
         return False
 
     log_path = Path(src_dir) / f"apiserver_{port}.log"
@@ -271,6 +259,13 @@ def _headers() -> dict:
     return {"Authorization": f"Bearer {token}"} if token else {}
 
 
+def _request_headers(extra_headers: dict | None = None) -> dict:
+    return {
+        **_headers(),
+        **{key: value for key, value in (extra_headers or {}).items() if key.casefold() != "client"},
+    }
+
+
 def api_get(
     path: str,
     params: dict | None = None,
@@ -279,7 +274,7 @@ def api_get(
     extra_headers: dict | None = None,
 ) -> Any:
     """GET request to the API server. Returns parsed JSON."""
-    headers = {**_headers(), **(extra_headers or {})}
+    headers = _request_headers(extra_headers)
     base = _base_url(api_prefix)
     url = f"{base}/{path.lstrip('/')}"
     with (
@@ -307,7 +302,7 @@ def api_post(
     When *files* or *data* are provided the request is sent as
     ``multipart/form-data`` instead of JSON.
     """
-    headers = {**_headers(), **(extra_headers or {})}
+    headers = _request_headers(extra_headers)
     url = f"{_base_url(api_prefix)}/{path.lstrip('/')}"
     with (
         _translate_transport_errors(url),
@@ -360,7 +355,7 @@ def api_put(
     extra_headers: dict | None = None,
 ) -> dict:
     """PUT request to the API server. Returns parsed JSON."""
-    headers = {**_headers(), **(extra_headers or {})}
+    headers = _request_headers(extra_headers)
     url = f"{_base_url(api_prefix)}/{path.lstrip('/')}"
     with (
         _translate_transport_errors(url),
@@ -382,7 +377,7 @@ def api_patch(
     extra_headers: dict | None = None,
 ) -> Any:
     """PATCH request to the API server. Returns parsed JSON (or None for 204)."""
-    headers = {**_headers(), **(extra_headers or {})}
+    headers = _request_headers(extra_headers)
     url = f"{_base_url(api_prefix)}/{path.lstrip('/')}"
     with (
         _translate_transport_errors(url),
@@ -403,7 +398,7 @@ def api_delete(
     extra_headers: dict | None = None,
 ) -> None:
     """DELETE request to the API server. Expects 204 No Content."""
-    headers = {**_headers(), **(extra_headers or {})}
+    headers = _request_headers(extra_headers)
     url = f"{_base_url(api_prefix)}/{path.lstrip('/')}"
     with (
         _translate_transport_errors(url),
@@ -415,7 +410,7 @@ def api_delete(
             st.toast(toast, icon="✅")
 
 
-def get_server_settings(client: str, include_sensitive: bool = False) -> dict | None:
+def get_server_settings(include_sensitive: bool = False) -> dict | None:
     """Fetch server settings (including database and OCI configs) from /settings.
 
     Returns ``None`` on any HTTP error so callers can decide how to recover
@@ -426,14 +421,13 @@ def get_server_settings(client: str, include_sensitive: bool = False) -> dict | 
     standard settings endpoint.
     """
     if include_sensitive:
-        return export_server_settings(client)
+        return export_server_settings()
 
     base = _base_url()
     headers = _headers()
-    params = {"client": client}
     try:
         with httpx.Client(headers=headers, timeout=5, verify=verify_for_url(base)) as client_settings:
-            resp = client_settings.get(f"{base}/settings", params=params)
+            resp = client_settings.get(f"{base}/settings")
             resp.raise_for_status()
             return resp.json()
     except httpx.HTTPError as exc:
@@ -441,14 +435,13 @@ def get_server_settings(client: str, include_sensitive: bool = False) -> dict | 
         return None
 
 
-def export_server_settings(client: str) -> dict | None:
+def export_server_settings() -> dict | None:
     """Fetch the explicit settings export. Returns ``None`` on HTTP error."""
     base = _base_url()
     headers = {**_headers(), "X-Confirm-Export": "true"}
-    params = {"client": client}
     try:
         with httpx.Client(headers=headers, timeout=5, verify=verify_for_url(base)) as client_settings:
-            resp = client_settings.post(f"{base}/settings/export", params=params)
+            resp = client_settings.post(f"{base}/settings/export")
             resp.raise_for_status()
             return resp.json()
     except httpx.HTTPError as exc:

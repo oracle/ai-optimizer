@@ -8,10 +8,9 @@ Chat endpoints — replaces LangGraph-backed ``/completions``, ``/streams``, ``/
 
 import json
 import logging
-from typing import Annotated
 from urllib.parse import urlunparse
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
 from net_addressing import connect_host, netloc
@@ -27,8 +26,7 @@ from server.app.api.v1.schemas.chat import (
     TokenUsage,
     VsMetadata,
 )
-from server.app.api.v1.schemas.common import ClientId
-from server.app.auth.service import current_bearer
+from server.app.auth.dependencies import WorkspaceContext, WorkspaceKey
 from server.app.core.settings import resolve_client, settings
 from server.app.database.config import DdsConnectionError
 from server.app.runtime.common import LLMConfigurationError, llm_error_detail
@@ -59,7 +57,6 @@ def _internal_mcp_url(
 
 _orchestrator = ChatOrchestrator(
     server_url=_internal_mcp_url(),
-    api_key=current_bearer,
     resolve_client=resolve_client,
 )
 
@@ -72,18 +69,20 @@ def get_orchestrator() -> ChatOrchestrator:
 @auth.post("/completions", response_model=ChatResponse)
 async def chat_completions(
     body: ChatRequest,
-    client: Annotated[ClientId, Header()] = "server",
+    context: WorkspaceContext,
 ):
     """Full (non-streaming) chat completion.
 
     Routes automatically based on ``settings.client_settings.tools_enabled``.
     """
     question = _last_user_message(body)
+    client = context.workspace_key
 
     try:
         result = await _orchestrator.execute_chat(
             question=question,
             client=client,
+            bearer=context.credential.value,
         )
     except DdsConnectionError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -113,13 +112,15 @@ async def chat_completions(
 @auth.post("/streams")
 async def chat_stream(
     body: ChatRequest,
-    client: Annotated[ClientId, Header()] = "server",
+    context: WorkspaceContext,
 ):
     """Streaming chat completion via ``StreamingResponse``.
 
     Routes automatically based on ``settings.client_settings.tools_enabled``.
     """
     question = _last_user_message(body)
+    client = context.workspace_key
+    bearer = context.credential.value
 
     async def _generate():
         collected = []
@@ -131,6 +132,7 @@ async def chat_stream(
             async for event in _orchestrator.execute_chat_stream(
                 question=question,
                 client=client,
+                bearer=bearer,
             ):
                 etype = event.get("type", "")
                 if etype == "stream":
@@ -186,13 +188,13 @@ async def chat_stream(
 
 
 @auth.get("/history", response_model=ChatHistoryResponse)
-async def chat_history_return(client: Annotated[ClientId, Header()] = "server"):
+async def chat_history_return(client: WorkspaceKey):
     """Get conversation history for a client."""
     return ChatHistoryResponse(client=client, messages=_orchestrator.history.get(client))
 
 
 @auth.patch("/history", response_model=ChatHistoryResponse)
-async def chat_history_clean(client: Annotated[ClientId, Header()] = "server"):
+async def chat_history_clean(client: WorkspaceKey):
     """Clear conversation history for a client."""
     _orchestrator.clear_history(client)
     return ChatHistoryResponse(client=client, messages=[], cleared=True)

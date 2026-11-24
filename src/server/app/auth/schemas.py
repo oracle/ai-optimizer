@@ -15,7 +15,6 @@ class _PasswordValidationMixin(BaseModel):
         "current_password",
         "new_password",
         "temporary_password",
-        "replacement_password",
         check_fields=False,
     )
     @classmethod
@@ -61,12 +60,6 @@ class PasswordResetRequest(_PasswordValidationMixin):
     temporary_password: SecretStr
 
 
-class AdminDatabaseMappingRequest(_PasswordValidationMixin):
-    current_password: SecretStr
-    database_username: str = Field(min_length=1, max_length=128)
-    replacement_password: SecretStr
-
-
 class DatabaseUserResponse(BaseModel):
     user_id: UUID
     username: str
@@ -85,4 +78,3 @@ class AuthConfigResponse(BaseModel):
     mode: AuthMode
     credential_authority: str
     login_method: str
-    provider_name: str | None = None

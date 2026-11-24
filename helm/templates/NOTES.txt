@@ -180,8 +180,7 @@ workloads in the cluster.
 CONFIGURATION
 ================================================================================
 
-Authentication mode: {{ .Values.global.authentication.mode }}
-Installation ID: {{ .Values.global.authentication.installationId }}
+Authentication authority: {{ if eq (include "ai-optimizer.authentication.isOidc" . | trim) "true" }}OIDC{{ else }}Oracle Database{{ end }}
 
 {{- if .Values.server.database }}
 Database Credentials:

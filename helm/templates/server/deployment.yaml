@@ -51,7 +51,7 @@ spec:
           env:
             - name: AIO_ENV
               value: {{ .Values.global.env | quote }}
-            {{- if eq .Values.global.authentication.mode "oidc" }}
+            {{- if eq (include "ai-optimizer.authentication.isOidc" . | trim) "true" }}
             - name: AIO_OIDC_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:

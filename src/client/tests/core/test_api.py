@@ -31,7 +31,6 @@ def _mock_settings(**overrides):
     m.server_ssl_cert_file = overrides.get("server_ssl_cert_file", "")
     m.server_ssl_key_file = overrides.get("server_ssl_key_file", "")
     m.server_url_prefix = overrides.get("server_url_prefix", "")
-    m.admin_database_username = overrides.get("admin_database_username")
     return m
 
 
@@ -1016,10 +1015,9 @@ class TestStartServer:
 
         child_environment = mock_spawn.call_args.args[1]
         assert {key: child_environment[key] for key in core_environment} == core_environment
-        assert child_environment["AIO_ADMIN_DATABASE_USERNAME"] == "AI_OPTIMIZER"
         setup_environment = mock_setup.call_args.kwargs["env"]
-        assert setup_environment["AIO_AUTH_ADMIN_PASSWORD"] == "secret"
-        assert "AIO_AUTH_ADMIN_PASSWORD" not in child_environment
+        assert setup_environment["AIO_DB_USERNAME"] == "AI_OPTIMIZER"
+        assert setup_environment["AIO_DB_PASSWORD"] == "secret"
 
     def test_oidc_configuration_skips_local_authentication_setup(self):
         environment = {"AIO_OIDC_ISSUER": "https://identity.example.test"}

@@ -46,15 +46,21 @@ async def authority_identity() -> tuple[str, str]:
 
 def _configured_authority(app_settings: Settings, identity: tuple[str, str]) -> tuple:
     return (
-        app_settings.installation_id,
         app_settings.auth_mode.upper(),
         SCHEMA_VERSION,
         identity[0],
         identity[1],
-        app_settings.admin_database_username.upper() if app_settings.admin_database_username else None,
         app_settings.oidc_issuer if app_settings.auth_mode == "oidc" else None,
         app_settings.oidc_admin_subject if app_settings.auth_mode == "oidc" else None,
     )
+
+
+def _admin_database_identity(app_settings: Settings) -> str | None:
+    if app_settings.auth_mode == "oidc":
+        return None
+    if not app_settings.db_username:
+        raise ValueError("CORE database username is required")
+    return app_settings.db_username.upper()
 
 
 def _auth_user_from_row(row: tuple) -> AuthUser:
@@ -299,61 +305,34 @@ async def revoke_user_sessions(user_id: UUID) -> None:
         await conn.commit()
 
 
-async def recover_admin_identity(
-    installation_id: str,
-    *,
-    database_username: str | None = None,
-    oidc_subject: str | None = None,
-) -> None:
-    """Replace the reserved Admin credential mapping and revoke its sessions."""
-    if (database_username is None) == (oidc_subject is None):
-        raise ValueError("Exactly one replacement Admin identity is required")
+async def recover_oidc_admin_subject(oidc_subject: str) -> None:
+    """Replace the reserved OIDC Admin subject and revoke its sessions."""
+    if not oidc_subject:
+        raise ValueError("Replacement OIDC Admin subject is required")
     pool = require_core_pool()
     async with pool.acquire() as conn:
         rows = await execute_sql(
             conn,
-            "SELECT auth_mode, admin_database_username, oidc_admin_subject FROM aio_auth_authority "
-            "WHERE installation_id = :installation_id",
-            {"installation_id": installation_id},
+            "SELECT auth_mode, oidc_admin_subject FROM aio_auth_authority WHERE authority_id = 1",
             max_rows=1,
         )
         if not rows:
             raise ValueError("Authentication authority was not found")
-        auth_mode, old_database_username, old_oidc_subject = rows[0]
-        if database_username is not None:
-            if auth_mode == "OIDC":
-                raise ValueError("Database Admin recovery is unavailable in OIDC mode")
-            replacement = database_username.upper()
-            old_identity = old_database_username
-            await execute_sql(
-                conn,
-                "UPDATE aio_auth_authority SET admin_database_username = :replacement, "
-                "last_validated = SYSTIMESTAMP WHERE installation_id = :installation_id",
-                {"replacement": replacement, "installation_id": installation_id},
-            )
-            await execute_sql(
-                conn,
-                "UPDATE aio_users SET database_username = :replacement, username = 'Admin', "
-                "updated = SYSTIMESTAMP WHERE user_id = :user_id AND role = 'ADMIN'",
-                {"replacement": replacement, "user_id": ADMIN_USER_ID.bytes},
-            )
-        else:
-            if auth_mode != "OIDC":
-                raise ValueError("OIDC Admin recovery requires OIDC mode")
-            replacement = oidc_subject
-            old_identity = old_oidc_subject
-            await execute_sql(
-                conn,
-                "UPDATE aio_auth_authority SET oidc_admin_subject = :replacement, "
-                "last_validated = SYSTIMESTAMP WHERE installation_id = :installation_id",
-                {"replacement": replacement, "installation_id": installation_id},
-            )
-            await execute_sql(
-                conn,
-                "UPDATE aio_users SET subject = :replacement, updated = SYSTIMESTAMP "
-                "WHERE user_id = :user_id AND role = 'ADMIN'",
-                {"replacement": replacement, "user_id": ADMIN_USER_ID.bytes},
-            )
+        auth_mode, old_subject = rows[0]
+        if auth_mode != "OIDC":
+            raise ValueError("OIDC Admin recovery requires OIDC mode")
+        await execute_sql(
+            conn,
+            "UPDATE aio_auth_authority SET oidc_admin_subject = :replacement, "
+            "last_validated = SYSTIMESTAMP WHERE authority_id = 1",
+            {"replacement": oidc_subject},
+        )
+        await execute_sql(
+            conn,
+            "UPDATE aio_users SET subject = :replacement, updated = SYSTIMESTAMP "
+            "WHERE user_id = :user_id AND role = 'ADMIN'",
+            {"replacement": oidc_subject, "user_id": ADMIN_USER_ID.bytes},
+        )
         await execute_sql(
             conn,
             "UPDATE aio_auth_sessions SET revoked = COALESCE(revoked, SYSTIMESTAMP) "
@@ -367,8 +346,8 @@ async def recover_admin_identity(
             {
                 "event_id": uuid4().bytes,
                 "user_id": ADMIN_USER_ID.bytes,
-                "old_identity": old_identity,
-                "new_identity": replacement,
+                "old_identity": old_subject,
+                "new_identity": oidc_subject,
             },
         )
         await conn.commit()
@@ -399,39 +378,35 @@ async def cleanup_expired_sessions(batch_size: int = SESSION_CLEANUP_BATCH_SIZE)
 
 async def bind_authority(app_settings: Settings = settings) -> AuthAuthority:
     """Bind an uninitialized CORE schema to the configured deployment authority."""
-    if not app_settings.installation_id or not app_settings.admin_database_username:
-        raise ValueError("Installation ID and Admin database username are required")
+    admin_database_identity = _admin_database_identity(app_settings)
     identity = await authority_identity()
     expected = _configured_authority(app_settings, identity)
     pool = require_core_pool()
     async with pool.acquire() as conn:
         rows = await execute_sql(
             conn,
-            "SELECT installation_id, auth_mode, schema_version, database_identity, application_schema, "
-            "admin_database_username, oidc_issuer, oidc_admin_subject, initialized, last_validated "
+            "SELECT auth_mode, schema_version, database_identity, application_schema, "
+            "oidc_issuer, oidc_admin_subject, initialized, last_validated "
             "FROM aio_auth_authority",
             max_rows=2,
         )
         if rows:
-            if len(rows) != 1 or tuple(rows[0][:8]) != expected:
+            if len(rows) != 1 or tuple(rows[0][:6]) != expected:
                 raise ValueError("Authentication authority does not match the configured deployment")
         else:
             await execute_sql(
                 conn,
-                "INSERT INTO aio_auth_authority (installation_id, auth_mode, schema_version, "
-                "database_identity, application_schema, admin_database_username, oidc_issuer, "
-                "oidc_admin_subject) VALUES (:installation_id, :auth_mode, :schema_version, "
-                ":database_identity, :application_schema, :admin_database_username, :oidc_issuer, "
-                ":oidc_admin_subject)",
+                "INSERT INTO aio_auth_authority (authority_id, auth_mode, schema_version, "
+                "database_identity, application_schema, oidc_issuer, oidc_admin_subject) "
+                "VALUES (1, :auth_mode, :schema_version, :database_identity, :application_schema, "
+                ":oidc_issuer, :oidc_admin_subject)",
                 dict(
                     zip(
                         (
-                            "installation_id",
                             "auth_mode",
                             "schema_version",
                             "database_identity",
                             "application_schema",
-                            "admin_database_username",
                             "oidc_issuer",
                             "oidc_admin_subject",
                         ),
@@ -454,7 +429,7 @@ async def bind_authority(app_settings: Settings = settings) -> AuthAuthority:
             {
                 "user_id": ADMIN_USER_ID.bytes,
                 "auth_source": auth_source,
-                "database_username": app_settings.admin_database_username.upper(),
+                "database_username": admin_database_identity,
                 "issuer": issuer,
                 "subject": subject,
             },
@@ -464,21 +439,20 @@ async def bind_authority(app_settings: Settings = settings) -> AuthAuthority:
 
 
 async def verify_authority(app_settings: Settings = settings) -> AuthAuthority:
-    """Verify immutable authority, Admin mapping, package, and session hygiene."""
-    if not app_settings.installation_id or not app_settings.admin_database_username:
-        raise ValueError("Installation ID and Admin database username are required")
+    """Verify immutable authority, Admin identity, and session hygiene."""
+    admin_database_identity = _admin_database_identity(app_settings)
     identity = await authority_identity()
     expected = _configured_authority(app_settings, identity)
     pool = require_core_pool()
     async with pool.acquire() as conn:
         rows = await execute_sql(
             conn,
-            "SELECT installation_id, auth_mode, schema_version, database_identity, application_schema, "
-            "admin_database_username, oidc_issuer, oidc_admin_subject, initialized, last_validated "
+            "SELECT auth_mode, schema_version, database_identity, application_schema, "
+            "oidc_issuer, oidc_admin_subject, initialized, last_validated "
             "FROM aio_auth_authority",
             max_rows=2,
         )
-        if not rows or len(rows) != 1 or tuple(rows[0][:8]) != expected:
+        if not rows or len(rows) != 1 or tuple(rows[0][:6]) != expected:
             raise ValueError("Authentication authority does not match the configured deployment")
         authority_row = rows[0]
         admin_rows = await execute_sql(
@@ -489,38 +463,27 @@ async def verify_authority(app_settings: Settings = settings) -> AuthAuthority:
             max_rows=1,
         )
         expected_admin = (
-            app_settings.admin_database_username.upper(),
+            admin_database_identity,
             "OIDC" if app_settings.auth_mode == "oidc" else "DATABASE_END_USER",
             app_settings.oidc_issuer if app_settings.auth_mode == "oidc" else None,
             app_settings.oidc_admin_subject if app_settings.auth_mode == "oidc" else None,
         )
         if not admin_rows or tuple(admin_rows[0]) != expected_admin:
-            raise ValueError("Reserved Admin database mapping does not match authentication authority")
-        package_rows = await execute_sql(
-            conn,
-            "SELECT object_type FROM user_objects WHERE object_name = 'AIO_AUTH_ADMIN' "
-            "AND object_type IN ('PACKAGE', 'PACKAGE BODY') AND status = 'VALID'",
-            max_rows=2,
-        )
-        if {row[0] for row in package_rows or []} != {"PACKAGE", "PACKAGE BODY"}:
-            raise ValueError("Authentication provisioning package is missing or invalid")
+            raise ValueError("Reserved Admin identity does not match authentication authority")
         await execute_sql(
             conn,
-            "UPDATE aio_auth_authority SET last_validated = SYSTIMESTAMP WHERE installation_id = :installation_id",
-            {"installation_id": app_settings.installation_id},
+            "UPDATE aio_auth_authority SET last_validated = SYSTIMESTAMP WHERE authority_id = 1",
         )
         await _cleanup_expired_sessions(conn, SESSION_CLEANUP_BATCH_SIZE)
         await conn.commit()
     row = authority_row
     return AuthAuthority(
-        installation_id=row[0],
-        auth_mode=row[1].lower(),
-        schema_version=row[2],
-        database_identity=row[3],
-        application_schema=row[4],
-        admin_database_username=row[5],
-        oidc_issuer=row[6],
-        oidc_admin_subject=row[7],
-        initialized=row[8],
-        last_validated=row[9],
+        auth_mode=row[0].lower(),
+        schema_version=row[1],
+        database_identity=row[2],
+        application_schema=row[3],
+        oidc_issuer=row[4],
+        oidc_admin_subject=row[5],
+        initialized=row[6],
+        last_validated=row[7],
     )

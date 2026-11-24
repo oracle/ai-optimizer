@@ -32,7 +32,7 @@ def _unused_local_port() -> int:
 
 
 def test_local_bootstrap_starts_server_with_real_core(oracle_db_container, tmp_path):
-    """The mapped Admin authenticates through the local server lifecycle."""
+    """The CORE database user authenticates as Admin through the local server lifecycle."""
     del oracle_db_container
     core = LocalCoreConfig(
         username=TEST_DB_CONFIG["db_username"],
@@ -47,7 +47,6 @@ def test_local_bootstrap_starts_server_with_real_core(oracle_db_container, tmp_p
         server_ssl_cert_file="",
         server_ssl_key_file="",
         server_url_prefix="",
-        admin_database_username=None,
         api_key=None,
     )
     server_state = {"process": None, "log_file": None}
