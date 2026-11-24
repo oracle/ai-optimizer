@@ -308,10 +308,11 @@ class TestFilterAttributes:
         assert filt.key_source == "schemas"
         assert filt.key_count >= len(_STATIC_SENSITIVE_KEYS)
 
-    def test_static_fallback(self, monkeypatch):
+    @pytest.mark.parametrize("error_type", [ImportError, ValueError])
+    def test_static_fallback(self, monkeypatch, error_type):
         # Schema modules may already be cached in ``sys.modules`` from earlier
         # tests in the same session, so monkeypatching just the import won't
-        # trigger ImportError.  Pop the cached modules first, then patch
+        # trigger the fallback. Pop the cached modules first, then patch
         # ``builtins.__import__`` to fail on the relevant prefixes.
         for mod in (
             "server.app.database.schemas",
@@ -323,7 +324,7 @@ class TestFilterAttributes:
 
         def fake_import(name, *a, **kw):
             if name.startswith("server.app."):
-                raise ImportError(f"simulated: {name}")
+                raise error_type(f"simulated: {name}")
             return real_import(name, *a, **kw)
 
         monkeypatch.setattr(builtins, "__import__", fake_import)

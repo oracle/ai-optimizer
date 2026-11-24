@@ -755,7 +755,7 @@ class TestSyncClientSetting:
         """sync_client_setting writes to session state and calls api_put."""
         from client.app.core.helpers import sync_client_setting
 
-        state = make_state(["CORE"], "CORE", extra={"optimizer_client": "test-client"})
+        state = make_state(["CORE"], "CORE")
         server_response = {"database": {"alias": "NEW", "extra": "from_server"}, "oci": {}}
         mock_put = MagicMock(return_value=server_response)
 
@@ -766,9 +766,7 @@ class TestSyncClientSetting:
             sync_client_setting("database", "alias", "NEW")
 
         assert state["settings"]["client_settings"] == server_response
-        mock_put.assert_called_once_with(
-            "settings", json={"database": {"alias": "NEW"}}, params={"client": "test-client"}
-        )
+        mock_put.assert_called_once_with("settings", json={"database": {"alias": "NEW"}})
 
     def test_api_error_still_updates_state(self, make_state):
         """HTTPStatusError from api_put is swallowed; state is still updated."""

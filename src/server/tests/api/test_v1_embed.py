@@ -24,6 +24,8 @@ from server.app.models.schemas import ModelIdentity
 from server.tests.api.conftest import _create_mock_pool
 from server.tests.constants import TEST_OPENAI_EMBED_ID
 
+TEST_WORKSPACE = "user:f4304c28-4bf6-5e7d-a284-33cc0a5a6c01"
+
 
 def job_store_test(func):
     """Mark a test that drives the real embed job store.
@@ -474,7 +476,7 @@ async def test_sql_store_acquires_client_lock(app_client, auth_headers):
         )
 
     assert resp.status_code == 200
-    assert "server" in acquisitions, (
+    assert TEST_WORKSPACE in acquisitions, (
         "/embed/sql/store did not acquire _client_lock; a concurrent "
         "/embed/ retry restore could observe a new file appearing in "
         "shared mid-restore"
@@ -552,7 +554,7 @@ async def test_web_store_acquires_client_lock(app_client, auth_headers):
             headers=auth_headers,
         )
 
-    assert "server" in acquisitions, (
+    assert TEST_WORKSPACE in acquisitions, (
         "/embed/web/store did not acquire _client_lock; a concurrent "
         "/embed/ retry restore could observe a new file appearing in "
         "shared mid-restore"
@@ -723,7 +725,7 @@ async def test_oci_download_objects_acquires_client_lock(app_client, auth_header
         )
 
     assert resp.status_code == 200
-    assert "server" in acquisitions, (
+    assert TEST_WORKSPACE in acquisitions, (
         "/oci/objects/download did not acquire _client_lock; a "
         "concurrent /embed/ retry restore could observe a new file "
         "appearing in shared mid-restore"
@@ -2504,7 +2506,7 @@ async def test_local_store_locks_before_creating_staging_dir(app_client, auth_he
             resp = await app_client.post(
                 "/v1/embed/local/store",
                 files=[("files", ("a.txt", io.BytesIO(b"alpha"), "text/plain"))],
-                headers={**auth_headers, "Client": "lock-scope"},
+                headers=auth_headers,
             )
     assert resp.status_code == 200
     lock_idx = next(i for i, (op, _) in enumerate(call_log) if op == "get_lock")
@@ -2561,7 +2563,7 @@ async def test_local_store_rejects_directory_collision(app_client, auth_headers)
             resp = await app_client.post(
                 "/v1/embed/local/store",
                 files=[("files", ("foo", io.BytesIO(b"new bytes"), "application/octet-stream"))],
-                headers={**auth_headers, "Client": "dir-collide"},
+                headers=auth_headers,
             )
         assert resp.status_code == 409
         assert (tmp_path / "foo").is_dir()
@@ -2753,10 +2755,10 @@ async def test_local_store_acquires_per_client_lock(app_client, auth_headers):
             resp = await app_client.post(
                 "/v1/embed/local/store",
                 files=[("files", ("a.txt", io.BytesIO(b"alpha"), "text/plain"))],
-                headers={**auth_headers, "Client": "lock-client-a"},
+                headers=auth_headers,
             )
     assert resp.status_code == 200
-    assert "lock-client-a" in locks_acquired
+    assert TEST_WORKSPACE in locks_acquired
 
 
 @pytest.mark.anyio
@@ -2810,10 +2812,10 @@ async def test_split_embed_acquires_per_client_lock(app_client, auth_headers):
                     "chunk_overlap": 100,
                     "distance_strategy": "COSINE",
                 },
-                headers={**auth_headers, "Client": "lock-client-b"},
+                headers=auth_headers,
             )
     del resp  # status irrelevant — this test only pins the lock acquisition
-    assert "lock-client-b" in locks_acquired
+    assert TEST_WORKSPACE in locks_acquired
     submit_mock.assert_awaited_once()
 
 
@@ -3404,8 +3406,8 @@ async def test_get_job_unknown_id_returns_404(app_client, auth_headers):
 
 @job_store_test
 @pytest.mark.anyio
-async def test_jobs_scoped_per_client(app_client, auth_headers):
-    """A job created under one Client header is invisible to another."""
+async def test_jobs_scoped_to_authenticated_workspace(app_client, auth_headers):
+    """A submitted job is read through the authenticated workspace."""
     import tempfile
     import tempfile as _tf
     from pathlib import Path
@@ -3453,8 +3455,7 @@ async def test_jobs_scoped_per_client(app_client, auth_headers):
                 new_callable=AsyncMock,
             ),
         ):
-            client_a = {**auth_headers, "Client": "client-a"}
-            client_b = {**auth_headers, "Client": "client-b"}
+            client_a = auth_headers
             post_a = await app_client.post(
                 "/v1/embed/",
                 json={
@@ -3468,16 +3469,6 @@ async def test_jobs_scoped_per_client(app_client, auth_headers):
             assert post_a.status_code == 202
             job_id = post_a.json()["job_id"]
 
-            # Client B cannot see client A's job — the client header
-            # check is applied on every read so a leaked job id can't
-            # be polled across client boundaries.
-            cross = await app_client.get(f"/v1/embed/jobs/{job_id}", headers=client_b)
-            assert cross.status_code == 404
-            list_b = await app_client.get("/v1/embed/jobs", headers=client_b)
-            assert list_b.status_code == 200
-            assert list_b.json() == []
-
-            # Client A sees the job in both the detail and the list view.
             detail = await app_client.get(f"/v1/embed/jobs/{job_id}", headers=client_a)
             assert detail.status_code == 200
             assert detail.json()["job_id"] == job_id
@@ -3508,14 +3499,14 @@ async def test_list_jobs_active_only_excludes_terminal_rows(app_client, auth_hea
     from server.app.api.v1.schemas.embed import EmbedJobStatus
     from server.app.embed import jobs as jobs_mod
 
-    client_header = {**auth_headers, "Client": "filter-client"}
+    client_header = auth_headers
     now = _dt.datetime.now(_dt.timezone.utc)
 
     def _row(job_id: str, status: EmbedJobStatus) -> jobs_mod._JobRow:
         return jobs_mod._JobRow(
             target_db="CORE",
             job_id=job_id,
-            client="filter-client",
+            client=TEST_WORKSPACE,
             owner_pod="pod-1",
             status=status,
             progress=None,
@@ -4612,7 +4603,7 @@ async def test_split_embed_holds_client_lock_through_submission(app_client, auth
 
         async def _side_acquirer():
             side_started.set()
-            async with embed_endpoints._client_lock("server"):
+            async with embed_endpoints._client_lock(TEST_WORKSPACE):
                 side_acquired.set()
                 await side_can_release.wait()
 

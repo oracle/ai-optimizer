@@ -23,6 +23,7 @@ from server.tests.conftest import make_test_database_config, make_test_model_con
 from server.tests.constants import TEST_OPENAI_MODEL_ID
 
 SETTINGS_MODULE = "server.app.api.v1.endpoints.settings"
+TEST_WORKSPACE = "user:f4304c28-4bf6-5e7d-a284-33cc0a5a6c01"
 
 
 @pytest.fixture(autouse=True)
@@ -36,7 +37,10 @@ def _populate_configs():
     settings.oci_configs = [make_test_oci_profile()]
     settings.model_configs = [make_test_model_config()]
     settings.client_settings = original_cs.model_copy(deep=True)
-    with patch(f"{SETTINGS_MODULE}.load_settings", new_callable=AsyncMock, return_value=None):
+    with (
+        patch(f"{SETTINGS_MODULE}.load_settings", new_callable=AsyncMock, return_value=None),
+        patch(f"{SETTINGS_MODULE}.persist_client_settings", new_callable=AsyncMock, return_value=True),
+    ):
         yield
     _client_store.clear()
     settings.database_configs = original_db
@@ -182,7 +186,7 @@ async def test_update_client_settings_database_alias(app_client, auth_headers):
     assert resp.status_code == 200
     body = resp.json()
     assert body["database"]["alias"] == "NEW_DB"
-    assert settings.client_settings.database.alias == "NEW_DB"
+    assert _client_store[TEST_WORKSPACE].database.alias == "NEW_DB"
 
 
 @pytest.mark.unit
@@ -197,7 +201,7 @@ async def test_update_client_settings_oci_profile(app_client, auth_headers):
     assert resp.status_code == 200
     body = resp.json()
     assert body["oci"]["auth_profile"] == "PROD"
-    assert settings.client_settings.oci.auth_profile == "PROD"
+    assert _client_store[TEST_WORKSPACE].oci.auth_profile == "PROD"
 
 
 @pytest.mark.unit
@@ -237,7 +241,7 @@ async def test_update_client_settings_dds_field_merge(app_client, auth_headers):
     assert body["end_user"] == "SCOUT1"  # preserved by the field-merge
     assert body["alias"] == "CORE::SCOUT1"
     assert body["base_alias"] == "CORE"
-    assert settings.client_settings.deep_data_security.enabled is True
+    assert _client_store[TEST_WORKSPACE].deep_data_security.enabled is True
     assert settings.client_settings.deep_data_security.end_user == "SCOUT1"
 
 
@@ -266,254 +270,44 @@ async def test_get_client_settings_reflects_put(app_client, auth_headers):
     assert body["client_settings"]["oci"]["auth_profile"] == "LONDON"
 
 
-# ---------------------------------------------------------------------------
-# Per-client isolation
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.unit
 @pytest.mark.anyio
-async def test_client_settings_isolation(app_client, auth_headers):
-    """Different client IDs get independent settings; default is unaffected."""
-    # Update two separate clients
-    resp_a = await app_client.put(
-        "/v1/settings?client=AAA",
-        json={"database": {"alias": "DB_AAA"}},
-        headers=auth_headers,
-    )
-    assert resp_a.status_code == 200
-
-    resp_b = await app_client.put(
-        "/v1/settings?client=BBB",
-        json={"database": {"alias": "DB_BBB"}},
-        headers=auth_headers,
-    )
-    assert resp_b.status_code == 200
-
-    # Each client sees only its own value
-    get_a = await app_client.get("/v1/settings?client=AAA", headers=auth_headers)
-    assert get_a.json()["client_settings"]["database"]["alias"] == "DB_AAA"
-
-    get_b = await app_client.get("/v1/settings?client=BBB", headers=auth_headers)
-    assert get_b.json()["client_settings"]["database"]["alias"] == "DB_BBB"
-
-    # Default (CONFIGURED) still has the original default alias
-    get_default = await app_client.get("/v1/settings", headers=auth_headers)
-    default_alias = get_default.json()["client_settings"]["database"]["alias"]
-    assert default_alias == "CORE"
-
-
-@pytest.mark.unit
-@pytest.mark.anyio
-async def test_client_settings_sees_server_configs(app_client, auth_headers):
-    """GET /settings includes shared server configs alongside client settings."""
-    resp = await app_client.get("/v1/settings?client=NEW_CLIENT", headers=auth_headers)
-    assert resp.status_code == 200
-    body = resp.json()
-
-    # Shared server-level configs are present
-    assert "database_configs" in body
-    assert "model_configs" in body
-    assert "oci_configs" in body
-
-    # Per-client settings are also present
-    assert "client_settings" in body
-    assert body["client_settings"]["client"] == "NEW_CLIENT"
+async def test_update_client_settings_rolls_back_on_persist_failure(app_client, auth_headers):
+    _client_store[TEST_WORKSPACE] = ClientSettings(client=TEST_WORKSPACE)
+    _client_store[TEST_WORKSPACE].database.alias = "BEFORE"
+    with patch(f"{SETTINGS_MODULE}.persist_client_settings", new_callable=AsyncMock, return_value=False):
+        response = await app_client.put(
+            "/v1/settings",
+            json={"database": {"alias": "AFTER"}},
+            headers=auth_headers,
+        )
+    assert response.status_code == 503
+    assert _client_store[TEST_WORKSPACE].database.alias == "BEFORE"
 
 
 # ---------------------------------------------------------------------------
-# POST /settings
+# Authenticated workspace ownership
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 @pytest.mark.anyio
-async def test_post_settings_no_auth(app_client):
-    """POST /settings challenges requests without a bearer credential."""
-    resp = await app_client.post("/v1/settings")
-    assert resp.status_code == 401
+@pytest.mark.parametrize("placement", ["query", "header"])
+async def test_client_selector_is_rejected(app_client, auth_headers, placement):
+    """Caller-selected workspace identifiers are rejected."""
+    kwargs = {"params": {"client": "another-user"}, "headers": auth_headers}
+    if placement == "header":
+        kwargs = {"headers": {**auth_headers, "client": "another-user"}}
+    response = await app_client.get("/v1/settings", **kwargs)
+    assert response.status_code == 400
 
 
 @pytest.mark.unit
 @pytest.mark.anyio
-async def test_post_settings_creates_client(app_client, auth_headers):
-    """POST /settings creates a new client session with skeleton defaults."""
-    resp = await app_client.post("/v1/settings?client=FRESH", headers=auth_headers)
-    assert resp.status_code == 201
-    body = resp.json()
-
-    assert "client_settings" in body
-    assert body["client_settings"]["client"] == "FRESH"
-    assert body["client_settings"]["database"]["alias"] == "CORE"
-
-
-@pytest.mark.unit
-@pytest.mark.anyio
-async def test_post_settings_core_unavailable_returns_503(app_client, auth_headers):
-    """CORE read failures are translated at the API boundary."""
-    with patch(
-        f"{SETTINGS_MODULE}.load_settings",
-        new_callable=AsyncMock,
-        side_effect=CoreDatabaseUnavailable,
-    ):
-        resp = await app_client.post("/v1/settings?client=FRESH", headers=auth_headers)
-
-    assert resp.status_code == 503
-    assert resp.json() == {"detail": "CORE database is unavailable"}
-    assert "FRESH" not in _client_store
-
-
-@pytest.mark.unit
-@pytest.mark.anyio
-async def test_post_settings_duplicate_returns_409(app_client, auth_headers):
-    """POST /settings returns 409 if client already exists."""
-    resp1 = await app_client.post("/v1/settings?client=DUP", headers=auth_headers)
-    assert resp1.status_code == 201
-
-    resp2 = await app_client.post("/v1/settings?client=DUP", headers=auth_headers)
-    assert resp2.status_code == 409
-
-
-@pytest.mark.unit
-@pytest.mark.anyio
-async def test_post_settings_excludes_sensitive(app_client, auth_headers):
-    """POST /settings excludes sensitive fields from the response."""
-    resp = await app_client.post("/v1/settings?client=SAFE", headers=auth_headers)
-    assert resp.status_code == 201
-    body = resp.json()
-
-    assert "api_key" not in body
-
-    for db_entry in body.get("database_configs", []):
-        assert "password" not in db_entry
-        assert "wallet_password" not in db_entry
-
-    for model_entry in body.get("model_configs", []):
-        assert "api_key" not in model_entry
-
-    for oci_entry in body.get("oci_configs", []):
-        assert "fingerprint" not in oci_entry
-
-
-@pytest.mark.unit
-@pytest.mark.anyio
-async def test_post_settings_excludes_managed_configs(app_client, auth_headers):
-    """A new client session must not receive runtime-only DDS-managed connections, even when
-    load_settings() falls back to the in-memory settings object."""
-    from server.app.database.schemas import DatabaseConfig
-
-    managed = DatabaseConfig(alias="CORE::SCOUT1", username="SCOUT1", managed_by="dds:CORE")
-    saved = settings.database_configs
-    settings.database_configs = [*saved, managed]
-    try:
-        # Force the in-memory fallback (no persisted CONFIGURED row) — the leak path.
-        with patch(f"{SETTINGS_MODULE}.load_settings", AsyncMock(return_value=None)):
-            resp = await app_client.post("/v1/settings?client=DDSLEAK", headers=auth_headers)
-    finally:
-        settings.database_configs = saved
-        _client_store.pop("DDSLEAK", None)
-    assert resp.status_code == 201
-    aliases = [c["alias"] for c in resp.json().get("database_configs", [])]
-    assert "CORE::SCOUT1" not in aliases
-
-
-@pytest.mark.unit
-@pytest.mark.anyio
-async def test_post_settings_includes_server_configs(app_client, auth_headers):
-    """POST /settings response includes shared server configs."""
-    resp = await app_client.post("/v1/settings?client=CFG", headers=auth_headers)
-    assert resp.status_code == 201
-    body = resp.json()
-
-    assert "database_configs" in body
-    assert "model_configs" in body
-    assert "oci_configs" in body
-
-
-@pytest.mark.unit
-@pytest.mark.anyio
-async def test_post_then_get_round_trip(app_client, auth_headers):
-    """POST /settings followed by GET /settings returns the same client."""
-    post_resp = await app_client.post("/v1/settings?client=ROUND", headers=auth_headers)
-    assert post_resp.status_code == 201
-
-    get_resp = await app_client.get("/v1/settings?client=ROUND", headers=auth_headers)
-    assert get_resp.status_code == 200
-    body = get_resp.json()
-    assert body["client_settings"]["client"] == "ROUND"
-
-
-# ---------------------------------------------------------------------------
-# DELETE /settings
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-@pytest.mark.anyio
-async def test_delete_settings_no_auth(app_client):
-    """DELETE /settings challenges requests without a bearer credential."""
-    resp = await app_client.delete("/v1/settings?client=X")
-    assert resp.status_code == 401
-
-
-@pytest.mark.unit
-@pytest.mark.anyio
-async def test_delete_settings_success(app_client, auth_headers):
-    """DELETE /settings removes an existing client and calls delete_row."""
-    # Create a client first
-    _client_store["TEMP"] = ClientSettings(client="TEMP")
-
-    with patch(f"{SETTINGS_MODULE}.delete_row", new_callable=AsyncMock) as mock_del:
-        resp = await app_client.delete("/v1/settings?client=TEMP", headers=auth_headers)
-
-    assert resp.status_code == 204
-    assert "TEMP" not in _client_store
-    mock_del.assert_awaited_once_with("TEMP")
-
-
-@pytest.mark.unit
-@pytest.mark.anyio
-async def test_delete_settings_core_unavailable_rolls_back(app_client, auth_headers):
-    """DELETE returns 503 and restores the cached client when CORE is unavailable."""
-    _client_store["TEMP"] = ClientSettings(client="TEMP")
-
-    with patch(f"{SETTINGS_MODULE}.delete_row", new_callable=AsyncMock, side_effect=CoreDatabaseUnavailable):
-        resp = await app_client.delete("/v1/settings?client=TEMP", headers=auth_headers)
-
-    assert resp.status_code == 503
-    assert "TEMP" in _client_store
-
-
-@pytest.mark.unit
-@pytest.mark.anyio
-async def test_delete_settings_configured_forbidden(app_client, auth_headers):
-    """DELETE /settings returns 403 for the CONFIGURED client."""
-    resp = await app_client.delete("/v1/settings?client=CONFIGURED", headers=auth_headers)
-    assert resp.status_code == 403
-
-
-@pytest.mark.unit
-@pytest.mark.anyio
-async def test_delete_settings_factory_forbidden(app_client, auth_headers):
-    """DELETE /settings returns 403 for the FACTORY client."""
-    resp = await app_client.delete("/v1/settings?client=FACTORY", headers=auth_headers)
-    assert resp.status_code == 403
-
-
-@pytest.mark.unit
-@pytest.mark.anyio
-async def test_delete_settings_not_found(app_client, auth_headers):
-    """DELETE /settings returns 404 for a missing client."""
-    resp = await app_client.delete("/v1/settings?client=GHOST", headers=auth_headers)
-    assert resp.status_code == 404
-
-
-@pytest.mark.unit
-@pytest.mark.anyio
-async def test_delete_settings_missing_param(app_client, auth_headers):
-    """DELETE /settings returns 422 when client param is missing."""
-    resp = await app_client.delete("/v1/settings", headers=auth_headers)
-    assert resp.status_code == 422
+@pytest.mark.parametrize("method", ["post", "delete"])
+async def test_workspace_lifecycle_routes_are_internal(app_client, auth_headers, method):
+    response = await getattr(app_client, method)("/v1/settings", headers=auth_headers)
+    assert response.status_code == 403
 
 
 # ---------------------------------------------------------------------------
@@ -562,11 +356,11 @@ async def test_copy_to_server_no_auth(app_client):
 @pytest.mark.anyio
 async def test_copy_to_server_success(app_client, auth_headers):
     """POST /settings/server/copy copies source client settings to server."""
-    _client_store["SOURCE"] = ClientSettings(client="SOURCE")
-    _client_store["SOURCE"].database.alias = "MY_DB"
+    _client_store[TEST_WORKSPACE] = ClientSettings(client=TEST_WORKSPACE)
+    _client_store[TEST_WORKSPACE].database.alias = "MY_DB"
 
     with patch(f"{SETTINGS_MODULE}.persist_client_settings", new_callable=AsyncMock, return_value=True):
-        resp = await app_client.post("/v1/settings/server/copy?client=SOURCE", headers=auth_headers)
+        resp = await app_client.post("/v1/settings/server/copy", headers=auth_headers)
 
     assert resp.status_code == 200
     body = resp.json()
@@ -579,16 +373,16 @@ async def test_copy_to_server_success(app_client, auth_headers):
 @pytest.mark.anyio
 async def test_copy_to_server_excludes_dds_override(app_client, auth_headers):
     """POST /settings/server/copy must not carry the runtime-only DDS override into the server client."""
-    source = ClientSettings(client="SOURCE")
+    source = ClientSettings(client=TEST_WORKSPACE)
     source.database.alias = "MY_DB"
     source.deep_data_security.enabled = True
     source.deep_data_security.end_user = "SCOUT1"
     source.deep_data_security.alias = "DDS_MY_DB_SCOUT1"
     source.deep_data_security.base_alias = "MY_DB"
-    _client_store["SOURCE"] = source
+    _client_store[TEST_WORKSPACE] = source
 
     with patch(f"{SETTINGS_MODULE}.persist_client_settings", new_callable=AsyncMock, return_value=True):
-        resp = await app_client.post("/v1/settings/server/copy?client=SOURCE", headers=auth_headers)
+        resp = await app_client.post("/v1/settings/server/copy", headers=auth_headers)
 
     assert resp.status_code == 200
     body = resp.json()["deep_data_security"]
@@ -597,7 +391,7 @@ async def test_copy_to_server_excludes_dds_override(app_client, auth_headers):
     assert body["alias"] is None
     assert body["base_alias"] is None
     # The source's own override is untouched.
-    assert _client_store["SOURCE"].deep_data_security.enabled is True
+    assert _client_store[TEST_WORKSPACE].deep_data_security.enabled is True
     server_dds = _client_store["server"].deep_data_security
     assert server_dds.enabled is False
     assert server_dds.alias is None
@@ -610,10 +404,10 @@ async def test_copy_to_server_persist_failure_rollback(app_client, auth_headers)
     original_server = ClientSettings(client="server")
     original_server.database.alias = "ORIGINAL"
     _client_store["server"] = original_server
-    _client_store["SOURCE"] = ClientSettings(client="SOURCE")
+    _client_store[TEST_WORKSPACE] = ClientSettings(client=TEST_WORKSPACE)
 
     with patch(f"{SETTINGS_MODULE}.persist_client_settings", new_callable=AsyncMock, return_value=False):
-        resp = await app_client.post("/v1/settings/server/copy?client=SOURCE", headers=auth_headers)
+        resp = await app_client.post("/v1/settings/server/copy", headers=auth_headers)
 
     assert resp.status_code == 503
     assert _client_store["server"].database.alias == "ORIGINAL"
@@ -626,14 +420,14 @@ async def test_copy_to_server_core_unavailable_rollback(app_client, auth_headers
     original_server = ClientSettings(client="server")
     original_server.database.alias = "ORIGINAL"
     _client_store["server"] = original_server
-    _client_store["SOURCE"] = ClientSettings(client="SOURCE")
+    _client_store[TEST_WORKSPACE] = ClientSettings(client=TEST_WORKSPACE)
 
     with patch(
         f"{SETTINGS_MODULE}.persist_client_settings",
         new_callable=AsyncMock,
         side_effect=CoreDatabaseUnavailable,
     ):
-        resp = await app_client.post("/v1/settings/server/copy?client=SOURCE", headers=auth_headers)
+        resp = await app_client.post("/v1/settings/server/copy", headers=auth_headers)
 
     assert resp.status_code == 503
     assert _client_store["server"].database.alias == "ORIGINAL"
@@ -667,6 +461,7 @@ async def test_reset_success(app_client, auth_headers):
         patch(f"{SETTINGS_MODULE}.check_model_reachability", new_callable=AsyncMock),
         patch(f"{SETTINGS_MODULE}.persist_settings", new_callable=AsyncMock, return_value=True),
         patch(f"{SETTINGS_MODULE}.persist_client_settings", new_callable=AsyncMock, return_value=True),
+        patch(f"{SETTINGS_MODULE}.delete_user_settings", new_callable=AsyncMock, return_value=True),
     ):
         resp = await app_client.post("/v1/settings/reset", headers=auth_headers)
 
@@ -695,6 +490,7 @@ async def test_reset_excludes_managed_configs(app_client, auth_headers):
             patch(f"{SETTINGS_MODULE}.check_model_reachability", new_callable=AsyncMock),
             patch(f"{SETTINGS_MODULE}.persist_settings", new_callable=AsyncMock, return_value=True),
             patch(f"{SETTINGS_MODULE}.persist_client_settings", new_callable=AsyncMock, return_value=True),
+            patch(f"{SETTINGS_MODULE}.delete_user_settings", new_callable=AsyncMock, return_value=True),
         ):
             resp = await app_client.post("/v1/settings/reset", headers=auth_headers)
     finally:
@@ -743,6 +539,28 @@ async def test_reset_client_persist_failure_returns_503(app_client, auth_headers
         resp = await app_client.post("/v1/settings/reset", headers=auth_headers)
 
     assert resp.status_code == 503
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_reset_workspace_delete_failure_returns_503(app_client, auth_headers):
+    """Reset retains cached user workspaces when durable deletion fails."""
+    _client_store[TEST_WORKSPACE] = ClientSettings(client=TEST_WORKSPACE)
+    with (
+        patch(f"{SETTINGS_MODULE}.reset_factory_models"),
+        patch(f"{SETTINGS_MODULE}.apply_env_overrides"),
+        patch(f"{SETTINGS_MODULE}.load_ollama_models", new_callable=AsyncMock),
+        patch(f"{SETTINGS_MODULE}.load_factory_prompts"),
+        patch(f"{SETTINGS_MODULE}.register_mcp_prompts"),
+        patch(f"{SETTINGS_MODULE}.check_model_reachability", new_callable=AsyncMock),
+        patch(f"{SETTINGS_MODULE}.persist_settings", new_callable=AsyncMock, return_value=True),
+        patch(f"{SETTINGS_MODULE}.persist_client_settings", new_callable=AsyncMock, return_value=True),
+        patch(f"{SETTINGS_MODULE}.delete_user_settings", new_callable=AsyncMock, return_value=False),
+    ):
+        resp = await app_client.post("/v1/settings/reset", headers=auth_headers)
+
+    assert resp.status_code == 503
+    assert TEST_WORKSPACE in _client_store
 
 
 # ---------------------------------------------------------------------------

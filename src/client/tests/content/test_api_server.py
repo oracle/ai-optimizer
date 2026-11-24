@@ -100,24 +100,19 @@ class TestCopyToServer:
     """Tests for _copy_to_server."""
 
     def test_calls_api_post(self, mock_st):
-        """Calls api_post with correct copy URL."""
-        state = _make_state()
         with (
-            patch(f"{MODULE}.state", state),
             patch(f"{MODULE}.st", mock_st),
             patch(f"{MODULE}.api_post") as mock_post,
         ):
             from client.app.content.api_server import _copy_to_server
 
             _copy_to_server()
-        mock_post.assert_called_once_with("settings/server/copy?client=test-client")
+        mock_post.assert_called_once_with("settings/server/copy")
 
     def test_handles_exception(self, mock_st):
         """Exception from api_post is caught and shown as error."""
-        state = _make_state()
         with (
             patch(f"{MODULE}.st", mock_st),
-            patch(f"{MODULE}.state", state),
             patch(f"{MODULE}.api_post", side_effect=Exception("fail")),
         ):
             from client.app.content.api_server import _copy_to_server
@@ -125,26 +120,20 @@ class TestCopyToServer:
             _copy_to_server()  # Should not raise
         mock_st.error.assert_called_once()
 
-    def test_constructs_url_with_client(self, mock_st):
-        """URL includes the optimizer_client name."""
-        state = _make_state()
-        state["optimizer_client"] = "my-custom-client"
+    def test_does_not_send_client_selector(self, mock_st):
         with (
             patch(f"{MODULE}.st", mock_st),
-            patch(f"{MODULE}.state", state),
             patch(f"{MODULE}.api_post") as mock_post,
         ):
             from client.app.content.api_server import _copy_to_server
 
             _copy_to_server()
-        assert "my-custom-client" in mock_post.call_args[0][0]
+        assert "client=" not in mock_post.call_args.args[0]
 
     def test_no_error_on_success(self, mock_st):
         """Successful copy does not call st.error."""
-        state = _make_state()
         with (
             patch(f"{MODULE}.st", mock_st),
-            patch(f"{MODULE}.state", state),
             patch(f"{MODULE}.api_post"),
         ):
             from client.app.content.api_server import _copy_to_server

@@ -16,8 +16,6 @@ pytestmark = pytest.mark.unit
 
 def _settings(**overrides) -> Settings:
     values = {
-        "auth_mode": "single_user",
-        "installation_id": "test-installation",
         "admin_database_username": "APP_ADMIN",
     }
     values.update(overrides)
@@ -32,27 +30,14 @@ def _pool_for(conn):
     return SimpleNamespace(acquire=acquire)
 
 
-async def test_authority_refuses_existing_binding_with_changed_installation(monkeypatch):
-    app_settings = _settings(installation_id="different-installation")
-    expected = repository._configured_authority(app_settings, ("DB", "APP_SCHEMA"))
-    existing = ("original-installation", *expected[1:], datetime.now(UTC), datetime.now(UTC))
-    monkeypatch.setattr(repository, "authority_identity", AsyncMock(return_value=("DB", "APP_SCHEMA")))
-    monkeypatch.setattr(repository, "require_core_pool", lambda: _pool_for(object()))
-    monkeypatch.setattr(repository, "execute_sql", AsyncMock(return_value=[existing]))
-
-    with pytest.raises(ValueError, match="Authentication authority does not match"):
-        await repository.bind_authority(app_settings)
-
-
-async def test_authority_refuses_same_installation_on_different_core(monkeypatch):
+async def test_authority_refuses_binding_to_different_core(monkeypatch):
     app_settings = _settings()
     expected = repository._configured_authority(app_settings, ("REPLACEMENT_DB", "APP_SCHEMA"))
     existing = (
         expected[0],
         expected[1],
-        expected[2],
         "ORIGINAL_DB",
-        *expected[4:],
+        *expected[3:],
         datetime.now(UTC),
         datetime.now(UTC),
     )
@@ -104,7 +89,6 @@ async def test_authority_identity_includes_database_container(monkeypatch):
 
 async def test_oidc_authority_refuses_wrong_admin_subject(monkeypatch):
     app_settings = _settings(
-        auth_mode="oidc",
         oidc_issuer="https://identity.example.test",
         oidc_admin_subject="configured-admin",
     )
@@ -187,7 +171,7 @@ async def test_admin_recovery_preserves_reserved_user_and_revokes_sessions(monke
     monkeypatch.setattr(repository, "require_core_pool", lambda: _pool_for(conn))
     monkeypatch.setattr(repository, "execute_sql", execute)
 
-    await repository.recover_admin_identity("installation", database_username="NEW_ADMIN")
+    await repository.recover_admin_identity(database_username="NEW_ADMIN")
 
     statements = [call.args[1] for call in execute.await_args_list]
     assert any("UPDATE aio_users" in statement for statement in statements)

@@ -24,7 +24,6 @@ def _principal() -> Principal:
 
 async def test_database_login_returns_raw_token_once(app_client, monkeypatch):
     issued = IssuedSession(token="opaque-session-token", expires=datetime.now(UTC) + timedelta(hours=1))
-    monkeypatch.setattr("server.app.auth.router.settings.auth_mode", "single_user")
     monkeypatch.setattr(
         "server.app.auth.router.login_database_user",
         AsyncMock(return_value=(issued, _principal())),
@@ -40,7 +39,6 @@ async def test_database_login_returns_raw_token_once(app_client, monkeypatch):
 async def test_login_failure_is_generic(app_client, monkeypatch):
     from server.app.auth.service import AuthenticationError
 
-    monkeypatch.setattr("server.app.auth.router.settings.auth_mode", "single_user")
     monkeypatch.setattr(
         "server.app.auth.router.login_database_user",
         AsyncMock(side_effect=AuthenticationError("private database detail")),
@@ -62,8 +60,11 @@ async def test_logout_revokes_current_bearer(app_client, auth_headers, monkeypat
     revoke.assert_awaited_once_with("test-token")
 
 
-async def test_single_user_hides_member_management(app_client, auth_headers, monkeypatch):
-    monkeypatch.setattr("server.app.auth.router.settings.auth_mode", "single_user")
+async def test_missing_database_capabilities_hide_member_management(app_client, auth_headers, monkeypatch):
+    monkeypatch.setattr(
+        "server.app.auth.router.require_local_user_management",
+        AsyncMock(side_effect=LookupError("Local user management is unavailable")),
+    )
 
     response = await app_client.get("/v1/users", headers=auth_headers)
 
@@ -77,11 +78,8 @@ async def test_admin_database_mapping_requires_both_credentials_and_revokes_sess
 ):
     verify = AsyncMock(side_effect=["APP_ADMIN", "NEW_ADMIN"])
     recover = AsyncMock()
-    monkeypatch.setattr("server.app.auth.router.settings.auth_mode", "single_user")
-    monkeypatch.setattr("server.app.auth.router.settings.installation_id", "test-installation")
     monkeypatch.setattr("server.app.auth.router.settings.admin_database_username", "APP_ADMIN")
     monkeypatch.setattr("server.app.auth.router.verify_database_credentials", verify)
-    monkeypatch.setattr("server.app.auth.router.database_account_status", AsyncMock(return_value="OPEN"))
     monkeypatch.setattr("server.app.auth.router.repository.recover_admin_identity", recover)
 
     response = await app_client.put(
@@ -97,4 +95,4 @@ async def test_admin_database_mapping_requires_both_credentials_and_revokes_sess
     assert response.status_code == 200
     assert verify.await_args_list[0].args == ("APP_ADMIN", "current-secret")
     assert verify.await_args_list[1].args == ("NEW_ADMIN", "replacement-secret")
-    recover.assert_awaited_once_with("test-installation", database_username="NEW_ADMIN")
+    recover.assert_awaited_once_with(database_username="NEW_ADMIN")

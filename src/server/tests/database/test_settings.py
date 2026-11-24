@@ -11,17 +11,22 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from server.app.core.settings import SettingsBase, settings
+from server.app.auth.workspace import ensure_workspace
+from server.app.core.schemas import ClientSettings
+from server.app.core.settings import SettingsBase, _client_store, settings
 from server.app.database.config import CoreDatabaseUnavailable, close_pool
 from server.app.database.registry import init_core_database
 from server.app.database.schemas import DatabaseConfig
 from server.app.database.settings import (
     _UPSERT_SQL,
     delete_row,
+    delete_user_settings,
     load_client_settings,
     load_oci_genai_overlay,
     load_settings,
+    persist_client_settings,
     persist_settings,
+    persist_settings_with_client,
     row_exists,
 )
 from server.app.database.sql import execute_sql
@@ -140,6 +145,43 @@ async def test_persist_settings_upsert_updates(core_pool):
         assert data["log_level"] == "DEBUG"
     finally:
         settings.log_level = original_level
+
+
+async def test_persist_settings_with_client_updates_both_rows(core_pool):
+    """A settings import commits shared and user settings together."""
+    workspace = "user:import-test"
+    original_level = settings.log_level
+    settings.log_level = "DEBUG"
+    client_settings = ClientSettings(client=workspace)
+    client_settings.database.alias = "ANALYTICS"
+    try:
+        await persist_settings_with_client(workspace, client_settings)
+
+        configured = await _read_aio_settings(core_pool)
+        configured_data = json.loads(configured[0][1]) if isinstance(configured[0][1], str) else configured[0][1]
+        persisted_client = await load_client_settings(workspace)
+        assert configured_data["log_level"] == "DEBUG"
+        assert persisted_client is not None
+        assert persisted_client.database.alias == "ANALYTICS"
+    finally:
+        settings.log_level = original_level
+        await delete_row(workspace)
+
+
+async def test_delete_user_settings_preserves_reserved_rows(core_pool):
+    """Factory reset removes user rows and retains reserved settings."""
+    workspace = "user:reset-test"
+    await persist_settings()
+    await persist_settings("FACTORY", is_current=False)
+    await persist_client_settings("server", ClientSettings(client="server"))
+    await persist_client_settings(workspace, ClientSettings(client=workspace))
+
+    await delete_user_settings()
+
+    assert not await row_exists(workspace)
+    assert await row_exists("CONFIGURED")
+    assert await row_exists("FACTORY")
+    assert await row_exists("server")
 
 
 async def test_persist_settings_no_pool_raises(no_core_pool):
@@ -328,6 +370,28 @@ async def test_load_client_settings_no_pool(no_core_pool):
     del no_core_pool
     with pytest.raises(CoreDatabaseUnavailable):
         await load_client_settings()
+
+
+@pytest.mark.anyio
+async def test_workspace_settings_survive_cache_restart(core_pool):
+    del core_pool
+    key = "user:13c2505b-9022-4c22-b292-49a28bd437cc"
+    await delete_row(key)
+    configured = ClientSettings(client="CONFIGURED")
+    configured.database.alias = "BASE"
+    await persist_client_settings("CONFIGURED", configured)
+
+    try:
+        await ensure_workspace(key)
+        _client_store[key].database.alias = "PERSISTED"
+        assert await persist_client_settings(key, _client_store[key])
+        _client_store.pop(key)
+
+        await ensure_workspace(key)
+        assert _client_store[key].database.alias == "PERSISTED"
+    finally:
+        _client_store.pop(key, None)
+        await delete_row(key)
 
 
 async def test_delete_row_no_pool(no_core_pool):

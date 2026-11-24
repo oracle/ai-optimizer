@@ -73,8 +73,6 @@ async def test_authentication_package_and_authority_setup_are_repeatable(async_o
     monkeypatch.setattr(repository, "require_core_pool", Pool)
     app_settings = Settings.model_validate(
         {
-            "auth_mode": "single_user",
-            "installation_id": "milestone-1-integration",
             "admin_database_username": "AIO_M1_ADMIN",
         }
     )
@@ -82,7 +80,6 @@ async def test_authentication_package_and_authority_setup_are_repeatable(async_o
     first = await repository.bind_authority(app_settings)
     second = await repository.bind_authority(app_settings)
 
-    assert first.installation_id == second.installation_id
     assert first.auth_mode == second.auth_mode
     assert first.database_identity == second.database_identity
     assert first.application_schema == second.application_schema
@@ -136,13 +133,10 @@ async def test_database_members_sessions_password_change_and_revocation(async_or
     monkeypatch.setattr(repository, "require_core_pool", Pool)
     monkeypatch.setattr(local, "require_core_pool", Pool)
     monkeypatch.setattr(settings, "database_configs", [core])
-    monkeypatch.setattr(settings, "auth_mode", "local_users")
     monkeypatch.setattr(settings, "admin_database_username", admin_username)
 
     app_settings = Settings.model_validate(
         {
-            "auth_mode": "local_users",
-            "installation_id": "milestone-2-integration",
             "admin_database_username": admin_username,
         }
     )
@@ -152,7 +146,6 @@ async def test_database_members_sessions_password_change_and_revocation(async_or
         await execute_sql(conn, f'CREATE END USER "{replacement_admin}" IDENTIFIED BY "{admin_password}"')
         await execute_sql(conn, f'GRANT DATA ROLE "AIO_LOGIN_ROLE" TO "{replacement_admin}"')
         await repository.recover_admin_identity(
-            app_settings.installation_id or "",
             database_username=replacement_admin,
         )
         recovered = await repository.get_user_by_database_username(replacement_admin)

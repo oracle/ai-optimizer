@@ -68,7 +68,7 @@ class TestFetchSettings:
             result = _fetch_settings()
 
         assert result == api_data
-        mock_get.assert_called_once_with(client="test-client", include_sensitive=False)
+        mock_get.assert_called_once_with(include_sensitive=False)
 
     def test_falls_back_to_state_when_api_returns_none(self, mock_st):
         """When the API returns None, falls back to state.settings."""
@@ -99,7 +99,7 @@ class TestFetchSettings:
 
             _fetch_settings()
 
-        mock_get.assert_called_once_with(client="test-client", include_sensitive=False)
+        mock_get.assert_called_once_with(include_sensitive=False)
 
     def test_include_sensitive_true_when_set(self, mock_st):
         """When runtime_sensitive_settings is True, include_sensitive=True."""
@@ -114,7 +114,7 @@ class TestFetchSettings:
 
             _fetch_settings()
 
-        mock_get.assert_called_once_with(client="test-client", include_sensitive=True)
+        mock_get.assert_called_once_with(include_sensitive=True)
 
 
 # ---------------------------------------------------------------------------

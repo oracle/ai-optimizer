@@ -24,9 +24,6 @@ class TestClientSettingsFields:
         # Disable .env file loading by providing _env_file=None
         return ClientSettings(_env_file=None, **kwargs)  # type: ignore[call-arg]
 
-    def test_authentication_mode_defaults_to_single_user(self):
-        assert self._make().auth_mode == "single_user"
-
     def test_server_url_default(self):
         """Default server_url is http://localhost."""
         s = self._make()

@@ -870,11 +870,11 @@ async def test_discovered_proxy_tool_routes_through_refreshed_transport():
     old_backend = FastMCP("old-sqlcl")
     new_backend = FastMCP("new-sqlcl")
 
-    @old_backend.tool(name="version")
+    @old_backend.tool(name="version", annotations={"read_only_hint": True})
     def old_version() -> str:
         return "old"
 
-    @new_backend.tool(name="version")
+    @new_backend.tool(name="version", annotations={"read_only_hint": True})
     def new_version() -> str:
         return "new"
 
@@ -891,3 +891,22 @@ async def test_discovered_proxy_tool_routes_through_refreshed_transport():
     content = result.content[0]
     assert isinstance(content, TextContent)
     assert content.text == "new"
+
+
+async def test_proxy_tools_declare_mutation_authorization():
+    backend = FastMCP("sqlcl")
+
+    @backend.tool(name="query", annotations={"read_only_hint": True})
+    def query() -> str:
+        return "read"
+
+    @backend.tool(name="execute")
+    def execute() -> str:
+        return "write"
+
+    provider = sqlcl._SQLclProvider()
+    read_tool = provider._sanitize_tool(await backend.get_tool("query"))
+    write_tool = provider._sanitize_tool(await backend.get_tool("execute"))
+
+    assert read_tool is not None and read_tool.auth is None
+    assert write_tool is not None and write_tool.auth is not None

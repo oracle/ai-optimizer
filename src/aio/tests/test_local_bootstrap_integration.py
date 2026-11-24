@@ -21,9 +21,8 @@ from tests.oracle import TEST_DB_CONFIG
 
 pytestmark = [pytest.mark.db, pytest.mark.integration]
 
-_ADMIN_USERNAME = "AIO_LOCAL_ADMIN"
+_ADMIN_USERNAME = TEST_DB_CONFIG["db_username"]
 _ADMIN_PASSWORD = TEST_DB_CONFIG["db_password"]
-_REPLACEMENT_PASSWORD = "Local_Admin_52_Replacement"
 
 
 def _unused_local_port() -> int:
@@ -48,8 +47,6 @@ def test_local_bootstrap_starts_server_with_real_core(oracle_db_container, tmp_p
         server_ssl_cert_file="",
         server_ssl_key_file="",
         server_url_prefix="",
-        auth_mode="single_user",
-        installation_id=None,
         admin_database_username=None,
         api_key=None,
     )
@@ -65,8 +62,6 @@ def test_local_bootstrap_starts_server_with_real_core(oracle_db_container, tmp_p
         ) as connection,
         connection.cursor() as cursor,
     ):
-        with suppress(oracledb.DatabaseError):
-            cursor.execute(f'DROP END USER "{_ADMIN_USERNAME}"')
         for table in ("AIO_AUTH_AUDIT", "AIO_AUTH_SESSIONS", "AIO_USERS", "AIO_AUTH_AUTHORITY"):
             with suppress(oracledb.DatabaseError):
                 cursor.execute(f"DELETE FROM {table}")
@@ -117,34 +112,14 @@ def test_local_bootstrap_starts_server_with_real_core(oracle_db_container, tmp_p
                 ).status_code
                 == 401
             )
-            password_change = httpx.post(
-                f"http://127.0.0.1:{local_settings.server_port}/v1/auth/password-change",
-                json={
-                    "username": _ADMIN_USERNAME,
-                    "current_password": _ADMIN_PASSWORD,
-                    "new_password": _REPLACEMENT_PASSWORD,
-                },
-                timeout=5,
-            )
-            assert password_change.status_code == 200, password_change.text
             api.stop_server()
             assert api.start_server(child_environment) is True
             second_login = httpx.post(
                 f"http://127.0.0.1:{local_settings.server_port}/v1/auth/login",
-                json={"username": _ADMIN_USERNAME, "password": _REPLACEMENT_PASSWORD},
+                json={"username": _ADMIN_USERNAME, "password": _ADMIN_PASSWORD},
                 timeout=5,
             )
             assert second_login.status_code == 200
             assert second_login.json()["principal"]["user_id"] == first["principal"]["user_id"]
         finally:
             api.stop_server()
-            with (
-                oracledb.connect(
-                    user=TEST_DB_CONFIG["db_username"],
-                    password=TEST_DB_CONFIG["db_password"],
-                    dsn=TEST_DB_CONFIG["db_dsn"],
-                ) as connection,
-                connection.cursor() as cursor,
-                suppress(oracledb.DatabaseError),
-            ):
-                cursor.execute(f'DROP END USER "{_ADMIN_USERNAME}"')

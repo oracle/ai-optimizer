@@ -57,7 +57,6 @@ async def test_database_login_issues_only_a_digest_to_repository(monkeypatch):
     monkeypatch.setattr(local, "verify_database_credentials", AsyncMock(return_value="APP_MEMBER"))
     monkeypatch.setattr(local._DATABASE_AUTHENTICATOR, "account_status", AsyncMock(return_value="OPEN"))
     monkeypatch.setattr(repository, "create_session", create_session)
-    monkeypatch.setattr(local.settings, "auth_mode", "local_users")
 
     issued, principal = await local.login_database_user("app_member", "secret")
 
@@ -87,7 +86,6 @@ async def test_locking_member_revokes_shared_sessions(monkeypatch):
     member = _user()
     admin_call = AsyncMock()
     revoke = AsyncMock()
-    monkeypatch.setattr(users.settings, "auth_mode", "local_users")
     monkeypatch.setattr(repository, "get_user_by_id", AsyncMock(return_value=member))
     monkeypatch.setattr(repository, "update_database_member", AsyncMock(return_value=member))
     monkeypatch.setattr(users, "_call_admin", admin_call)
@@ -103,7 +101,6 @@ async def test_password_reset_revokes_shared_sessions(monkeypatch):
     member = _user()
     admin_call = AsyncMock()
     revoke = AsyncMock()
-    monkeypatch.setattr(users.settings, "auth_mode", "local_users")
     monkeypatch.setattr(repository, "get_user_by_id", AsyncMock(return_value=member))
     monkeypatch.setattr(users, "_call_admin", admin_call)
     monkeypatch.setattr(repository, "revoke_user_sessions", revoke)
@@ -117,7 +114,6 @@ async def test_password_reset_revokes_shared_sessions(monkeypatch):
 async def test_member_creation_reconciles_existing_managed_account(monkeypatch):
     member = _user()
     admin_call = AsyncMock()
-    monkeypatch.setattr(users.settings, "auth_mode", "local_users")
     monkeypatch.setattr(repository, "get_user_by_database_username", AsyncMock(return_value=None))
     monkeypatch.setattr(users, "database_account_status", AsyncMock(return_value="LOCKED"))
     monkeypatch.setattr(users, "_call_admin", admin_call)
@@ -131,7 +127,6 @@ async def test_member_creation_reconciles_existing_managed_account(monkeypatch):
 
 async def test_reconciled_member_is_locked_when_metadata_creation_fails(monkeypatch):
     admin_call = AsyncMock()
-    monkeypatch.setattr(users.settings, "auth_mode", "local_users")
     monkeypatch.setattr(repository, "get_user_by_database_username", AsyncMock(return_value=None))
     monkeypatch.setattr(users, "database_account_status", AsyncMock(return_value="LOCKED"))
     monkeypatch.setattr(users, "_call_admin", admin_call)

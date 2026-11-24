@@ -117,6 +117,7 @@ async def test_create_end_user_uses_db_password(app_client, auth_headers, mock_d
     db_config.password = "DBPASS"
     with (
         patch(f"{MODULE}.get_client_db_config", return_value=db_config),
+        patch(f"{MODULE}._reject_authentication_member_change", AsyncMock()),
         patch(f"{MODULE}.deepsec_db.create_end_user", AsyncMock()) as mock_create,
     ):
         resp = await app_client.post("/v1/deepsec/end-users", json={"name": "EU"}, headers=auth_headers)
@@ -135,6 +136,7 @@ async def test_create_end_user_forwards_schema(app_client, auth_headers, mock_db
     db_config.password = "DBPASS"
     with (
         patch(f"{MODULE}.get_client_db_config", return_value=db_config),
+        patch(f"{MODULE}._reject_authentication_member_change", AsyncMock()),
         patch(f"{MODULE}.deepsec_db.create_end_user", AsyncMock()) as mock_create,
     ):
         resp = await app_client.post(
@@ -151,7 +153,10 @@ async def test_create_end_user_requires_db_password(app_client, auth_headers, mo
     """Reject creation when the database user's password is unavailable."""
     db_config = MagicMock()
     db_config.password = None
-    with patch(f"{MODULE}.get_client_db_config", return_value=db_config):
+    with (
+        patch(f"{MODULE}.get_client_db_config", return_value=db_config),
+        patch(f"{MODULE}._reject_authentication_member_change", AsyncMock()),
+    ):
         resp = await app_client.post("/v1/deepsec/end-users", json={"name": "EU"}, headers=auth_headers)
     assert resp.status_code == 400
 
@@ -161,7 +166,6 @@ async def test_create_end_user_requires_db_password(app_client, auth_headers, mo
 async def test_authentication_member_protection_uses_database_identity(monkeypatch):
     conn = AsyncMock()
     pool = _create_mock_pool(conn)
-    monkeypatch.setattr(deepsec.settings, "auth_mode", "local_users")
     monkeypatch.setattr(deepsec, "get_client_pool", lambda _client: pool)
     monkeypatch.setattr(deepsec, "authority_identity", AsyncMock(return_value=("APPDB:APP_PDB", "APP_SCHEMA")))
     monkeypatch.setattr(deepsec, "connection_database_identity", AsyncMock(return_value="APPDB:APP_PDB"))
@@ -398,6 +402,7 @@ async def test_drop_end_user_clears_connect_as_for_current_base_only(app_client,
     client_cs = MagicMock(database=MagicMock(alias="CORE"))
     with (
         patch(f"{MODULE}.resolve_client", return_value=client_cs),
+        patch(f"{MODULE}._reject_authentication_member_change", AsyncMock()),
         patch(f"{MODULE}.deepsec_db.drop_end_user", AsyncMock()),
         patch(f"{MODULE}.clear_dds_for", AsyncMock(return_value={"core::scout1"})) as mock_clear,
         patch(f"{MODULE}.refresh_sqlcl_proxy", AsyncMock()) as mock_refresh,

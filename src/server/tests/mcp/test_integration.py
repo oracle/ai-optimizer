@@ -79,6 +79,14 @@ def _vector_table(name: str, alias: str) -> VectorTable:
     )
 
 
+@pytest.fixture
+def _workspace_ready(monkeypatch):
+    async def ready(_key: str) -> None:
+        return None
+
+    monkeypatch.setattr("server.app.auth.workspace.ensure_workspace", ready)
+
+
 # ---------------------------------------------------------------------------
 # 1. Tool discovery via MCP protocol
 # ---------------------------------------------------------------------------
@@ -312,6 +320,7 @@ async def test_client_config_structure(app_client, auth_headers):
 
 async def test_mounted_http_modern_protocol_and_authentication(
     _register_tools,
+    _workspace_ready,
     app_client,
     auth_headers,
     monkeypatch,
@@ -410,6 +419,7 @@ async def test_retriever_reports_ordered_phase_progress(_register_tools, mcp_cli
 
 async def test_mounted_http_cancellation_stops_retriever_work(
     _register_tools,
+    _workspace_ready,
     auth_headers,
     monkeypatch,
 ):

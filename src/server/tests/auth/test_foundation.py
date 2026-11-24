@@ -16,7 +16,8 @@ from server.app.auth.setup import (
     _ensure_connect_role,
     _ensure_login_data_role,
     _init_core_database_with_retry,
-    _validate_local_auth_capabilities,
+    _install_local_user_management,
+    _missing_local_user_management_capabilities,
 )
 from server.app.core.settings import CoreDatabaseConfigurationError, Settings, validate_auth_configuration
 from server.app.database.registry import CoreDatabaseInitializationError
@@ -26,8 +27,6 @@ pytestmark = pytest.mark.unit
 
 def _settings(**overrides) -> Settings:
     values = {
-        "auth_mode": "single_user",
-        "installation_id": "test-installation",
         "admin_database_username": "APP_ADMIN",
         "db_username": "APP_SCHEMA",
         "db_password": SecretStr("schema-password"),
@@ -72,7 +71,7 @@ async def test_request_identity_headers_cannot_construct_a_principal(monkeypatch
         async def authenticate(self, _credential):
             return verified
 
-    monkeypatch.setitem(AUTHENTICATORS, "single_user", Authenticator())
+    monkeypatch.setitem(AUTHENTICATORS, "local_users", Authenticator())
     request = Request(
         {
             "type": "http",
@@ -122,17 +121,9 @@ async def test_authentication_setup_retries_until_core_is_initialized(monkeypatc
     sleep.assert_awaited_once_with(0)
 
 
-def test_authentication_configuration_requires_explicit_mode():
-    app_settings = _settings()
-    object.__setattr__(app_settings, "__pydantic_fields_set__", app_settings.model_fields_set - {"auth_mode"})
-    with pytest.raises(CoreDatabaseConfigurationError, match="AIO_AUTH_MODE"):
-        validate_auth_configuration(app_settings)
-
-
-def test_authentication_configuration_requires_installation_and_admin_mapping():
+def test_authentication_configuration_requires_admin_mapping():
     with pytest.raises(CoreDatabaseConfigurationError) as exc_info:
-        validate_auth_configuration(_settings(installation_id=None, admin_database_username=None))
-    assert "AIO_INSTALLATION_ID" in str(exc_info.value)
+        validate_auth_configuration(_settings(admin_database_username=None))
     assert "AIO_ADMIN_DATABASE_USERNAME" in str(exc_info.value)
 
 
@@ -148,8 +139,13 @@ def test_authentication_validation_preserves_initialized_core_pool():
     assert app_settings.database_configs[0].pool is pool
 
 
-def test_database_mode_rejects_oidc_authority_fields():
-    with pytest.raises(CoreDatabaseConfigurationError, match="require AIO_AUTH_MODE=oidc"):
+def test_authentication_authority_is_derived_from_oidc_configuration():
+    assert _settings().auth_mode == "local_users"
+    assert _settings(oidc_provider_name="Corporate identity").auth_mode == "oidc"
+
+
+def test_partial_oidc_configuration_is_rejected():
+    with pytest.raises(CoreDatabaseConfigurationError, match="OIDC configuration is incomplete"):
         validate_auth_configuration(_settings(oidc_issuer="https://identity.example.test"))
 
 
@@ -171,26 +167,28 @@ def test_authentication_configuration_rejects_inconsistent_session_intervals(ove
         validate_auth_configuration(_settings(**overrides))
 
 
-@pytest.mark.parametrize("field", ["api_key", "admin_password"])
-def test_removed_auth_fields_are_rejected(field):
-    with pytest.raises(ValidationError, match="Removed authentication settings"):
+@pytest.mark.parametrize(
+    ("field", "environment_name"),
+    [("api_key", "AIO_API_KEY"), ("admin_password", "AIO_ADMIN_PASSWORD")],
+)
+def test_removed_auth_fields_are_ignored_with_warning(field, environment_name):
+    with pytest.warns(UserWarning, match=rf"ignored and unused: {environment_name}"):
         Settings.model_validate({field: "legacy-value"})
 
 
-def test_removed_auth_environment_variables_are_rejected(monkeypatch):
+def test_removed_auth_environment_variables_are_ignored_with_warning(monkeypatch):
     monkeypatch.setenv("AIO_API_KEY", "legacy-value")
-    with pytest.raises(ValidationError, match="Removed authentication settings"):
+    with pytest.warns(UserWarning, match=r"ignored and unused: AIO_API_KEY"):
         Settings(_env_file=None)  # type: ignore[call-arg]
 
 
-def test_oidc_mode_requires_trust_and_client_configuration():
-    with pytest.raises(CoreDatabaseConfigurationError, match="AIO_OIDC_ISSUER"):
-        validate_auth_configuration(_settings(auth_mode="oidc"))
+def test_oidc_configuration_requires_trust_and_client_configuration():
+    with pytest.raises(CoreDatabaseConfigurationError, match="AIO_OIDC_DISCOVERY_URL"):
+        validate_auth_configuration(_settings(oidc_issuer="https://identity.example.test"))
 
 
 def test_valid_oidc_configuration_requires_https_trust():
     app_settings = _settings(
-        auth_mode="oidc",
         env="prd",
         oidc_issuer="http://identity.example.test",
         oidc_discovery_url="https://identity.example.test/.well-known/openid-configuration",
@@ -205,15 +203,37 @@ def test_valid_oidc_configuration_requires_https_trust():
         validate_auth_configuration(app_settings)
 
 
-async def test_setup_reports_missing_database_account_capability(monkeypatch):
+async def test_setup_reports_missing_member_management_capability(monkeypatch):
     async def execute(_conn, sql, **_kwargs):
         if "USER_SYS_PRIVS" in sql:
             return []
         return []
 
     monkeypatch.setattr("server.app.auth.setup.execute_sql", execute)
-    with pytest.raises(RuntimeError, match="CREATE DATA ROLE privilege"):
-        await _validate_local_auth_capabilities(cast(Any, object()))
+    missing = await _missing_local_user_management_capabilities(cast(Any, object()))
+
+    assert "CREATE DATA ROLE privilege" in missing
+
+
+async def test_missing_member_privileges_do_not_block_local_authentication(monkeypatch, caplog):
+    install = AsyncMock()
+    monkeypatch.setattr("server.app.auth.setup.provisioning_package_available", AsyncMock(return_value=False))
+    monkeypatch.setattr(
+        "server.app.auth.setup._missing_local_user_management_capabilities",
+        AsyncMock(return_value=["ALTER END USER privilege"]),
+    )
+    monkeypatch.setattr("server.app.auth.setup.install_provisioning_package", install)
+
+    available = await _install_local_user_management(
+        cast(Any, object()),
+        None,
+        cast(Any, object()),
+        "AIO_LOGIN_ROLE",
+    )
+
+    assert available is False
+    install.assert_not_awaited()
+    assert "Local member administration is unavailable: ALTER END USER privilege" in caplog.text
 
 
 async def test_setup_reuses_preprovisioned_connect_role(monkeypatch):

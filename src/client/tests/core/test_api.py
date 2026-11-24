@@ -31,8 +31,6 @@ def _mock_settings(**overrides):
     m.server_ssl_cert_file = overrides.get("server_ssl_cert_file", "")
     m.server_ssl_key_file = overrides.get("server_ssl_key_file", "")
     m.server_url_prefix = overrides.get("server_url_prefix", "")
-    m.auth_mode = overrides.get("auth_mode", "single_user")
-    m.installation_id = overrides.get("installation_id")
     m.admin_database_username = overrides.get("admin_database_username")
     return m
 
@@ -251,8 +249,7 @@ class TestApiGet:
         _, kwargs = instance.get.call_args
         assert kwargs["params"] == {"foo": "bar"}
 
-    def test_extra_headers_merged(self):
-        """Verify extra_headers are merged into the client headers."""
+    def test_legacy_client_header_is_removed(self):
         resp = _resp(200, json_data={})
         ctx, _ = _mock_client_ctx(response=resp)
         settings = _mock_settings()
@@ -263,9 +260,8 @@ class TestApiGet:
             from client.app.core.api import api_get
 
             api_get("path", extra_headers={"client": "c1"})
-        # Check headers passed to Client constructor include the extra header
         _, kwargs = mock_cls.call_args
-        assert kwargs["headers"]["client"] == "c1"
+        assert "client" not in kwargs["headers"]
 
     def test_custom_api_prefix(self):
         """Verify a custom api_prefix is reflected in the request URL."""
@@ -606,7 +602,7 @@ class TestGetServerSettings:
         ):
             from client.app.core.api import get_server_settings
 
-            result = get_server_settings(client="test")
+            result = get_server_settings()
         assert result == {"settings": "ok"}
 
     def test_local_https_disables_cert_verification(self):
@@ -620,7 +616,7 @@ class TestGetServerSettings:
         ):
             from client.app.core.api import get_server_settings
 
-            result = get_server_settings(client="test")
+            result = get_server_settings()
         assert result == {"settings": "ok"}
         assert mock_cls.call_args.kwargs["verify"] is False
 
@@ -635,7 +631,7 @@ class TestGetServerSettings:
         ):
             from client.app.core.api import get_server_settings
 
-            result = get_server_settings(client="test")
+            result = get_server_settings()
         assert result == {"settings": "ok"}
         assert mock_cls.call_args.kwargs["verify"] is True
 
@@ -653,11 +649,10 @@ class TestGetServerSettings:
         ):
             from client.app.core.api import get_server_settings
 
-            result = get_server_settings(client="test")
+            result = get_server_settings()
         assert result is None
 
-    def test_params_forwarded(self):
-        """The standard GET path forwards only the client param."""
+    def test_client_selector_is_not_forwarded(self):
         resp = _resp(200, json_data={"ok": True})
         ctx, instance = _mock_client_ctx(response=resp)
         settings = _mock_settings()
@@ -667,10 +662,8 @@ class TestGetServerSettings:
         ):
             from client.app.core.api import get_server_settings
 
-            get_server_settings(client="my-client", include_sensitive=False)
-        _, kwargs = instance.get.call_args
-        assert kwargs["params"]["client"] == "my-client"
-        assert "include_sensitive" not in kwargs["params"]
+            get_server_settings(include_sensitive=False)
+        instance.get.assert_called_once_with("http://localhost:8000/v1/settings")
 
     def test_include_sensitive_routes_to_export(self):
         """``include_sensitive=True`` triggers the export helper."""
@@ -685,7 +678,7 @@ class TestGetServerSettings:
         ):
             from client.app.core.api import get_server_settings
 
-            get_server_settings(client="my-client", include_sensitive=True)
+            get_server_settings(include_sensitive=True)
         # Verify the post path (which the export helper uses) was hit.
         # Either get or post on the mock instance is fine because we aliased.
         assert instance.get.called or getattr(instance, "post", instance.get).called
@@ -1023,14 +1016,19 @@ class TestStartServer:
 
         child_environment = mock_spawn.call_args.args[1]
         assert {key: child_environment[key] for key in core_environment} == core_environment
-        assert child_environment["AIO_AUTH_MODE"] == "single_user"
-        assert child_environment["AIO_INSTALLATION_ID"] == "aio-local-single-user"
-        assert child_environment["AIO_ADMIN_DATABASE_USERNAME"] == "AIO_LOCAL_ADMIN"
+        assert child_environment["AIO_ADMIN_DATABASE_USERNAME"] == "AI_OPTIMIZER"
         setup_environment = mock_setup.call_args.kwargs["env"]
         assert setup_environment["AIO_AUTH_ADMIN_PASSWORD"] == "secret"
-        assert setup_environment["AIO_AUTH_SETUP_LOCAL_AUTO"] == "1"
         assert "AIO_AUTH_ADMIN_PASSWORD" not in child_environment
-        assert "AIO_AUTH_SETUP_LOCAL_AUTO" not in child_environment
+
+    def test_oidc_configuration_skips_local_authentication_setup(self):
+        environment = {"AIO_OIDC_ISSUER": "https://identity.example.test"}
+        with patch(f"{MODULE}.subprocess.run") as mock_setup:
+            from client.app.core.api import _prepare_local_authentication
+
+            assert _prepare_local_authentication(environment) is True
+
+        mock_setup.assert_not_called()
 
     def test_start_server_does_not_generate_shared_credentials(self):
         """Local startup forwards configuration without creating a shared key."""
