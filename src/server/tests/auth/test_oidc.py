@@ -2,7 +2,7 @@
 
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -26,6 +26,65 @@ def _user() -> AuthUser:
         created=now,
         updated=now,
     )
+
+
+async def test_oidc_discovery_url_is_independent_from_token_issuer(monkeypatch):
+    response = Mock()
+    response.json.return_value = {
+        "issuer": "https://identity.oraclecloud.com/",
+        "jwks_uri": "https://idcs-example.identity.oraclecloud.com/admin/v1/SigningCert/jwk",
+    }
+
+    class Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def get(self, url):
+            assert url == ("https://idcs-example.identity.oraclecloud.com/.well-known/openid-configuration")
+            return response
+
+    register = Mock()
+    monkeypatch.setattr(oidc.settings, "oidc_issuer", "https://identity.oraclecloud.com/")
+    monkeypatch.setattr(
+        oidc.settings,
+        "oidc_discovery_url",
+        "https://idcs-example.identity.oraclecloud.com/.well-known/openid-configuration",
+    )
+    monkeypatch.setattr(oidc.httpx, "AsyncClient", lambda **_kwargs: Client())
+    monkeypatch.setattr(oidc, "register_authenticator", register)
+
+    await oidc.initialize_oidc_authenticator()
+
+    response.raise_for_status.assert_called_once_with()
+    register.assert_called_once()
+
+
+async def test_oidc_discovery_url_defaults_to_token_issuer(monkeypatch):
+    response = Mock()
+    response.json.return_value = {
+        "issuer": "https://issuer.example.test",
+        "jwks_uri": "https://issuer.example.test/jwks",
+    }
+
+    class Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def get(self, url):
+            assert url == "https://issuer.example.test/.well-known/openid-configuration"
+            return response
+
+    monkeypatch.setattr(oidc.settings, "oidc_issuer", "https://issuer.example.test")
+    monkeypatch.setattr(oidc.settings, "oidc_discovery_url", None)
+    monkeypatch.setattr(oidc.httpx, "AsyncClient", lambda **_kwargs: Client())
+
+    assert await oidc.discover_oidc_jwks_uri() == "https://issuer.example.test/jwks"
 
 
 async def test_oidc_authenticator_validates_scopes_and_resolves_principal(monkeypatch):

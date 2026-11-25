@@ -78,6 +78,7 @@ class Settings(SettingsBase, BaseSettings):
     auth_session_max_per_user: int = Field(default=10, ge=1, le=100, exclude=True)
     auth_account_status_cache_seconds: int = Field(default=30, ge=0, le=300, exclude=True)
     oidc_issuer: Optional[str] = Field(default=None, exclude=True)
+    oidc_discovery_url: Optional[str] = Field(default=None, exclude=True)
     oidc_audience: Optional[str] = Field(default=None, exclude=True)
     oidc_required_scopes: list[str] = Field(default_factory=list, exclude=True)
     oidc_admin_subject: Optional[str] = Field(default=None, exclude=True)
@@ -140,12 +141,21 @@ class Settings(SettingsBase, BaseSettings):
         """Derive the credential authority from OIDC configuration."""
         oidc_values = (
             self.oidc_issuer,
+            self.oidc_discovery_url,
             self.oidc_audience,
             self.oidc_required_scopes,
             self.oidc_admin_subject,
             self.oidc_public_server_url,
         )
         return "oidc" if any(oidc_values) else "local_users"
+
+    @property
+    def effective_oidc_discovery_url(self) -> str:
+        """Return the effective provider metadata endpoint."""
+        if self.oidc_discovery_url:
+            return self.oidc_discovery_url
+        issuer = (self.oidc_issuer or "").rstrip("/")
+        return f"{issuer}/.well-known/openid-configuration" if issuer else ""
 
 
 def _make_core_database_config(app_settings: Settings) -> DatabaseConfig:
@@ -221,6 +231,8 @@ def validate_auth_configuration(app_settings: Settings = settings) -> None:
     if oidc_missing:
         raise CoreDatabaseConfigurationError(f"OIDC configuration is incomplete; missing {', '.join(oidc_missing)}")
     if app_settings.env not in {"dev", "test"}:
+        if app_settings.oidc_discovery_url and not app_settings.oidc_discovery_url.startswith("https://"):
+            raise CoreDatabaseConfigurationError("AIO_OIDC_DISCOVERY_URL must use HTTPS")
         if app_settings.oidc_public_server_url and not app_settings.oidc_public_server_url.startswith("https://"):
             raise CoreDatabaseConfigurationError("AIO_OIDC_PUBLIC_SERVER_URL must use HTTPS")
 

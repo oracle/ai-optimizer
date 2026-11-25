@@ -84,15 +84,25 @@ def _render_with_notes(*extra_sets: str, env: dict | None = None) -> subprocess.
     return subprocess.run(cmd, capture_output=True, text=True, env=env, check=False)
 
 
-def test_authentication_rejects_partial_oidc_configuration():
-    result = _render("global.authentication.oidc.issuer=https://identity.example.test")
-    assert result.returncode != 0
-    assert "global.authentication.oidc.audience is required when OIDC is configured" in result.stderr
+def test_authentication_does_not_require_oidc_discovery_url():
+    result = _render(
+        "global.authentication.oidc.issuer=https://identity.example.test",
+        "global.authentication.oidc.audience=optimizer-api",
+        "global.authentication.oidc.requiredScopes[0]=optimizer.invoke",
+        "client.oidc.clientId=optimizer-client",
+        "client.oidc.clientSecretName=oidc-secret",
+        "client.oidc.redirectUri=https://optimizer.example.test/oauth2callback",
+        "global.authentication.oidc.adminSubject=admin-subject",
+        "global.authentication.oidc.publicServerUrl=https://optimizer.example.test",
+    )
+    assert result.returncode == 0, result.stderr
+    assert "AIO_OIDC_DISCOVERY_URL" not in result.stdout
 
 
 def test_authentication_rejects_non_https_oidc_authority():
     result = _render(
         "global.authentication.oidc.issuer=http://identity.example.test",
+        "global.authentication.oidc.discoveryUrl=https://domain.example.test/.well-known/openid-configuration",
         "global.authentication.oidc.audience=optimizer-api",
         "global.authentication.oidc.requiredScopes[0]=optimizer.invoke",
         "client.oidc.clientId=optimizer-client",
@@ -234,6 +244,7 @@ def test_server_gateway_exposes_only_https():
 def test_oidc_client_secret_is_not_sent_to_authentication_setup():
     result = _render(
         "global.authentication.oidc.issuer=https://identity.example.test",
+        "global.authentication.oidc.discoveryUrl=https://domain.example.test/.well-known/openid-configuration",
         "global.authentication.oidc.audience=optimizer-api",
         "global.authentication.oidc.requiredScopes[0]=optimizer.invoke",
         "client.oidc.clientId=optimizer-client",
@@ -274,6 +285,7 @@ def test_server_only_oidc_does_not_require_web_client_credentials():
     result = _render(
         "client.enabled=false",
         "global.authentication.oidc.issuer=https://identity.example.test",
+        "global.authentication.oidc.discoveryUrl=https://domain.example.test/.well-known/openid-configuration",
         "global.authentication.oidc.audience=optimizer-api",
         "global.authentication.oidc.requiredScopes[0]=optimizer.invoke",
         "global.authentication.oidc.adminSubject=admin-subject",

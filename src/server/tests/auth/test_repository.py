@@ -3,9 +3,11 @@
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import AsyncMock
 from uuid import UUID
 
+import oracledb
 import pytest
 
 from server.app.auth import repository
@@ -106,6 +108,56 @@ async def test_oidc_authority_refuses_wrong_admin_subject(monkeypatch):
 
     with pytest.raises(ValueError, match="Reserved Admin identity"):
         await repository.verify_authority(app_settings)
+
+
+async def test_repairs_discovery_endpoint_base_written_as_issuer(monkeypatch):
+    app_settings = _settings(
+        oidc_issuer="https://identity.oraclecloud.com/",
+        oidc_discovery_url=("https://idcs-example.identity.oraclecloud.com/.well-known/openid-configuration"),
+        oidc_admin_subject="configured-admin",
+    )
+    expected = repository._configured_authority(app_settings, ("LOGICAL_DB", "APP_SCHEMA"))
+    existing = (
+        "OIDC",
+        repository.SCHEMA_VERSION,
+        "LOGICAL_DB",
+        "APP_SCHEMA",
+        "https://idcs-example.identity.oraclecloud.com/",
+        "configured-admin",
+    )
+    execute = AsyncMock(side_effect=[[(0,)], None, None])
+    monkeypatch.setattr(repository, "execute_sql", execute)
+    conn = cast(oracledb.AsyncConnection, object())
+
+    repaired = await repository._repair_incorrect_discovery_endpoint_issuer(conn, existing, expected, app_settings)
+
+    assert repaired is True
+    assert execute.await_count == 3
+
+
+async def test_refuses_issuer_repair_after_oidc_member_creation(monkeypatch):
+    app_settings = _settings(
+        oidc_issuer="https://identity.oraclecloud.com/",
+        oidc_discovery_url=("https://idcs-example.identity.oraclecloud.com/.well-known/openid-configuration"),
+        oidc_admin_subject="configured-admin",
+    )
+    expected = repository._configured_authority(app_settings, ("LOGICAL_DB", "APP_SCHEMA"))
+    existing = (
+        "OIDC",
+        repository.SCHEMA_VERSION,
+        "LOGICAL_DB",
+        "APP_SCHEMA",
+        "https://idcs-example.identity.oraclecloud.com/",
+        "configured-admin",
+    )
+    execute = AsyncMock(return_value=[(1,)])
+    monkeypatch.setattr(repository, "execute_sql", execute)
+    conn = cast(oracledb.AsyncConnection, object())
+
+    repaired = await repository._repair_incorrect_discovery_endpoint_issuer(conn, existing, expected, app_settings)
+
+    assert repaired is False
+    execute.assert_awaited_once()
 
 
 async def test_user_and_session_lookups_map_oracle_rows(monkeypatch):

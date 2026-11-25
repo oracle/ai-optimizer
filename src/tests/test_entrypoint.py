@@ -302,6 +302,10 @@ class TestPrepareStreamlitAuthentication:
     def test_writes_oidc_secrets_file(self, tmp_path, monkeypatch):
         monkeypatch.setenv("HOME", str(tmp_path))
         monkeypatch.setenv("AIO_OIDC_ISSUER", "https://identity.example.test")
+        monkeypatch.setenv(
+            "AIO_OIDC_DISCOVERY_URL",
+            "https://domain.example.test/.well-known/openid-configuration",
+        )
         monkeypatch.setenv("AIO_OIDC_CLIENT_ID", "optimizer-client")
         monkeypatch.setenv("AIO_OIDC_CLIENT_SECRET", "client-secret")
         monkeypatch.setenv("AIO_OIDC_REDIRECT_URI", "https://optimizer.example.test/oauth2callback")
@@ -312,12 +316,27 @@ class TestPrepareStreamlitAuthentication:
 
         content = (tmp_path / ".streamlit" / "secrets.toml").read_text()
         assert 'expose_tokens = "access"' in content
-        assert 'server_metadata_url = "https://identity.example.test/.well-known/openid-configuration"' in content
+        assert 'server_metadata_url = "https://domain.example.test/.well-known/openid-configuration"' in content
         assert "openid profile email optimizer.invoke" in content
         assert "client-secret" in content
 
+    def test_derives_oidc_discovery_url_from_issuer(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("AIO_OIDC_ISSUER", "https://identity.example.test/")
+        monkeypatch.delenv("AIO_OIDC_DISCOVERY_URL", raising=False)
+        monkeypatch.setenv("AIO_OIDC_CLIENT_ID", "optimizer-client")
+        monkeypatch.setenv("AIO_OIDC_CLIENT_SECRET", "client-secret")
+        monkeypatch.setenv("AIO_OIDC_REDIRECT_URI", "https://optimizer.example.test/oauth2callback")
+        monkeypatch.setenv("AIO_CLIENT_COOKIE_SECRET", "cookie-secret")
+
+        entrypoint.prepare_streamlit_authentication()
+
+        content = (tmp_path / ".streamlit" / "secrets.toml").read_text()
+        assert 'server_metadata_url = "https://identity.example.test/.well-known/openid-configuration"' in content
+
     def test_rejects_partial_oidc_client_configuration(self, monkeypatch):
         monkeypatch.setenv("AIO_OIDC_ISSUER", "https://identity.example.test")
+        monkeypatch.delenv("AIO_OIDC_DISCOVERY_URL", raising=False)
         monkeypatch.delenv("AIO_OIDC_CLIENT_ID", raising=False)
         monkeypatch.delenv("AIO_OIDC_CLIENT_SECRET", raising=False)
         monkeypatch.delenv("AIO_OIDC_REDIRECT_URI", raising=False)

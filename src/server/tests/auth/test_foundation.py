@@ -176,6 +176,7 @@ def test_oidc_configuration_requires_trust_and_client_configuration():
         validate_auth_configuration(
             _settings(
                 oidc_issuer="https://identity.example.test",
+                oidc_discovery_url="https://domain.example.test/.well-known/openid-configuration",
                 oidc_admin_subject="exact-subject",
             )
         )
@@ -194,6 +195,7 @@ def test_valid_oidc_configuration_requires_https_trust():
     app_settings = _settings(
         env="prd",
         oidc_issuer="http://identity.example.test",
+        oidc_discovery_url="https://domain.example.test/.well-known/openid-configuration",
         oidc_audience="optimizer-api",
         oidc_required_scopes=["openid", "profile"],
         oidc_admin_subject="exact-subject",

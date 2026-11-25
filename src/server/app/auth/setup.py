@@ -8,6 +8,7 @@ import sys
 
 import oracledb
 
+from server.app.auth.oidc import discover_oidc_jwks_uri
 from server.app.auth.provisioning import (
     LOGIN_DATA_ROLE,
     configure_provisioning_authority,
@@ -138,6 +139,8 @@ async def setup_authentication(wait_seconds: float = 0) -> None:
                     core_config,
                     LOGIN_DATA_ROLE,
                 )
+        if settings.auth_mode == "oidc":
+            await discover_oidc_jwks_uri()
         await bind_authority()
     finally:
         if privileged_conn is not None:

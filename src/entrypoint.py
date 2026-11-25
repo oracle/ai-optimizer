@@ -115,17 +115,20 @@ def prepare_streamlit_authentication() -> None:
     """Write Streamlit's OIDC configuration from the client environment."""
     names = {
         "issuer": "AIO_OIDC_ISSUER",
+        "discovery_url": "AIO_OIDC_DISCOVERY_URL",
         "client_id": "AIO_OIDC_CLIENT_ID",
         "client_secret": "AIO_OIDC_CLIENT_SECRET",
         "redirect_uri": "AIO_OIDC_REDIRECT_URI",
         "cookie_secret": "AIO_CLIENT_COOKIE_SECRET",
     }
     values = {name: os.environ.get(environment_name, "") for name, environment_name in names.items()}
-    if not any(values[name] for name in ("issuer", "client_id", "client_secret", "redirect_uri")):
+    if not any(values[name] for name in ("issuer", "discovery_url", "client_id", "client_secret", "redirect_uri")):
         return
-    missing = [names[name] for name, value in values.items() if not value]
+    required_names = ("issuer", "client_id", "client_secret", "redirect_uri", "cookie_secret")
+    missing = [names[name] for name in required_names if not values[name]]
     if missing:
         raise ValueError(f"OIDC client configuration is incomplete; missing {', '.join(missing)}")
+    discovery_url = values["discovery_url"] or f"{values['issuer'].rstrip('/')}/.well-known/openid-configuration"
     try:
         required_scopes = json.loads(os.environ.get("AIO_OIDC_REQUIRED_SCOPES", "[]"))
     except json.JSONDecodeError as exc:
@@ -133,7 +136,6 @@ def prepare_streamlit_authentication() -> None:
     if not isinstance(required_scopes, list) or not all(isinstance(scope, str) for scope in required_scopes):
         raise ValueError("AIO_OIDC_REQUIRED_SCOPES must be a JSON array of strings")
     scopes = " ".join(dict.fromkeys(["openid", "profile", "email", *required_scopes]))
-    metadata_url = f"{values['issuer'].rstrip('/')}/.well-known/openid-configuration"
     content = "\n".join(
         (
             "[auth]",
@@ -142,7 +144,7 @@ def prepare_streamlit_authentication() -> None:
             'expose_tokens = "access"',
             f"client_id = {json.dumps(values['client_id'])}",
             f"client_secret = {json.dumps(values['client_secret'])}",
-            f"server_metadata_url = {json.dumps(metadata_url)}",
+            f"server_metadata_url = {json.dumps(discovery_url)}",
             f"client_kwargs = {{ scope = {json.dumps(scopes)} }}",
             "",
         )

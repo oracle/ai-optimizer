@@ -1,7 +1,6 @@
 """OIDC access-token validation and principal provisioning."""
 
 import asyncio
-from urllib.parse import urljoin
 
 import httpx
 import jwt
@@ -101,10 +100,10 @@ class OIDCAuthenticator:
         )
 
 
-async def initialize_oidc_authenticator() -> None:
-    """Discover the configured issuer and install its token verifier."""
+async def discover_oidc_jwks_uri() -> str:
+    """Validate provider metadata and return its signing-key endpoint."""
     issuer = settings.oidc_issuer or ""
-    discovery_url = urljoin(f"{issuer.rstrip('/')}/", ".well-known/openid-configuration")
+    discovery_url = settings.effective_oidc_discovery_url
     try:
         async with httpx.AsyncClient(timeout=_DISCOVERY_TIMEOUT_SECONDS) as client:
             response = await client.get(discovery_url)
@@ -118,4 +117,10 @@ async def initialize_oidc_authenticator() -> None:
     if not isinstance(jwks_uri, str) or not jwks_uri.startswith("https://"):
         if settings.env not in {"dev", "test"} or not isinstance(jwks_uri, str):
             raise AuthAuthorityUnavailable("OIDC discovery metadata has no trusted signing-key endpoint")
+    return jwks_uri
+
+
+async def initialize_oidc_authenticator() -> None:
+    """Discover the configured issuer and install its token verifier."""
+    jwks_uri = await discover_oidc_jwks_uri()
     register_authenticator("oidc", OIDCAuthenticator(jwks_uri))

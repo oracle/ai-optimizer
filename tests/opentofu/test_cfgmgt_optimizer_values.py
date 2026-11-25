@@ -24,6 +24,7 @@ CHART_DIR = REPO_ROOT / "helm"
 ROOT_MAIN_PATH = REPO_ROOT / "opentofu" / "main.tf"
 ROOT_PROVIDER_PATH = REPO_ROOT / "opentofu" / "provider.tf"
 ROOT_VARIABLES_PATH = REPO_ROOT / "opentofu" / "variables.tf"
+ROOT_OIDC_PATH = REPO_ROOT / "opentofu" / "iam_oidc.tf"
 K8S_VARIABLES_PATH = REPO_ROOT / "opentofu" / "modules" / "kubernetes" / "variables.tf"
 VM_VARIABLES_PATH = REPO_ROOT / "opentofu" / "modules" / "vm" / "variables.tf"
 VM_DATABASE_TEMPLATE_PATH = REPO_ROOT / "opentofu" / "modules" / "vm" / "templates" / "cloudinit-database.tpl"
@@ -75,6 +76,7 @@ def _render(tmp_path: Path, is_obs: bool, byo_url: str) -> str:
                 app_version              = "0.0.0"
                 client_cookie_secret     = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
                 oidc_issuer              = "https://identity.example.test"
+                oidc_discovery_url       = "https://domain.example.test/.well-known/openid-configuration"
                 oidc_audience            = "optimizer-api"
                 oidc_required_scopes     = jsonencode(["optimizer.read"])
                 oidc_client_id           = "optimizer-client"
@@ -156,6 +158,42 @@ def test_byo_type_variable_validation_supports_opentofu_1_5():
     assert 'required_version = ">= 1.5"' in provider
     assert referenced_variables == {"byo_db_type"}
     assert "var.byo_odb_port >= 1 && var.byo_odb_port <= 65535" in variables
+
+
+def test_root_iac_provisions_and_forwards_oci_iam_oidc():
+    oidc = ROOT_OIDC_PATH.read_text()
+    variables = ROOT_VARIABLES_PATH.read_text()
+    data = (REPO_ROOT / "opentofu" / "data.tf").read_text()
+    kubernetes = (REPO_ROOT / "opentofu" / "module_kubernetes.tf").read_text()
+    vm = (REPO_ROOT / "opentofu" / "module_vm.tf").read_text()
+
+    assert 'resource "oci_identity_domains_app" "optimizer"' in oidc
+    assert 'resource "oci_identity_domains_grant" "optimizer_admin"' in oidc
+    assert "name           = local.optimizer_identity_domain_name" in data
+    assert 'type           = local.optimizer_identity_domain_name == null ? "DEFAULT" : null' in data
+    assert 'reverse(split("/", local.optimizer_oci_username))' in oidc
+    assert 'grant_mechanism = "ADMINISTRATOR_TO_USER"' in oidc
+    assert "allow_access_control = true" in oidc
+    assert "is_oauth_client      = true" in oidc
+    assert "is_oauth_resource    = true" in oidc
+    assert "sensitive(oci_identity_domains_app.optimizer[0].client_secret)" in oidc
+
+    for name in (
+        "oidc_issuer",
+        "oidc_discovery_url",
+        "oidc_audience",
+        "oidc_required_scopes",
+        "oidc_client_id",
+        "oidc_client_secret",
+        "oidc_redirect_uri",
+        "oidc_admin_subject",
+        "oidc_public_server_url",
+    ):
+        assert f'variable "{name}"' not in variables
+        assert f"{name}" in kubernetes
+        assert f"local.{name}" in kubernetes
+        assert f"{name}" in vm
+        assert f"local.{name}" in vm
 
 
 @pytest.mark.parametrize("path", [K8S_VARIABLES_PATH, VM_VARIABLES_PATH])
@@ -257,7 +295,7 @@ def test_render_uses_current_chart_value_names_and_pinned_tags(tmp_path):
     assert 'tag: "latest"' not in rendered
     assert rendered.count('tag: "0.0.0"') == 2
     assert 'oci-native-ingress.oraclecloud.com/backend-tls-enabled: "true"' in rendered
-    assert "oci-native-ingress.oraclecloud.com/healthcheck-protocol: HTTPS" in rendered
+    assert rendered.count("oci-native-ingress.oraclecloud.com/healthcheck-protocol: HTTP") == 2
 
 
 def test_byo_render_passes_helm_validation(byo_helm_render):
