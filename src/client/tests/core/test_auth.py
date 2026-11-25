@@ -69,6 +69,17 @@ def test_invalid_local_session_clears_browser_cookie():
     ):
         assert auth._validate_session() is False
     assert state["_local_cookie_action"] == "clear"
+    assert state["_invalid_local_cookie"] is True
+
+
+def test_invalid_local_session_is_not_restored_during_cookie_clear():
+    from client.app.core import auth
+
+    state = AttrDict({"_invalid_local_cookie": True})
+    with patch(f"{MODULE}.state", state), patch(f"{MODULE}.browser_token", return_value="stale"):
+        auth._restore_local_session()
+
+    assert "auth_token" not in state
 
 
 def test_authority_outage_preserves_session():
@@ -92,7 +103,7 @@ def test_authority_outage_preserves_session():
 def test_local_login_stores_token_and_principal(mock_st):
     from client.app.core import auth
 
-    state = AttrDict({})
+    state = AttrDict({"_invalid_local_cookie": True})
     mock_st.form.return_value.__enter__.return_value = mock_st
     mock_st.form_submit_button.return_value = True
     mock_st.text_input.side_effect = ["APP_USER", "secret"]
@@ -106,6 +117,7 @@ def test_local_login_stores_token_and_principal(mock_st):
     assert state["auth_token"] == "opaque"
     assert state["auth_principal"] == response["principal"]
     assert state["_local_cookie_action"] == "set"
+    assert "_invalid_local_cookie" not in state
     assert [call.args[0] for call in mock_st.text_input.call_args_list] == ["Username", "Password"]
     mock_st.caption.assert_called_once_with("Authentication: Database")
     mock_st.rerun.assert_called_once()
@@ -150,6 +162,7 @@ def test_local_sign_out_revokes_server_session_and_clears_cookie(mock_st):
     sync_cookie.assert_called_once_with("clear")
     assert "auth_token" not in state
     assert "_local_cookie_action" not in state
+    assert state["_invalid_local_cookie"] is True
 
 
 def test_oidc_sign_in_identifies_authentication_authority(mock_st):

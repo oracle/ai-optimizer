@@ -13,6 +13,7 @@ _TOKEN_KEY = "auth_token"
 _PRINCIPAL_KEY = "auth_principal"
 _REDACTED_PLACEHOLDER = "`••••••••`"
 _LOCAL_COOKIE_ACTION_KEY = "_local_cookie_action"
+_INVALID_LOCAL_COOKIE_KEY = "_invalid_local_cookie"
 
 
 def is_admin() -> bool:
@@ -25,6 +26,7 @@ def _set_session(token: str, principal: dict) -> None:
     state[_TOKEN_KEY] = token
     state[_PRINCIPAL_KEY] = principal
     state[_LOCAL_COOKIE_ACTION_KEY] = "set"
+    state.pop(_INVALID_LOCAL_COOKIE_KEY, None)
 
 
 def _clear_session() -> None:
@@ -44,12 +46,13 @@ def _validate_session() -> bool:
         _clear_session()
         if state.get("auth_mode") == "local_users":
             state[_LOCAL_COOKIE_ACTION_KEY] = "clear"
+            state[_INVALID_LOCAL_COOKIE_KEY] = True
         return False
     return True
 
 
 def _restore_local_session() -> None:
-    if state.get(_TOKEN_KEY):
+    if state.get(_TOKEN_KEY) or state.get(_INVALID_LOCAL_COOKIE_KEY):
         return
     token = browser_token()
     if token:
@@ -145,6 +148,7 @@ def sign_out() -> None:
     if mode == "oidc" and getattr(st.user, "is_logged_in", False):
         st.logout()
     if mode == "local_users":
+        state[_INVALID_LOCAL_COOKIE_KEY] = True
         state[_LOCAL_COOKIE_ACTION_KEY] = "clear"
         if sync_browser_cookie("clear") is not True:
             st.stop()
