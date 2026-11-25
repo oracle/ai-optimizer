@@ -115,7 +115,6 @@ module "kubernetes" {
   optimizer_version          = var.optimizer_version
   optimizer_branch           = local.optimizer_branch
   app_version                = local.app_version
-  ssl_enabled                = local.ssl_enabled
   ssl_cert_pem               = local.ssl_cert_pem
   ssl_key_pem                = local.ssl_key_pem
   namespace                  = local.object_storage_namespace
@@ -126,6 +125,7 @@ module "kubernetes" {
   oidc_required_scopes       = var.oidc_required_scopes
   oidc_client_id             = var.oidc_client_id
   oidc_client_secret         = var.oidc_client_secret
+  oidc_redirect_uri          = var.oidc_redirect_uri
   oidc_admin_subject         = var.oidc_admin_subject
   oidc_public_server_url     = var.oidc_public_server_url
   providers = {

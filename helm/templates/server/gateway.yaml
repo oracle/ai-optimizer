@@ -13,9 +13,9 @@ metadata:
 spec:
   gatewayClassName: {{ .Values.server.gateway.className }}
   listeners:
-    - name: http
-      port: {{ .Values.server.service.port | default 8000 }}
-      protocol: HTTP
+    - name: https
+      port: 8443
+      protocol: HTTPS
       {{- with .Values.server.gateway.tls }}
       tls:
 {{ toYaml . | nindent 8 }}

@@ -10,7 +10,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 The service layer of the **AI Optimizer** is the API Server, referred to as the **AI Optimizer Server**. By default, the **AI Optimizer Server** starts on port 8000.
 
 :::note[All the docs]
-The **AI Optimizer Server** API documentation is available at `http://<IP Address>:<Port>/v1/docs` for a running instance. Enter the API key to view and use the documented endpoints.
+The **AI Optimizer Server** API documentation is available at `https://<IP Address>:<Port>/v1/docs`.
 :::
 
 ![API Server](../_assets/images/fastapi-docs.png)
@@ -21,7 +21,7 @@ During startup, the Server connects to the required [Oracle AI Database](../guid
 
 ## [Calling the API](./api-examples/intro)
 
-Authenticated API requests send the API key in the `X-API-Key` header. In a standalone deployment, set `AIO_API_KEY` before starting the server and distribute the key through your normal secret-management process.
+Authenticated API requests send an Oracle database or OIDC bearer token in the `Authorization` header. See [Access Control](../guides/access-control).
 
 ## View Server Logs
 

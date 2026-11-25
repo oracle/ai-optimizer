@@ -21,6 +21,7 @@ from server.app.api.mcp.router import router as mcp_router
 from server.app.api.v1.router import router as v1_router
 from server.app.auth.dependencies import set_authority_state
 from server.app.auth.local import initialize_database_authenticator
+from server.app.auth.oidc import initialize_oidc_authenticator
 from server.app.auth.repository import verify_authority
 from server.app.auth.service import AuthAuthorityUnavailable, authenticator_ready
 from server.app.core.etc import apply_overlay, load_config_file
@@ -91,7 +92,10 @@ async def lifespan(_app: FastAPI):
     try:
         validate_auth_configuration()
         await verify_authority()
-        initialize_database_authenticator()
+        if settings.auth_mode == "oidc":
+            await initialize_oidc_authenticator()
+        else:
+            initialize_database_authenticator()
         if not authenticator_ready():
             raise AuthAuthorityUnavailable("Authentication for the configured mode is not initialized")
     except Exception as exc:

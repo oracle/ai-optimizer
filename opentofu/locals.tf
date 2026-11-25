@@ -111,22 +111,17 @@ locals {
   // so a stale lb_min/max_shape can't promote it to a paid bandwidth.
   lb_min_shape         = local.is_always_free ? 10 : var.lb_min_shape
   lb_max_shape         = local.is_always_free ? 10 : var.lb_max_shape
-  lb_client_http_port  = 80
   lb_client_https_port = 443
-  lb_server_http_port  = 8000
   lb_server_https_port = 8443
   client_allowed_cidrs = toset(compact(split(",", replace(var.client_allowed_cidrs, "/\\s+/", ""))))
   server_allowed_cidrs = toset(compact(split(",", replace(var.server_allowed_cidrs, "/\\s+/", ""))))
-  ssl_enabled          = var.ssl_mode != "none"
   ssl_cert_pem = (
     var.ssl_mode == "self-signed" ? tls_locally_signed_cert.server[0].cert_pem :
-    var.ssl_mode == "provided" ? var.ssl_certificate :
-    ""
+    var.ssl_certificate
   )
   ssl_key_pem = (
     var.ssl_mode == "self-signed" ? tls_private_key.server[0].private_key_pem :
-    var.ssl_mode == "provided" ? var.ssl_private_key :
-    ""
+    var.ssl_private_key
   )
   ssl_ca_cert_pem = var.ssl_mode == "self-signed" ? tls_self_signed_cert.ca[0].cert_pem : null
 }

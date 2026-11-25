@@ -12,7 +12,7 @@ from urllib.parse import urlparse, urlunparse
 import streamlit as st
 
 from client.app.core.api import _base_url, api_post, get_server_settings
-from client.app.core.auth import is_authenticated, locked_notice
+from client.app.core.auth import is_admin, locked_notice
 from client.app.core.helpers import load_chat_history
 from client.app.core.settings import settings as client_settings
 from net_addressing import LOCAL_HOSTS, WILDCARD_HOSTS, netloc
@@ -55,7 +55,7 @@ def _copy_to_server() -> None:
 #####################################################
 # MAIN
 #####################################################
-authenticated = is_authenticated()
+authenticated = is_admin()
 
 st.header("API Server")
 st.write("Access the AI Optimizer and Toolkit with your own client.")

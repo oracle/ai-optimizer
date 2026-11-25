@@ -14,7 +14,6 @@ class _PasswordValidationMixin(BaseModel):
         "password",
         "current_password",
         "new_password",
-        "temporary_password",
         check_fields=False,
     )
     @classmethod
@@ -30,7 +29,6 @@ class DatabaseLoginRequest(_PasswordValidationMixin):
 
 
 class DatabasePasswordChangeRequest(_PasswordValidationMixin):
-    username: str = Field(min_length=1, max_length=128)
     current_password: SecretStr
     new_password: SecretStr
 
@@ -45,7 +43,7 @@ class LoginResponse(BaseModel):
 
 class UserCreateRequest(_PasswordValidationMixin):
     username: str = Field(min_length=1, max_length=128)
-    temporary_password: SecretStr
+    password: SecretStr
     display_name: str | None = Field(default=None, max_length=255)
     email: str | None = Field(default=None, max_length=320)
 
@@ -57,7 +55,7 @@ class UserUpdateRequest(BaseModel):
 
 
 class PasswordResetRequest(_PasswordValidationMixin):
-    temporary_password: SecretStr
+    password: SecretStr
 
 
 class DatabaseUserResponse(BaseModel):

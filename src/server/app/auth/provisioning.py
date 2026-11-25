@@ -20,8 +20,7 @@ PROVISIONING_DDL = (
     """CREATE OR REPLACE PACKAGE aio_auth_admin AUTHID DEFINER AS
          PROCEDURE create_user(
            p_username IN VARCHAR2,
-           p_password IN VARCHAR2,
-           p_expire_password IN PLS_INTEGER DEFAULT 1
+           p_password IN VARCHAR2
          );
          PROCEDURE alter_user(p_username IN VARCHAR2, p_action IN VARCHAR2, p_password IN VARCHAR2 DEFAULT NULL);
          PROCEDURE account_status(p_username IN VARCHAR2, p_status OUT VARCHAR2);
@@ -44,13 +43,11 @@ PROVISIONING_DDL = (
          END;
          PROCEDURE create_user(
            p_username IN VARCHAR2,
-           p_password IN VARCHAR2,
-           p_expire_password IN PLS_INTEGER DEFAULT 1
+           p_password IN VARCHAR2
          ) IS
          BEGIN
            EXECUTE IMMEDIATE 'CREATE END USER ' || quoted_username(p_username) ||
-             ' IDENTIFIED BY ' || quoted_password(p_password) ||
-             CASE WHEN p_expire_password = 1 THEN ' PASSWORD EXPIRE' ELSE '' END;
+             ' IDENTIFIED BY ' || quoted_password(p_password);
            BEGIN
              EXECUTE IMMEDIATE 'GRANT DATA ROLE "@@LOGIN_ROLE@@" TO ' || quoted_username(p_username);
            EXCEPTION WHEN OTHERS THEN
@@ -66,7 +63,7 @@ PROVISIONING_DDL = (
              EXECUTE IMMEDIATE 'ALTER END USER ' || quoted_username(p_username) || ' ACCOUNT UNLOCK';
            ELSIF UPPER(p_action) = 'RESET' THEN
              EXECUTE IMMEDIATE 'ALTER END USER ' || quoted_username(p_username) || ' IDENTIFIED BY ' ||
-               quoted_password(p_password) || ' PASSWORD EXPIRE ACCOUNT UNLOCK';
+               quoted_password(p_password) || ' ACCOUNT UNLOCK';
            ELSE
              RAISE_APPLICATION_ERROR(-20003, 'Unsupported account action');
            END IF;
@@ -96,6 +93,83 @@ async def provisioning_package_available(conn: oracledb.AsyncConnection) -> bool
         max_rows=2,
     )
     return {row[0] for row in rows or []} == {"PACKAGE", "PACKAGE BODY"}
+
+
+async def missing_local_user_management_capabilities(conn: oracledb.AsyncConnection) -> list[str]:
+    """Return database capabilities needed to manage member end users."""
+    missing = []
+    for view, capability in (
+        ("DBA_END_USERS", "local end-user accounts"),
+        ("DBA_DATA_ROLES", "data roles"),
+        ("DBA_DATA_ROLE_GRANTS", "data-role grants"),
+    ):
+        try:
+            await execute_sql(
+                conn,
+                f"SELECT 1 FROM {view} WHERE 1 = 0",
+                max_rows=1,
+                ignored_error_codes=frozenset(),
+            )
+        except oracledb.Error:
+            missing.append(capability)
+    try:
+        rows = await execute_sql(
+            conn,
+            "SELECT privilege FROM USER_SYS_PRIVS "
+            "WHERE privilege IN ('CREATE END USER', 'ALTER END USER', 'DROP END USER', "
+            "'CREATE DATA ROLE', 'GRANT ANY DATA ROLE')",
+            max_rows=10,
+        )
+    except oracledb.Error:
+        rows = []
+    privileges = {row[0] for row in rows or []}
+    for privilege, capability in (
+        ("CREATE END USER", "CREATE END USER privilege"),
+        ("ALTER END USER", "ALTER END USER privilege"),
+        ("DROP END USER", "DROP END USER privilege"),
+        ("CREATE DATA ROLE", "CREATE DATA ROLE privilege"),
+        ("GRANT ANY DATA ROLE", "GRANT ANY DATA ROLE privilege"),
+    ):
+        if privilege not in privileges:
+            missing.append(capability)
+    return missing
+
+
+async def local_user_management_issues(conn: oracledb.AsyncConnection) -> list[str]:
+    """Return conditions preventing local member administration."""
+    if not await provisioning_package_available(conn):
+        return ["AIO_AUTH_ADMIN package is unavailable"]
+    try:
+        identity = await execute_sql(
+            conn,
+            "SELECT SYS_CONTEXT('USERENV', 'SESSION_USER') FROM dual",
+            max_rows=1,
+        )
+        if not identity:
+            return ["database identity is unavailable"]
+        delegated_role = package_role_name(str(identity[0][0]))
+        delegated_roles = await execute_sql(
+            conn,
+            "SELECT granted_role FROM user_role_privs WHERE granted_role = :role AND delegate_option = 'YES'",
+            {"role": delegated_role},
+            max_rows=10,
+        )
+    except oracledb.Error:
+        delegated_roles = []
+    if delegated_roles:
+        return []
+    try:
+        login_role = await execute_sql(
+            conn,
+            "SELECT data_role FROM dba_data_roles WHERE data_role = :role",
+            {"role": LOGIN_DATA_ROLE},
+            max_rows=1,
+        )
+    except oracledb.Error:
+        return [f"{LOGIN_DATA_ROLE} data role is unavailable"]
+    if not login_role:
+        return [f"{LOGIN_DATA_ROLE} data role is unavailable"]
+    return await missing_local_user_management_capabilities(conn)
 
 
 async def install_provisioning_package(conn: oracledb.AsyncConnection) -> None:
@@ -176,3 +250,13 @@ async def configure_provisioning_authority(
             code = getattr(exc.args[0], "code", None) if exc.args else None
             if code != 1952:
                 raise
+    await execute_sql(
+        package_conn,
+        "ALTER PACKAGE aio_auth_admin COMPILE PACKAGE",
+        ignored_error_codes=frozenset(),
+    )
+    await execute_sql(
+        package_conn,
+        "ALTER PACKAGE aio_auth_admin COMPILE BODY",
+        ignored_error_codes=frozenset(),
+    )

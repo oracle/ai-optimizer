@@ -25,6 +25,7 @@ locals {
     oidc_required_scopes   = jsonencode(tolist(var.oidc_required_scopes))
     oidc_client_id         = var.oidc_client_id
     oidc_client_secret     = var.oidc_client_secret
+    oidc_redirect_uri      = var.oidc_redirect_uri
     oidc_admin_subject     = var.oidc_admin_subject
     oidc_public_server_url = var.oidc_public_server_url
   })

@@ -6,15 +6,20 @@
 // so existing deployments don't hit "Default Listener on port '443' refer to VIP 'public-vip' twice".
 moved {
   from = oci_load_balancer_listener.https_lb_listener
+  to   = oci_load_balancer_listener.client_https_lb_listener[0]
+}
+
+moved {
+  from = oci_load_balancer_listener.client_https_lb_listener[0]
   to   = oci_load_balancer_listener.client_https_lb_listener
 }
 
 moved {
-  from = oci_load_balancer_listener.http_redirect_listener
-  to   = oci_load_balancer_listener.client_http_redirect_listener
+  from = oci_load_balancer_listener.server_https_lb_listener[0]
+  to   = oci_load_balancer_listener.server_https_lb_listener
 }
 
 moved {
-  from = oci_load_balancer_rule_set.http_redirect
-  to   = oci_load_balancer_rule_set.client_http_redirect
+  from = oci_load_balancer_certificate.ssl[0]
+  to   = oci_load_balancer_certificate.ssl
 }

@@ -22,7 +22,6 @@ spec:
     metadata:
       annotations:
         checksum/client-cookie-secret: {{ include "ai-optimizer.client.cookieSecretChecksum" . | quote }}
-        checksum/client-password-secret: {{ include "ai-optimizer.client.passwordSecretChecksum" . | quote }}
         checksum/client-env-secret: {{ include "ai-optimizer.client.envSecretChecksum" . | quote }}
         {{- with .Values.client.podAnnotations }}
         {{- toYaml . | nindent 8 }}
@@ -60,12 +59,20 @@ spec:
                 secretKeyRef:
                   name: {{ include "ai-optimizer.client.cookieSecretName" . }}
                   key: {{ include "ai-optimizer.client.cookieSecretKey" . }}
-            {{- if include "ai-optimizer.client.passwordGate.enabled" . }}
-            - name: AIO_CLIENT_PASSWORD
+            {{- if eq (include "ai-optimizer.authentication.isOidc" . | trim) "true" }}
+            - name: AIO_OIDC_ISSUER
+              value: {{ .Values.global.authentication.oidc.issuer | quote }}
+            - name: AIO_OIDC_REQUIRED_SCOPES
+              value: {{ .Values.global.authentication.oidc.requiredScopes | toJson | quote }}
+            - name: AIO_OIDC_CLIENT_ID
+              value: {{ .Values.client.oidc.clientId | quote }}
+            - name: AIO_OIDC_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "ai-optimizer.client.passwordSecretName" . }}
-                  key: {{ include "ai-optimizer.client.passwordSecretKey" . }}
+                  name: {{ .Values.client.oidc.clientSecretName }}
+                  key: {{ .Values.client.oidc.clientSecretKey | default "clientSecret" }}
+            - name: AIO_OIDC_REDIRECT_URI
+              value: {{ .Values.client.oidc.redirectUri | quote }}
             {{- end }}
             {{- if .Values.client.oci.sourceBucketCompartmentId }}
             - name: AIO_OCI_SOURCE_BUCKET_COMPARTMENT_ID
@@ -84,9 +91,7 @@ spec:
             httpGet:
               path: {{ include "ai-optimizer.getPath" . }}ping
               port: client-port
-              {{- if .Values.client.ssl.enabled }}
               scheme: HTTPS
-              {{- end }}
             {{- with omit .Values.client.livenessProbe "enabled" }}
               {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -96,9 +101,7 @@ spec:
             httpGet:
               path: {{ include "ai-optimizer.getPath" . }}ping
               port: client-port
-              {{- if .Values.client.ssl.enabled }}
               scheme: HTTPS
-              {{- end }}
             {{- with omit .Values.client.readinessProbe "enabled" }}
                {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -110,8 +113,11 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: "/app/tmp"
-            - name: streamlit-config
+            - name: streamlit-home
               mountPath: /app/.streamlit
+            - name: streamlit-config
+              mountPath: /app/.streamlit/config.toml
+              subPath: config.toml
             - name: env-config
               mountPath: /app/src/.env.{{ .Values.global.env }}
               subPath: {{ include "ai-optimizer.client.envSecretKey" . }}
@@ -121,6 +127,8 @@ spec:
           {{- end }}
       volumes:
         - name: tmp
+          emptyDir: {}
+        - name: streamlit-home
           emptyDir: {}
         - name: streamlit-config
           configMap:

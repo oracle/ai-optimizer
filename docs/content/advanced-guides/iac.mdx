@@ -85,10 +85,9 @@ For OKE, leave **API Endpoint Access Control** empty when deploying through Reso
 
 #### TLS
 
-The stack terminates TLS at the load balancer. Set **TLS Termination** to one of the following:
+The stack terminates TLS at the load balancer. Set **TLS Certificate** to one of the following:
 
-- `none` for HTTP only.
-- `self-signed` to generate a certificate. Retrieve the sensitive `ssl_ca_certificate` stack output and add it to the trust store of browsers, operating systems, or other clients that connect to the deployment.
+- `self-signed` to generate a certificate.
 - `provided` to supply PEM-encoded certificate and private-key content.
 
 ![Load-balancer TLS settings](../_assets/images/iac-stack-tls.png)

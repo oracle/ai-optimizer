@@ -42,17 +42,15 @@ def _internal_mcp_url(
     server_address: str | None = None,
     server_port: int | None = None,
     server_url_prefix: str | None = None,
-    server_ssl: bool | None = None,
 ) -> str:
     """Return the server-local MCP URL used by chat tool orchestration."""
-    scheme = "https" if (settings.server_ssl if server_ssl is None else server_ssl) else "http"
     host = connect_host(settings.server_address if server_address is None else server_address)
     port = settings.server_port if server_port is None else server_port
     prefix = settings.server_url_prefix if server_url_prefix is None else server_url_prefix
     prefix = prefix.strip().rstrip("/")
     if prefix and not prefix.startswith("/"):
         prefix = f"/{prefix}"
-    return urlunparse((scheme, netloc(host, port), f"{prefix}/mcp/", "", "", ""))
+    return urlunparse(("https", netloc(host, port), f"{prefix}/mcp/", "", "", ""))
 
 
 _orchestrator = ChatOrchestrator(

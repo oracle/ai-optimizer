@@ -139,6 +139,7 @@ write_files:
       AIO_OIDC_REQUIRED_SCOPES='${oidc_required_scopes}'
       AIO_OIDC_CLIENT_ID=${oidc_client_id}
       AIO_OIDC_CLIENT_SECRET=${oidc_client_secret}
+      AIO_OIDC_REDIRECT_URI=${oidc_redirect_uri}
       AIO_OIDC_ADMIN_SUBJECT=${oidc_admin_subject}
       AIO_OIDC_PUBLIC_SERVER_URL=${oidc_public_server_url}
       AIO_OCI_CLI_AUTH=instance_principal

@@ -21,7 +21,7 @@ from streamlit import session_state as state
 
 from client.app.core import helpers
 from client.app.core.api import api_post, get_server_settings
-from client.app.core.auth import is_authenticated, locked_notice
+from client.app.core.auth import is_admin, locked_notice
 from runtime_config_fields import RUNTIME_FIELD_SUFFIXES
 
 LOGGER = logging.getLogger("client.content.config.tabs.settings")
@@ -484,7 +484,7 @@ def display_settings():
     locked_notice()
     st.header("Optimizer Settings", divider="red")
 
-    if not is_authenticated():
+    if not is_admin():
         return
 
     if "runtime_settings_upload_toggle" not in state:

@@ -40,10 +40,9 @@ def test_local_bootstrap_starts_server_with_real_core(oracle_db_container, tmp_p
         dsn=TEST_DB_CONFIG["db_dsn"],
     )
     local_settings = SimpleNamespace(
-        server_url="http://localhost",
+        server_url="https://localhost",
         server_address="127.0.0.1",
         server_port=_unused_local_port(),
-        server_ssl=False,
         server_ssl_cert_file="",
         server_ssl_key_file="",
         server_url_prefix="",
@@ -78,12 +77,14 @@ def test_local_bootstrap_starts_server_with_real_core(oracle_db_container, tmp_p
         try:
             assert api.start_server(child_environment) is True
             readiness = httpx.get(
-                f"http://127.0.0.1:{local_settings.server_port}/v1/readiness",
+                f"https://127.0.0.1:{local_settings.server_port}/v1/readiness",
+                verify=False,
                 timeout=5,
             )
             assert readiness.status_code == 200
             first_login = httpx.post(
-                f"http://127.0.0.1:{local_settings.server_port}/v1/auth/login",
+                f"https://127.0.0.1:{local_settings.server_port}/v1/auth/login",
+                verify=False,
                 json={"username": _ADMIN_USERNAME, "password": _ADMIN_PASSWORD},
                 timeout=5,
             )
@@ -91,21 +92,24 @@ def test_local_bootstrap_starts_server_with_real_core(oracle_db_container, tmp_p
             first = first_login.json()
             headers = {"Authorization": f"Bearer {first['access_token']}"}
             profile = httpx.get(
-                f"http://127.0.0.1:{local_settings.server_port}/v1/auth/me",
+                f"https://127.0.0.1:{local_settings.server_port}/v1/auth/me",
+                verify=False,
                 headers=headers,
                 timeout=5,
             )
             assert profile.status_code == 200
             assert profile.json()["user_id"] == "f4304c28-4bf6-5e7d-a284-33cc0a5a6c01"
             logout = httpx.post(
-                f"http://127.0.0.1:{local_settings.server_port}/v1/auth/logout",
+                f"https://127.0.0.1:{local_settings.server_port}/v1/auth/logout",
+                verify=False,
                 headers=headers,
                 timeout=5,
             )
             assert logout.status_code == 200
             assert (
                 httpx.get(
-                    f"http://127.0.0.1:{local_settings.server_port}/v1/auth/me",
+                    f"https://127.0.0.1:{local_settings.server_port}/v1/auth/me",
+                    verify=False,
                     headers=headers,
                     timeout=5,
                 ).status_code
@@ -114,7 +118,8 @@ def test_local_bootstrap_starts_server_with_real_core(oracle_db_container, tmp_p
             api.stop_server()
             assert api.start_server(child_environment) is True
             second_login = httpx.post(
-                f"http://127.0.0.1:{local_settings.server_port}/v1/auth/login",
+                f"https://127.0.0.1:{local_settings.server_port}/v1/auth/login",
+                verify=False,
                 json={"username": _ADMIN_USERNAME, "password": _ADMIN_PASSWORD},
                 timeout=5,
             )

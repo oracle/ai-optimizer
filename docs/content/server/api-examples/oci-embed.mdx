@@ -14,7 +14,7 @@ There are two API workflows for creating a [vector store](../../client/tools/spl
 1. **Single-call** — `POST /v1/embed/oci/store` downloads objects and schedules an embedding job in one request. Recommended when the only source is an OCI bucket.
 2. **Two-step** — `POST /v1/oci/objects/download` followed by `POST /v1/embed/`. Use this when you need to combine OCI objects with other sources (local uploads, web URLs, SQL query results) before embedding.
 
-For server configuration and API authentication, see [AI Optimizer Server](../intro).
+For server configuration, see [AI Optimizer Server](../intro). [Obtain a bearer token](../../guides/access-control#obtain-a-bearer-token) before running the examples; they read it from `AIO_BEARER_TOKEN`.
 
 ## Single-call Workflow
 
@@ -56,10 +56,9 @@ Download objects and schedule an asynchronous embedding job in one request. The 
 ### Example — embed specific objects
 
 ```bash
-curl -X POST "http://localhost:8000/v1/embed/oci/store?rate_limit=60" \
-  -H "x-api-key: YOUR_API_KEY" \
+curl -X POST "https://localhost:8000/v1/embed/oci/store?rate_limit=60" \
+  -H "Authorization: Bearer $AIO_BEARER_TOKEN" \
   -H "Content-Type: application/json" \
-  -H "client: my-session" \
   -d '{
     "bucket_name": "rag-source-docs",
     "auth_profile": "DEFAULT",
@@ -83,10 +82,9 @@ curl -X POST "http://localhost:8000/v1/embed/oci/store?rate_limit=60" \
 Omit `objects` (or pass `[]`) to embed every object whose extension is supported (`.pdf`, `.html`, `.md`, `.txt`, `.csv`, `.docx`, `.pptx`, `.xlsx`, `.png`, `.jpg`, `.jpeg`):
 
 ```bash
-curl -X POST "http://localhost:8000/v1/embed/oci/store" \
-  -H "x-api-key: YOUR_API_KEY" \
+curl -X POST "https://localhost:8000/v1/embed/oci/store" \
+  -H "Authorization: Bearer $AIO_BEARER_TOKEN" \
   -H "Content-Type: application/json" \
-  -H "client: my-session" \
   -d '{
     "bucket_name": "rag-source-docs",
     "auth_profile": "DEFAULT",
@@ -107,9 +105,8 @@ curl -X POST "http://localhost:8000/v1/embed/oci/store" \
 The `202 Accepted` response carries the `job_id`. Poll the job-status endpoint until `status` is `succeeded` or `failed`:
 
 ```bash
-curl "http://localhost:8000/v1/embed/jobs/$JOB_ID" \
-  -H "x-api-key: YOUR_API_KEY" \
-  -H "client: my-session"
+curl "https://localhost:8000/v1/embed/jobs/$JOB_ID" \
+  -H "Authorization: Bearer $AIO_BEARER_TOKEN"
 ```
 
 When the job succeeds, the response includes an `EmbedProcessingResult` in `result`:
@@ -137,7 +134,6 @@ Download one or more objects from an OCI Object Storage bucket to the server's s
 |---|---|---|
 | `bucket_name` | Path | Name of the OCI Object Storage bucket |
 | `auth_profile` | Path | OCI profile name (case-insensitive), as configured on the server |
-| `client` | Header | Client identifier for scoping temp storage (default: `server`) |
 | Request body | Body | JSON array of object key strings to download |
 
 **Response:** JSON array of downloaded filenames. Object path separators are replaced with underscores in the returned filenames. Failed downloads are omitted, so confirm that the response contains one entry for each requested object before proceeding to Step 2.
@@ -145,10 +141,9 @@ Download one or more objects from an OCI Object Storage bucket to the server's s
 #### Example
 
 ```bash
-curl -X POST "http://localhost:8000/v1/oci/objects/download/my-documents/DEFAULT" \
-  -H "x-api-key: YOUR_API_KEY" \
+curl -X POST "https://localhost:8000/v1/oci/objects/download/my-documents/DEFAULT" \
+  -H "Authorization: Bearer $AIO_BEARER_TOKEN" \
   -H "Content-Type: application/json" \
-  -H "client: my-session" \
   -d '["reports/quarterly-review.pdf", "data/metrics.csv"]'
 ```
 
@@ -169,7 +164,6 @@ Process all staged files — splitting them into chunks, generating embeddings, 
 | Parameter | Location | Description |
 |---|---|---|
 | `rate_limit` | Query | Embedding API rate limit in requests per minute (default: `0` for unlimited) |
-| `client` | Header | Must match the `client` value used in Step 1 |
 | Request body | Body | `VectorStoreConfig` JSON object (see below) |
 
 #### VectorStoreConfig Fields
@@ -191,10 +185,9 @@ Process all staged files — splitting them into chunks, generating embeddings, 
 #### Example
 
 ```bash
-curl -X POST "http://localhost:8000/v1/embed/?rate_limit=60" \
-  -H "x-api-key: YOUR_API_KEY" \
+curl -X POST "https://localhost:8000/v1/embed/?rate_limit=60" \
+  -H "Authorization: Bearer $AIO_BEARER_TOKEN" \
   -H "Content-Type: application/json" \
-  -H "client: my-session" \
   -d '{
     "alias": "quarterly-reports",
     "description": "Q4 quarterly review documents and metrics",
@@ -215,29 +208,24 @@ curl -X POST "http://localhost:8000/v1/embed/?rate_limit=60" \
 A full end-to-end workflow downloading from two buckets and embedding:
 
 ```bash
-API_URL="http://localhost:8000"
-API_KEY="YOUR_API_KEY"
-CLIENT="my-session"
+API_URL="https://localhost:8000"
 
 # Download documents from the first bucket
 curl -X POST "$API_URL/v1/oci/objects/download/reports-bucket/DEFAULT" \
-  -H "x-api-key: $API_KEY" \
+  -H "Authorization: Bearer $AIO_BEARER_TOKEN" \
   -H "Content-Type: application/json" \
-  -H "client: $CLIENT" \
   -d '["2024/q4-review.pdf", "2024/q4-financials.pdf"]'
 
 # Download documents from a second bucket
 curl -X POST "$API_URL/v1/oci/objects/download/data-bucket/DEFAULT" \
-  -H "x-api-key: $API_KEY" \
+  -H "Authorization: Bearer $AIO_BEARER_TOKEN" \
   -H "Content-Type: application/json" \
-  -H "client: $CLIENT" \
   -d '["metrics/summary.csv"]'
 
 # Embed all accumulated files into a vector store
 curl -X POST "$API_URL/v1/embed/?rate_limit=60" \
-  -H "x-api-key: $API_KEY" \
+  -H "Authorization: Bearer $AIO_BEARER_TOKEN" \
   -H "Content-Type: application/json" \
-  -H "client: $CLIENT" \
   -d '{
     "alias": "q4-knowledge-base",
     "description": "Q4 2024 reports and supporting data",

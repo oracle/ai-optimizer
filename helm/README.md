@@ -61,7 +61,7 @@ helm install ai-optimizer . \
 kubectl port-forward svc/ai-optimizer-client 8501:8501
 
 # Visit in browser
-open http://localhost:8501
+open https://localhost:8501
 ```
 
 ## Installation Examples

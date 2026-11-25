@@ -44,6 +44,12 @@ variable "oidc_client_secret" {
   sensitive   = true
 }
 
+variable "oidc_redirect_uri" {
+  description = "Public Streamlit OIDC callback URL ending in /oauth2callback."
+  type        = string
+  default     = ""
+}
+
 variable "oidc_admin_subject" {
   description = "Exact OCI IAM subject bound to the reserved Admin user."
   type        = string
@@ -64,10 +70,11 @@ check "optimizer_oidc_required" {
       length(var.oidc_required_scopes) > 0,
       trimspace(var.oidc_client_id) != "",
       trimspace(var.oidc_client_secret) != "",
+      startswith(var.oidc_redirect_uri, "https://"),
       trimspace(var.oidc_admin_subject) != "",
       startswith(var.oidc_public_server_url, "https://"),
     ])
-    error_message = "OpenTofu AI Optimizer deployments require complete OCI IAM OIDC configuration with HTTPS issuer and public server URLs."
+    error_message = "OpenTofu AI Optimizer deployments require complete OCI IAM OIDC configuration with HTTPS issuer, redirect, and public server URLs."
   }
 }
 
@@ -331,12 +338,12 @@ variable "lb_max_shape" {
 
 // TLS
 variable "ssl_mode" {
-  description = "TLS termination mode: 'none' (HTTP only), 'self-signed' (auto-generated cert), or 'provided' (user-supplied cert/key)."
+  description = "TLS certificate mode: 'self-signed' (auto-generated cert) or 'provided' (user-supplied cert/key)."
   type        = string
-  default     = "none"
+  default     = "self-signed"
   validation {
-    condition     = contains(["none", "self-signed", "provided"], var.ssl_mode)
-    error_message = "ssl_mode must be 'none', 'self-signed', or 'provided'."
+    condition     = contains(["self-signed", "provided"], var.ssl_mode)
+    error_message = "ssl_mode must be 'self-signed' or 'provided'."
   }
 }
 

@@ -12,7 +12,7 @@ from server.app.auth.provisioning import (
     LOGIN_DATA_ROLE,
     configure_provisioning_authority,
     install_provisioning_package,
-    provisioning_package_available,
+    missing_local_user_management_capabilities,
 )
 from server.app.auth.repository import bind_authority
 from server.app.core.settings import (
@@ -47,40 +47,6 @@ async def _init_core_database_with_retry(
                 raise
             LOGGER.info("CORE database is not initialized; retrying authentication setup")
             await asyncio.sleep(min(retry_interval, remaining))
-
-
-async def _missing_local_user_management_capabilities(conn: oracledb.AsyncConnection) -> list[str]:
-    """Return database capabilities needed to manage member end users."""
-    missing = []
-    for view, capability in (
-        ("DBA_END_USERS", "local end-user accounts"),
-        ("DBA_DATA_ROLES", "data roles"),
-    ):
-        try:
-            await execute_sql(conn, f"SELECT 1 FROM {view} WHERE 1 = 0", max_rows=1)
-        except oracledb.Error:
-            missing.append(capability)
-    try:
-        rows = await execute_sql(
-            conn,
-            "SELECT privilege FROM USER_SYS_PRIVS "
-            "WHERE privilege IN ('CREATE END USER', 'ALTER END USER', 'DROP END USER', "
-            "'CREATE DATA ROLE', 'GRANT ANY DATA ROLE')",
-            max_rows=10,
-        )
-    except oracledb.Error:
-        rows = []
-    privileges = {row[0] for row in rows or []}
-    for privilege, capability in (
-        ("CREATE END USER", "CREATE END USER privilege"),
-        ("ALTER END USER", "ALTER END USER privilege"),
-        ("DROP END USER", "DROP END USER privilege"),
-        ("CREATE DATA ROLE", "CREATE DATA ROLE privilege"),
-        ("GRANT ANY DATA ROLE", "GRANT ANY DATA ROLE privilege"),
-    ):
-        if privilege not in privileges:
-            missing.append(capability)
-    return missing
 
 
 async def _ensure_connect_role(conn: oracledb.AsyncConnection) -> None:
@@ -132,17 +98,15 @@ async def _install_local_user_management(
     core_config: DatabaseConfig,
     login_data_role: str,
 ) -> bool:
-    if await provisioning_package_available(conn):
-        return True
+    await install_provisioning_package(conn)
     capability_conn = privileged_conn or conn
-    missing = await _missing_local_user_management_capabilities(capability_conn)
+    missing = await missing_local_user_management_capabilities(capability_conn)
     if missing:
         LOGGER.warning("Local member administration is unavailable: %s", ", ".join(missing))
         return False
     try:
         await _ensure_connect_role(conn)
         await _ensure_login_data_role(conn, login_data_role)
-        await install_provisioning_package(conn)
         if privileged_conn is not None:
             await configure_provisioning_authority(
                 privileged_conn,

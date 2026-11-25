@@ -38,30 +38,26 @@ The argument selects a search scope for one request. Configure deployment isolat
 
 ## Authority and Execution Location
 
-The `X-API-Key` authorizes the holder to invoke the tools published by the AI Optimizer Server. Provide it only to users and systems authorized to use those server-side operations.
+MCP requests use the same Oracle database or OIDC bearer credentials as REST requests.
 
-When SQLcl is configured, the AI Optimizer Server launches the `sql` process and executes SQLcl commands locally. External MCP clients send requests to it over HTTP. SQLcl uses restrict level `4` by default. Operators can set `AIO_SQLCL_MCP_LEVEL` to a lower level when additional SQLcl capabilities are required; see [SQLcl MCP Server](./sqlcl-mcp-server).
+When SQLcl is configured, the AI Optimizer Server launches the `sql` process and executes SQLcl commands locally. External MCP clients connect over HTTPS. SQLcl uses restrict level `4` by default. Operators can set `AIO_SQLCL_MCP_LEVEL` to a lower level when additional SQLcl capabilities are required; see [SQLcl MCP Server](./sqlcl-mcp-server).
 
 External MCP clients can use all tools registered on the server that are available at the configured SQLcl restrict level. The built-in NL2SQL agent uses only its connection, schema, query, and request-status tools.
 
 ## Get Client Configuration
 
-Start the AI Optimizer Server and obtain its API key. In the included web client, the key is available on the [API Server](../client/api_server) page. For standalone deployments, configure `AIO_API_KEY` before starting the server. See [Environment Variables](./env-vars).
+[Obtain a bearer token](./access-control#obtain-a-bearer-token) through the deployment's configured authentication.
 
 The recommended approach is to use the client configuration generated in **Configuration** > **MCP Server** in the web client. It provides the settings or command required by the selected client. Alternatively, request the configuration from the server:
 
 ```bash
-curl -H "X-API-Key: $AIO_API_KEY" \
-  "http://localhost:8000/mcp/client-config?client=generic"
+curl -H "Authorization: Bearer $AIO_BEARER_TOKEN" \
+  "https://localhost:8000/mcp/client-config?client=generic"
 ```
 
-This command assumes that the server is available locally on its default port. For another deployment, replace `http://localhost:8000` with the reachable AI Optimizer Server URL.
+For another deployment, replace `https://localhost:8000` with the reachable AI Optimizer Server URL.
 
-The generated configuration is the source of truth: it includes the deployment's URL, any server URL prefix, and the required `X-API-Key` header.
-
-:::danger[Secrets Inside!]
-The configuration contains a secret for accessing the Server. Store it securely and keep it out of source control.
-:::
+The generated configuration includes the deployment URL, server URL prefix, and an `AIO_BEARER_TOKEN` placeholder. Set that variable to the token obtained above.
 
 | Client                         | Query value      | Connection type            |
 | ------------------------------ | ---------------- | -------------------------- |
@@ -77,7 +73,7 @@ For another client that accepts Streamable HTTP server entries, select **Generic
 
 ## MCP Inspector
 
-The [MCP Inspector](https://github.com/modelcontextprotocol/inspector) is a developer tool for inspecting MCP servers. In the web client, select **MCP Inspector** under **Configuration** > **MCP Server** and save the displayed JSON as `mcp.json`. The generated configuration includes the required API key header; import it unchanged.
+The [MCP Inspector](https://github.com/modelcontextprotocol/inspector) is a developer tool for inspecting MCP servers. In the web client, select **MCP Inspector** under **Configuration** > **MCP Server** and save the displayed JSON as `mcp.json`. [Obtain a bearer token](./access-control#obtain-a-bearer-token) and set `AIO_BEARER_TOKEN` for the Inspector process.
 
 To use the configuration from the command line, run:
 
@@ -106,15 +102,15 @@ In the web client, select **LangGraph**, then use the generated `url` and `heade
 
 ## Claude Desktop
 
-Claude Desktop runs local MCP server processes. In the web client, select **Claude Desktop** to generate a configuration that uses `mcp-remote` to bridge a local process to the AI Optimizer's HTTP endpoint. Add the generated `oracle-ai-optimizer` entry under `mcpServers` in Claude Desktop's configuration, then restart Claude Desktop. Node.js must be available so that the `npx` command in the generated configuration can run `mcp-remote`.
+Claude Desktop runs local MCP server processes. In the web client, select **Claude Desktop** to generate a configuration that uses `mcp-remote` to bridge a local process to the AI Optimizer's HTTPS endpoint. Add the generated `oracle-ai-optimizer` entry under `mcpServers` in Claude Desktop's configuration, then restart Claude Desktop. Node.js must be available so that the `npx` command in the generated configuration can run `mcp-remote`.
 
 ## Verify the Connection
 
 Confirm that the MCP server is healthy and has registered tools:
 
 ```bash
-curl -H "X-API-Key: $AIO_API_KEY" http://localhost:8000/mcp/healthz
-curl -H "X-API-Key: $AIO_API_KEY" http://localhost:8000/mcp/tools
+curl -H "Authorization: Bearer $AIO_BEARER_TOKEN" https://localhost:8000/mcp/healthz
+curl -H "Authorization: Bearer $AIO_BEARER_TOKEN" https://localhost:8000/mcp/tools
 ```
 
 The tools response lists the registered tools. Then use the client to ask a question that requires one of them.

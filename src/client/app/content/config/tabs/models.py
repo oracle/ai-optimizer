@@ -14,7 +14,7 @@ from streamlit import session_state as state
 
 from client.app.core import helpers
 from client.app.core.api import APIError, api_delete, api_get, api_post, api_post_stream, api_put
-from client.app.core.auth import is_authenticated, locked_notice, redacted_password_input
+from client.app.core.auth import is_admin, locked_notice, redacted_password_input
 
 LOGGER = logging.getLogger("client.content.config.tabs.models")
 
@@ -163,7 +163,7 @@ def _render_provider_selection(model: dict, supported_models: list, action: str)
         index=provider_index,
         options=[item["provider"] for item in supported_models],
         key="add_model_provider",
-        disabled=action == "edit" or not is_authenticated(),
+        disabled=action == "edit" or not is_admin(),
     )
 
     # Get model IDs for the selected provider
@@ -194,7 +194,7 @@ def _render_model_selection(model: dict, provider_models: list, action: str) -> 
         options=model_keys,
         key=f"add_model_id_{model.get('provider', '')}",
         accept_new_options=True,
-        disabled=action == "edit" or not model.get("provider") or not is_authenticated(),
+        disabled=action == "edit" or not model.get("provider") or not is_admin(),
     )
 
     return model
@@ -202,7 +202,7 @@ def _render_model_selection(model: dict, provider_models: list, action: str) -> 
 
 def _render_api_configuration(model: dict, provider_models: list, disable_for_oci: bool) -> dict:
     """Render API configuration UI and return updated model."""
-    authenticated = is_authenticated()
+    authenticated = is_admin()
     litellm_api_base = next(
         (m.get("api_base", "") for m in provider_models if m.get("key") == model.get("id")),
         model.get("api_base", ""),
@@ -242,7 +242,7 @@ def _render_model_specific_config(model: dict, model_type: str, provider_models:
             min_value=0,
             key="add_model_max_input_tokens",
             value=max_input_tokens,
-            disabled=not is_authenticated(),
+            disabled=not is_admin(),
         )
 
         max_tokens = next(
@@ -255,7 +255,7 @@ def _render_model_specific_config(model: dict, model_type: str, provider_models:
             min_value=1,
             key="add_model_max_tokens",
             value=max_tokens,
-            disabled=not is_authenticated(),
+            disabled=not is_admin(),
         )
     else:
         max_chunk_size = model.get("max_chunk_size")
@@ -270,7 +270,7 @@ def _render_model_specific_config(model: dict, model_type: str, provider_models:
             min_value=0,
             key="add_model_max_chunk_size",
             value=max_chunk_size,
-            disabled=not is_authenticated(),
+            disabled=not is_admin(),
         )
 
     return model
@@ -278,7 +278,7 @@ def _render_model_specific_config(model: dict, model_type: str, provider_models:
 
 def _handle_dialog_submission(model: dict, model_type: str, action: str, original_model: dict | None = None) -> bool:
     """Handle dialog form submission and return True if successful."""
-    authenticated = is_authenticated()
+    authenticated = is_admin()
     action_button, delete_button, cancel_button = st.columns([1.5, 7, 1.5])
     try:
         if action == "add" and action_button.button(
@@ -335,7 +335,7 @@ def edit_model(
         model["enabled"] = st.checkbox(
             "Enabled",
             value=model.get("enabled", False),
-            disabled=not is_authenticated(),
+            disabled=not is_admin(),
         )
     supported_models = _get_supported_models(model_type)
 
@@ -448,10 +448,10 @@ def render_model_rows(model_type: str) -> None:
                 on_click=pull_model_dialog,
                 key=f"{row_key}_pull",
                 kwargs={"provider": model_provider, "model_id": model_id},
-                disabled=not is_authenticated(),
+                disabled=not is_admin(),
             )
 
-    if st.button(label="Add", type="primary", key=f"add_{model_type}_model", disabled=not is_authenticated()):
+    if st.button(label="Add", type="primary", key=f"add_{model_type}_model", disabled=not is_admin()):
         edit_model(model_type=model_type, action="add")
 
 

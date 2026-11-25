@@ -13,7 +13,7 @@ import streamlit as st
 from streamlit import session_state as state
 
 from client.app.core.api import api_get, api_patch, api_post
-from client.app.core.auth import is_authenticated
+from client.app.core.auth import is_admin
 from client.app.core.helpers import (
     enabled_models_lookup,
     selectbox_index,
@@ -105,7 +105,7 @@ def _auto_configure_single_dds_end_user(client_settings: dict, db_alias: str) ->
         return
 
     state["_ds_autodefault_alias"] = db_alias
-    if not is_authenticated():
+    if not is_admin():
         return
 
     try:

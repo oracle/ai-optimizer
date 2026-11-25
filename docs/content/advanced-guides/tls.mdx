@@ -7,33 +7,13 @@ sidebar_position: 20
 {/* Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl. */}
 
-The **AI Optimizer Server** and **AI Optimizer Client** can serve HTTPS. Enable TLS with `AIO_SERVER_SSL` or `AIO_CLIENT_SSL`, then use the corresponding `*_SSL_CERT_FILE` and `*_SSL_KEY_FILE` [environment variables](../guides/env-vars) for provided certificates.
-
-Choose one HTTP/TLS option for each component:
-
-- **HTTP:** The default for local desktop experimentation.
-- **Generated self-signed certificate:** Encrypts local development traffic and prompts a browser trust warning.
-- **Provided certificate:** Use a certificate and key issued or managed by your organization for deployments reached by other users.
+The **AI Optimizer Server** and **AI Optimizer Client** serve HTTPS only. Supply their certificate and key paths, or use their generated localhost certificate.
 
 ## Generated Self-Signed Certificates
 
-The **AI Optimizer** can automatically generate self-signed certificates for local deployments. The generated certificate is valid for `localhost`.
+Each component generates a certificate for `localhost` when its certificate paths are unset.
 
-:::note[Browser warning]
-Browsers show a warning for a self-signed certificate. It is intended for local development; use a certificate trusted by the browser or operating system for a shared deployment.
-:::
-
-To generate certificates automatically, set one SSL variable for the component and leave its certificate paths unset:
-
-```dotenv
-# API Server
-AIO_SERVER_SSL=true
-
-# AI Optimizer Client
-AIO_CLIENT_SSL=true
-```
-
-Then run its matching command:
+Start the required components:
 
 ```bash
 # API Server
@@ -43,18 +23,15 @@ uv run python src/entrypoint.py server
 uv run python src/entrypoint.py client
 ```
 
-A localhost certificate and key will be placed at `<project-root>/tmp/ssl/` for bare-metal installations and `/app/tmp/ssl/` in the container image.
+A localhost certificate and key will be placed at `<project-root>/tmp/ssl/` for bare-metal installations and `/app/data/tls/` in the all-in-one container volume.
 
 ## Provided Certificates
 
-To use your own certificates, provide both a PEM-encoded certificate and its private key. The certificate must cover the hostname users connect to, and the process must be able to read both files.
-
-If either path is omitted and `*_SSL=true`, the **AI Optimizer** generates a self-signed pair instead.
+Provide both a PEM-encoded certificate and its private key. The certificate must cover the hostname users connect to, and the process must be able to read both files.
 
 ### API Server
 
 ```dotenv
-AIO_SERVER_SSL=true
 AIO_SERVER_SSL_CERT_FILE=/path/to/cert.pem
 AIO_SERVER_SSL_KEY_FILE=/path/to/key.pem
 ```
@@ -62,7 +39,6 @@ AIO_SERVER_SSL_KEY_FILE=/path/to/key.pem
 ### AI Optimizer Client
 
 ```dotenv
-AIO_CLIENT_SSL=true
 AIO_CLIENT_SSL_CERT_FILE=/path/to/cert.pem
 AIO_CLIENT_SSL_KEY_FILE=/path/to/key.pem
 ```
@@ -82,7 +58,6 @@ podman run \
 In the environment file, use the mounted paths, for example:
 
 ```dotenv
-AIO_CLIENT_SSL=true
 AIO_CLIENT_SSL_CERT_FILE=/app/tls/cert.pem
 AIO_CLIENT_SSL_KEY_FILE=/app/tls/key.pem
 ```

@@ -426,12 +426,11 @@ variables:
   #########################################################################
   ssl_mode:
     type: enum
-    title: "TLS Termination"
-    description: "HTTP only, auto-generated self-signed certificate, or provide your own certificate."
+    title: "TLS Certificate"
+    description: "Auto-generate a self-signed certificate or provide your own certificate."
     required: true
-    default: "none"
+    default: "self-signed"
     enum:
-      - "none"
       - "self-signed"
       - "provided"
 

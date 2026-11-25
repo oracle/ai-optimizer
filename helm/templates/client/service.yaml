@@ -16,6 +16,7 @@ spec:
     - protocol: TCP
       port: {{ .Values.client.service.port | default 8501 }}
       targetPort: 8501
+      appProtocol: https
       {{- with .Values.client.service.nodePort }}
       nodePort: {{ . }}
       {{- end }}

@@ -12,6 +12,7 @@ RoutePolicy = Literal["member", "admin", "system"]
 _MEMBER_ENDPOINTS = {
     "me",
     "logout",
+    "password_change",
     "get_client_settings",
     "update_client_settings",
     "list_databases",

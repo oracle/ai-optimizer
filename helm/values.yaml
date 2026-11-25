@@ -21,9 +21,6 @@ global:
       issuer: ""
       audience: ""
       requiredScopes: []
-      clientId: ""
-      clientSecretName: ""
-      clientSecretKey: "clientSecret"
       adminSubject: ""
       publicServerUrl: ""
 
@@ -135,11 +132,8 @@ server:
     # dial the server). The container always listens on 8000.
     port: 8000
 
-  # ssl: enable HTTPS on the uvicorn server.
-  # Set enabled to true and optionally provide paths to cert/key files mounted into the container.
-  # When certFile and keyFile are empty, a self-signed certificate is auto-generated at startup.
+  # ssl: optionally provide paths to cert/key files mounted into the container.
   ssl:
-    enabled: false
     certFile: ""
     keyFile: ""
 
@@ -379,18 +373,9 @@ server:
       # - name: OTEL_BSP_MAX_QUEUE_SIZE
       #   value: "4096"
 
-  # -- Environment configuration mounted as a Secret at /app/src/.env.{global.env}.
-  # The chart always creates this Secret with the AIO_* settings derived
-  # from chart values (server URL prefix,
-  # max clients, SSL, OKE workload identity, Ollama URL). Pod env keeps
-  # only AIO_ENV (bootstrap) and secretKeyRef bindings (authentication,
-  # AIO_DB_*, model API keys). pydantic-settings reads the file directly,
-  # and load_dotenv(override=False) means pod env still wins where set.
-  #
-  # Use this block to add operator overrides — extra AIO_* or integration
-  # entries get merged into the chart-managed Secret (operator values
-  # override chart defaults). To bring your own pre-built Secret with
-  # .env content, set 'secretName' and the chart skips its own render.
+  # -- Additional Server environment settings.
+  # Set content to merge values into the chart-managed Secret, or set
+  # secretName and secretKey to use an existing environment file.
   # envSecret:
   #   secretName: ""
   #   secretKey: "server.env"
@@ -482,6 +467,13 @@ server:
 client:
   # -- Enable frontend client
   enabled: true
+  # -- Optional Streamlit OAuth client registration used when Server uses OIDC.
+  oidc:
+    clientId: ""
+    clientSecretName: ""
+    clientSecretKey: "clientSecret"
+    # -- Public Streamlit callback URL ending in /oauth2callback.
+    redirectUri: ""
   # -- Number of desired pod replicas for the Deployment when autoscaling is disabled
   replicaCount: 1
 
@@ -518,11 +510,9 @@ client:
     # allocate one.
     nodePort: null
 
-  # ssl: enable HTTPS on the Streamlit server.
-  # Set enabled to true and optionally provide paths to cert/key files mounted into the container.
+  # ssl: optionally provide paths to cert/key files mounted into the container.
   # When certFile and keyFile are empty, a self-signed certificate is auto-generated at startup.
   ssl:
-    enabled: false
     certFile: ""
     keyFile: ""
 
@@ -542,27 +532,6 @@ client:
   cookieSecretName: ""
   # -- Key inside cookieSecretName / the generated Secret that holds the value.
   cookieSecretKey: "cookieSecret"
-
-  # -- Shared password for selected client UI controls. Exactly one (or none)
-  # of password / passwordSecretName / passwordAutoGenerate may be set; the
-  # chart fails the render when more than one is active. With none set, the
-  # additional UI access check is disabled. Applies to the Streamlit client
-  # UI only; API access is governed by the configured authentication authority.
-  password: ""
-  # -- Name of a pre-existing Secret containing the shared password (BYO).
-  # The chart references it but does not create or manage its lifecycle.
-  passwordSecretName: ""
-  # -- Key inside passwordSecretName / the generated Secret that holds the value.
-  passwordSecretKey: "password"
-  # -- Auto-generate the shared password and let the chart own the Secret.
-  # On first install the chart creates `<fullname>-client-password` with a
-  # random value and `helm.sh/resource-policy: keep` so it survives upgrade
-  # and uninstall. Requires Helm with cluster access at render time — under
-  # `helm template` / ArgoCD without server-side render, `lookup` returns
-  # empty and the chart would re-mint the password on every render, so
-  # `kubectl apply` of that output would rotate the live Secret. Use BYO
-  # (passwordSecretName) instead for those pipelines.
-  passwordAutoGenerate: false
 
   # -- OCI source defaults applied to the Split & Embed tab for every user
   # of this deployment. The compartment is the anchor; the bucket alone
@@ -607,16 +576,9 @@ client:
     #     - example.com
     #   secretName: example-tls
 
-  # -- Environment configuration mounted as a Secret at /app/src/.env.{global.env}.
-  # The chart always creates this Secret with the AIO_* settings derived
-  # from chart values (server URL, server port, client SSL). Pod env
-  # keeps only AIO_ENV plus required secretKeyRef bindings
-  # and AIO_CLIENT_COOKIE_SECRET.
-  #
-  # Use this block to add operator overrides — extra AIO_* entries get
-  # merged into the chart-managed Secret. To bring your own pre-built
-  # Secret with .env content, set 'secretName' and the chart skips its
-  # own render.
+  # -- Additional Client environment settings.
+  # Set content to merge values into the chart-managed Secret, or set
+  # secretName and secretKey to use an existing environment file.
   # envSecret:
   #   secretName: ""
   #   secretKey: "client.env"

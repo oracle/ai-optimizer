@@ -7,7 +7,7 @@ import oracledb
 from server.app.auth import repository
 from server.app.auth.local import database_account_status, invalidate_account_status, normalize_database_username
 from server.app.auth.models import AuthUser
-from server.app.auth.provisioning import provisioning_package_available
+from server.app.auth.provisioning import local_user_management_issues
 from server.app.core.settings import settings
 from server.app.database.config import require_core_pool
 
@@ -21,8 +21,9 @@ async def require_local_user_management() -> None:
     require_local_users_mode()
     pool = require_core_pool()
     async with pool.acquire() as conn:
-        if not await provisioning_package_available(conn):
-            raise LookupError("Local user management is unavailable for the configured database account")
+        issues = await local_user_management_issues(conn)
+    if issues:
+        raise LookupError(f"Local user management is unavailable: {', '.join(issues)}")
 
 
 async def _call_admin(action: str, username: str, password: str | None = None) -> None:
@@ -37,7 +38,7 @@ async def _call_admin(action: str, username: str, password: str | None = None) -
 
 async def create_member(
     username: str,
-    temporary_password: str,
+    password: str,
     display_name: str | None,
     email: str | None,
 ) -> AuthUser:
@@ -51,9 +52,9 @@ async def create_member(
     if status == "UNMANAGED":
         raise ValueError("Database end user is not managed by this application")
     if created:
-        await _call_admin("CREATE", canonical, temporary_password)
+        await _call_admin("CREATE", canonical, password)
     else:
-        await _call_admin("RESET", canonical, temporary_password)
+        await _call_admin("RESET", canonical, password)
     try:
         user = await repository.create_database_member(uuid4(), canonical, display_name, email)
     except Exception:
@@ -81,12 +82,12 @@ async def update_member(
     return await repository.update_database_member(user_id, display_name, email)
 
 
-async def reset_member_password(user_id: UUID, temporary_password: str) -> AuthUser:
+async def reset_member_password(user_id: UUID, password: str) -> AuthUser:
     require_local_users_mode()
     user = await repository.get_user_by_id(user_id)
     if user is None or user.role != "member" or user.database_username is None:
         raise ValueError("Authentication member was not found")
-    await _call_admin("RESET", user.database_username, temporary_password)
+    await _call_admin("RESET", user.database_username, password)
     invalidate_account_status(user.database_username)
     await repository.revoke_user_sessions(user.user_id)
     return user

@@ -104,7 +104,7 @@ class RunConfig:
 
 def build_argparser(description: str | None) -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description=description)
-    p.add_argument("--base-url", default="http://localhost:8000")
+    p.add_argument("--base-url", default="https://localhost:8000")
     p.add_argument("--api-key", required=True, help="X-API-Key value (server's AIO_API_KEY)")
     p.add_argument("--workers", type=int, default=100)
     p.add_argument("--client-prefix", default="racing-chat-c")

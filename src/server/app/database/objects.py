@@ -37,6 +37,95 @@ RENAME_DDL = [
     EXCEPTION WHEN NO_DATA_FOUND THEN NULL;
     END;
     """,
+    """
+    DECLARE
+        l_table_count      PLS_INTEGER;
+        l_column_count     PLS_INTEGER;
+        l_constraint_count PLS_INTEGER;
+
+        PROCEDURE drop_constraint_if_exists(p_name VARCHAR2) IS
+            l_count PLS_INTEGER;
+        BEGIN
+            SELECT COUNT(*) INTO l_count
+              FROM user_constraints
+             WHERE constraint_name = UPPER(p_name);
+            IF l_count > 0 THEN
+                EXECUTE IMMEDIATE 'ALTER TABLE aio_auth_authority DROP CONSTRAINT ' || p_name;
+            END IF;
+        END;
+    BEGIN
+        SELECT COUNT(*) INTO l_table_count
+          FROM user_tables
+         WHERE table_name = 'AIO_AUTH_AUTHORITY';
+
+        IF l_table_count > 0 THEN
+            SELECT COUNT(*) INTO l_column_count
+              FROM user_tab_columns
+             WHERE table_name = 'AIO_AUTH_AUTHORITY'
+               AND column_name IN ('INSTALLATION_ID', 'ADMIN_DATABASE_USERNAME');
+
+            IF l_column_count > 0 THEN
+                drop_constraint_if_exists('AIO_AUTH_AUTHORITY_PK');
+                drop_constraint_if_exists('AIO_AUTH_AUTHORITY_MODE_CK');
+
+                SELECT COUNT(*) INTO l_constraint_count
+                  FROM user_tab_columns
+                 WHERE table_name = 'AIO_AUTH_AUTHORITY'
+                   AND column_name = 'AUTHORITY_ID';
+                IF l_constraint_count = 0 THEN
+                    EXECUTE IMMEDIATE 'ALTER TABLE aio_auth_authority ADD authority_id NUMBER(1) DEFAULT 1';
+                END IF;
+
+                EXECUTE IMMEDIATE 'UPDATE aio_auth_authority SET authority_id = 1';
+                EXECUTE IMMEDIATE
+                    'UPDATE aio_auth_authority SET auth_mode = ''LOCAL_USERS'' WHERE auth_mode = ''SINGLE_USER''';
+                EXECUTE IMMEDIATE 'ALTER TABLE aio_auth_authority MODIFY authority_id NOT NULL';
+
+                SELECT COUNT(*) INTO l_constraint_count
+                  FROM user_tab_columns
+                 WHERE table_name = 'AIO_AUTH_AUTHORITY'
+                   AND column_name = 'INSTALLATION_ID';
+                IF l_constraint_count > 0 THEN
+                    EXECUTE IMMEDIATE 'ALTER TABLE aio_auth_authority DROP COLUMN installation_id';
+                END IF;
+
+                SELECT COUNT(*) INTO l_constraint_count
+                  FROM user_tab_columns
+                 WHERE table_name = 'AIO_AUTH_AUTHORITY'
+                   AND column_name = 'ADMIN_DATABASE_USERNAME';
+                IF l_constraint_count > 0 THEN
+                    EXECUTE IMMEDIATE 'ALTER TABLE aio_auth_authority DROP COLUMN admin_database_username';
+                END IF;
+            END IF;
+
+            SELECT COUNT(*) INTO l_constraint_count
+              FROM user_constraints
+             WHERE constraint_name = 'AIO_AUTH_AUTHORITY_PK';
+            IF l_constraint_count = 0 THEN
+                EXECUTE IMMEDIATE
+                    'ALTER TABLE aio_auth_authority ADD CONSTRAINT aio_auth_authority_pk PRIMARY KEY (authority_id)';
+            END IF;
+
+            SELECT COUNT(*) INTO l_constraint_count
+              FROM user_constraints
+             WHERE constraint_name = 'AIO_AUTH_AUTHORITY_SINGLETON_CK';
+            IF l_constraint_count = 0 THEN
+                EXECUTE IMMEDIATE
+                    'ALTER TABLE aio_auth_authority ADD CONSTRAINT ' ||
+                    'aio_auth_authority_singleton_ck CHECK (authority_id = 1)';
+            END IF;
+
+            SELECT COUNT(*) INTO l_constraint_count
+              FROM user_constraints
+             WHERE constraint_name = 'AIO_AUTH_AUTHORITY_MODE_CK';
+            IF l_constraint_count = 0 THEN
+                EXECUTE IMMEDIATE
+                    'ALTER TABLE aio_auth_authority ADD CONSTRAINT aio_auth_authority_mode_ck ' ||
+                    'CHECK (auth_mode IN (''LOCAL_USERS'', ''OIDC''))';
+            END IF;
+        END IF;
+    END;
+    """,
 ]
 
 SCHEMA_DDL = [

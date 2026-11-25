@@ -120,6 +120,22 @@ class TestMainConnectionLogic:
         mock_start.assert_not_called()
         assert "settings" in state
 
+    def test_about_identifies_authenticated_user(self):
+        state = AttrDict(
+            {
+                "optimizer_client": "test-123",
+                "auth_principal": {"username": "ADMIN", "display_name": "Admin"},
+            }
+        )
+        valid_settings = {"database_configs": [], "model_configs": [], "client_settings": {}}
+
+        with patch("streamlit.set_page_config") as set_page_config:
+            _import_main(state, get_settings_side_effect=[valid_settings])
+
+        about_values = [call.kwargs["menu_items"]["About"] for call in set_page_config.call_args_list]
+        assert about_values[-1].endswith("User: Admin")
+        assert all("Client:" not in value for value in about_values)
+
     def test_connection_retry_after_start(self):
         """When first connection fails, starts server and retries."""
         state = AttrDict({"optimizer_client": "test-456"})

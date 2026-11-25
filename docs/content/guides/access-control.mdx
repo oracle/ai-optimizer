@@ -1,27 +1,29 @@
 ---
 title: Access Control
-description: Configure database-account authentication for AI Optimizer Server.
+description: Configure database-account or OIDC authentication for AI Optimizer Server.
 sidebar_position: 10
 ---
 
 {/* Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl. */}
 
-AI Optimizer Server authenticates `local_users` deployments through a short-lived Oracle AI Database connection.
-
-Deployment setup binds one database user to the reserved `Admin` identity. `Admin` keeps the same application user ID when signing out and back in.
-
-The bare-metal client and all-in-one container initialize the reserved Admin identity during first startup using the application-database password.
+AI Optimizer supports Oracle database and OIDC authentication. Each deployment has one reserved `Admin` identity.
 
 ## Database authentication
 
-The Oracle account configured by `AIO_DB_USERNAME` is the reserved Admin and can always sign in. When that account has the required end-user administration privileges, Admin can create member end users, lock or unlock accounts, and issue temporary password resets.
+The Oracle account configured by `AIO_DB_USERNAME` is Admin. Database members require the `AIO_LOGIN_ROLE` data role.
 
-AI Optimizer authenticates members carrying the `AIO_LOGIN_ROLE` data role.
+With the [end-user administration privileges](./database#authentication-member-administration), Admin can create members, update profiles, lock or unlock accounts, and reset passwords from **Configuration → Users**.
+
+## OIDC authentication
+
+AI Optimizer Server validates bearer tokens from the configured identity provider. The configured Admin subject receives the Admin identity; other accepted subjects receive member identities.
+
+REST and MCP clients use their own OAuth registrations. The optional Streamlit client uses an authorization-code registration.
 
 ## User settings
 
-Each account has its own persisted model, tool, database, and OCI selections. The same account restores those selections after signing in again. Chat history, embedding jobs, evaluations, and Deep Data Security sessions are scoped to the signed-in account.
+Each account has its own model, tool, database, and OCI selections, chat history, embedding jobs, evaluations, and Deep Data Security sessions.
 
 ## Authorization
 
@@ -29,18 +31,52 @@ Members can use their own settings, chat, history, evaluations, and read-only to
 
 MCP uses the same bearer identity. Read-only MCP capabilities are available to members; database-changing SQLcl capabilities require Admin.
 
-## Sessions
+## Obtain a bearer token
+
+The command examples use `AIO_BEARER_TOKEN` as a shell variable containing the caller's token.
+
+### Database accounts
+
+Sign in with a managed database account:
+
+```bash
+curl -X POST https://localhost:8000/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"<database-username>","password":"<database-password>"}'
+```
+
+The response contains the bearer token and its expiry:
+
+```json
+{
+  "access_token": "<token>",
+  "token_type": "bearer",
+  "expires": "<timestamp>"
+}
+```
+
+Export the returned `access_token` in the shell used by the REST or MCP client:
+
+```bash
+export AIO_BEARER_TOKEN='<token>'
+```
+
+### OIDC clients
+
+Use the external client's OAuth registration to obtain an access token for the configured `AIO_OIDC_AUDIENCE` and `AIO_OIDC_REQUIRED_SCOPES`, then export that access token as `AIO_BEARER_TOKEN`. The optional Streamlit client uses its own authorization-code registration; REST and MCP clients use their own OAuth registrations.
+
+## Database sessions
 
 `POST /v1/auth/login` accepts the managed database username and password and returns an opaque bearer token. Send that token as `Authorization: Bearer <token>` on protected requests. `POST /v1/auth/logout` revokes the current token.
 
-The configured AI Optimizer application database stores only a domain-separated SHA-256 digest of each token. Sessions have absolute and idle expiry, a per-user limit, and bounded cleanup. Account status is cached for at most `AIO_AUTH_ACCOUNT_STATUS_CACHE_SECONDS`; application-mediated account locks and password resets revoke existing sessions immediately across Server instances sharing the same application database.
+Database sessions use the configured absolute lifetime, idle timeout, and per-user limit. Account locks and password resets made through AI Optimizer revoke active sessions. External account-state changes are applied within `AIO_AUTH_ACCOUNT_STATUS_CACHE_SECONDS`.
 
-New and reset member passwords are temporary and expired by Oracle AI Database. Members change them with `POST /v1/auth/password-change`; password rules and failure accounting come from the database profile. Admin password changes use database administration so `AIO_DB_PASSWORD` can be updated at the same time.
+Authenticated members can change their own password with `POST /v1/auth/password-change`; password rules and failure accounting come from the database profile. Locked or expired accounts require Admin recovery. Admin password changes use database administration so `AIO_DB_PASSWORD` can be updated at the same time.
 
-Out-of-band password changes leave existing bearer sessions active until logout, idle expiry, or absolute expiry. Out-of-band database account locks are observed after the account-status cache interval.
+Password changes made outside AI Optimizer leave existing sessions active until logout or expiry.
 
 ## Admin credential recovery
 
-For `local_users`, recover the `AIO_DB_USERNAME` account using database administration. Update `AIO_DB_PASSWORD`, or the backing Helm database Secret, and restart AI Optimizer. The reserved Admin identity remains unchanged.
+For database authentication, recover the `AIO_DB_USERNAME` account using database administration. Update `AIO_DB_PASSWORD`, or the backing Helm database Secret, and restart AI Optimizer.
 
-For OIDC, run `python -m server.app.auth.recovery` with `AIO_RECOVERY_OIDC_ADMIN_SUBJECT` from an operator environment with the deployment configuration and direct access to the AI Optimizer application database. The command replaces the Admin subject, preserves the reserved Admin user ID, revokes existing Admin sessions, and records an audit event. Set `AIO_OIDC_ADMIN_SUBJECT` to the replacement subject before restarting AI Optimizer.
+For OIDC, run `python -m server.app.auth.recovery` with `AIO_RECOVERY_OIDC_ADMIN_SUBJECT` from an environment with the deployment configuration and database access. Set `AIO_OIDC_ADMIN_SUBJECT` to the replacement subject before restarting AI Optimizer.

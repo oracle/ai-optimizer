@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 from typing import Optional
 
-from pydantic import SecretStr, field_validator
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -26,13 +26,19 @@ class ClientSettings(BaseSettings):
         extra="ignore",
     )
 
-    server_url: str = "http://localhost"
+    server_url: str = "https://localhost"
     server_address: str = "127.0.0.1"
     server_port: int = 8000
-    server_ssl: bool = False
     server_ssl_cert_file: str = ""
     server_ssl_key_file: str = ""
     server_url_prefix: str = ""
+
+    @field_validator("server_url")
+    @classmethod
+    def _require_https_server_url(cls, value: str) -> str:
+        if not value.startswith("https://"):
+            raise ValueError("AIO_SERVER_URL must use HTTPS")
+        return value
 
     @field_validator("server_url_prefix")
     @classmethod
@@ -45,12 +51,8 @@ class ClientSettings(BaseSettings):
     client_address: str = "localhost"
     client_port: int = 8501
     client_url_prefix: str = ""
-    client_ssl: bool = False
     client_ssl_cert_file: str = ""
     client_ssl_key_file: str = ""
-    # When unset, additional UI access checks are disabled.
-    client_password: Optional[SecretStr] = None
-
     # Operator-set OCI source defaults. When valid at render time, these can pin
     # the Split & Embed OCI source selectors (compartment + bucket) for all users.
     # Bucket pinning requires a valid configured compartment.

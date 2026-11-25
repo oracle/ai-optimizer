@@ -44,7 +44,6 @@ class SettingsBase(BaseModel):
 
     server_address: str = "0.0.0.0"
     server_port: int = 8000
-    server_ssl: bool = False
     server_ssl_cert_file: str = ""
     server_ssl_key_file: str = ""
     log_level: str = "INFO"
@@ -81,8 +80,6 @@ class Settings(SettingsBase, BaseSettings):
     oidc_issuer: Optional[str] = Field(default=None, exclude=True)
     oidc_audience: Optional[str] = Field(default=None, exclude=True)
     oidc_required_scopes: list[str] = Field(default_factory=list, exclude=True)
-    oidc_client_id: Optional[str] = Field(default=None, exclude=True)
-    oidc_client_secret: Optional[SecretStr] = Field(default=None, exclude=True)
     oidc_admin_subject: Optional[str] = Field(default=None, exclude=True)
     oidc_public_server_url: Optional[str] = Field(default=None, exclude=True)
 
@@ -145,8 +142,6 @@ class Settings(SettingsBase, BaseSettings):
             self.oidc_issuer,
             self.oidc_audience,
             self.oidc_required_scopes,
-            self.oidc_client_id,
-            self.oidc_client_secret.get_secret_value() if self.oidc_client_secret else None,
             self.oidc_admin_subject,
             self.oidc_public_server_url,
         )
@@ -217,10 +212,6 @@ def validate_auth_configuration(app_settings: Settings = settings) -> None:
     oidc_required_fields = {
         "AIO_OIDC_AUDIENCE": app_settings.oidc_audience,
         "AIO_OIDC_REQUIRED_SCOPES": app_settings.oidc_required_scopes,
-        "AIO_OIDC_CLIENT_ID": app_settings.oidc_client_id,
-        "AIO_OIDC_CLIENT_SECRET": (
-            app_settings.oidc_client_secret.get_secret_value() if app_settings.oidc_client_secret else None
-        ),
         "AIO_OIDC_PUBLIC_SERVER_URL": app_settings.oidc_public_server_url,
     }
     if app_settings.auth_mode == "local_users":

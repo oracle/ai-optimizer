@@ -160,11 +160,6 @@ variable "deploy_optimizer" {
   default = true
 }
 
-variable "ssl_enabled" {
-  type    = bool
-  default = false
-}
-
 variable "ssl_cert_pem" {
   type      = string
   default   = ""
@@ -202,6 +197,10 @@ variable "oidc_client_id" {
 variable "oidc_client_secret" {
   type      = string
   sensitive = true
+}
+
+variable "oidc_redirect_uri" {
+  type = string
 }
 
 variable "oidc_admin_subject" {

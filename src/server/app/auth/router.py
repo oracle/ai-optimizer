@@ -24,7 +24,7 @@ from server.app.auth.schemas import (
     UserCreateRequest,
     UserUpdateRequest,
 )
-from server.app.auth.service import AuthenticationError
+from server.app.auth.service import AuthAuthorityUnavailable, AuthenticationError
 from server.app.auth.users import (
     create_member,
     database_user_status,
@@ -77,7 +77,7 @@ async def auth_config() -> AuthConfigResponse:
         return AuthConfigResponse(
             mode="oidc",
             credential_authority="oidc",
-            login_method="authorization_code",
+            login_method="bearer_token",
         )
     return AuthConfigResponse(
         mode=settings.auth_mode,
@@ -97,15 +97,23 @@ async def login(body: DatabaseLoginRequest, request: Request) -> LoginResponse:
         )
     except AuthenticationError:
         raise _login_failure() from None
+    except AuthAuthorityUnavailable:
+        raise HTTPException(status_code=503, detail="Authentication authority is unavailable") from None
     return LoginResponse(access_token=session.token, expires=session.expires, principal=principal)
 
 
 @router.post("/password-change", response_model=MessageResponse)
-async def password_change(body: DatabasePasswordChangeRequest) -> MessageResponse:
+async def password_change(
+    body: DatabasePasswordChangeRequest,
+    context: AuthContext = Depends(enforce_route_policy),
+) -> MessageResponse:
     _require_database_mode()
+    database_username = context.principal.database_username
+    if context.principal.auth_source != "database_end_user" or database_username is None:
+        raise HTTPException(status_code=403, detail="Database authentication required")
     try:
         await change_database_password(
-            body.username,
+            database_username,
             body.current_password.get_secret_value(),
             body.new_password.get_secret_value(),
         )
@@ -144,7 +152,7 @@ async def create_user(
     try:
         user = await create_member(
             body.username,
-            body.temporary_password.get_secret_value(),
+            body.password.get_secret_value(),
             body.display_name,
             body.email,
         )
@@ -182,9 +190,9 @@ async def reset_user_password(
     _context: AuthContext = Depends(require_admin),
 ) -> MessageResponse:
     try:
-        await reset_member_password(user_id, body.temporary_password.get_secret_value())
+        await reset_member_password(user_id, body.password.get_secret_value())
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from None
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from None
-    return MessageResponse(message="Temporary database password set")
+    return MessageResponse(message="Database password set")

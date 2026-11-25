@@ -41,6 +41,7 @@ from pyagentspec.property import Property as AgentSpecProperty
 from pyagentspec.property import StringProperty as AgentSpecStringProperty
 from pyagentspec.property import json_schemas_have_same_type
 
+from net_addressing import verify_for_url
 from server.app.agentspec.adapters.litellm import LiteLlmConfig, get_litellm_deserialization_plugin
 from server.app.core.secrets import reveal
 from server.app.mcp.tools.schemas import get_oci_profile
@@ -59,13 +60,16 @@ def _mcp_httpx2_client_factory(
     ca_file: str | None = None,
     cert_file: str | None = None,
     key_file: str | None = None,
+    verify: bool = True,
 ):
     """Build HTTPX2 clients with AgentSpec TLS and timeout settings."""
     if (cert_file is None) != (key_file is None):
         raise ValueError("MCP mutual TLS requires both cert_file and key_file")
 
-    ssl_context = ssl.create_default_context(cafile=ca_file)
+    ssl_context = ssl.create_default_context(cafile=ca_file) if verify else False
     if cert_file and key_file:
+        if ssl_context is False:
+            raise ValueError("MCP mutual TLS requires certificate verification")
         ssl_context.load_cert_chain(certfile=cert_file, keyfile=key_file)
 
     def factory(
@@ -109,7 +113,8 @@ def _agentspec_transport_to_fastmcp(transport: ClientTransport) -> FastMCPClient
             "cert_file": transport.cert_file,
             "key_file": transport.key_file,
         }
-    client_factory = _mcp_httpx2_client_factory(read_timeout_seconds=read_timeout, **tls)
+    verify = True if tls else verify_for_url(transport.url)
+    client_factory = _mcp_httpx2_client_factory(read_timeout_seconds=read_timeout, verify=verify, **tls)
 
     if isinstance(transport, AgentSpecSSETransport):
         return FastMCPSSETransport(

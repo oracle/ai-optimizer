@@ -10,8 +10,6 @@ global:
       issuer: "${oidc_issuer}"
       audience: "${oidc_audience}"
       requiredScopes: ${oidc_required_scopes}
-      clientId: "${oidc_client_id}"
-      clientSecretName: "ai-optimizer-oidc-${label}"
       adminSubject: "${oidc_admin_subject}"
       publicServerUrl: "${oidc_public_server_url}"
 %{ if ocir_url != "" ~}
@@ -29,9 +27,12 @@ server:
     enabled: true
     className: native-ic
     annotations:
-      oci-native-ingress.oraclecloud.com/healthcheck-protocol: HTTP
+      oci-native-ingress.oraclecloud.com/backend-tls-enabled: "true"
+      oci-native-ingress.oraclecloud.com/healthcheck-protocol: HTTPS
       oci-native-ingress.oraclecloud.com/healthcheck-path: "/v1/readiness"
-      oci-native-ingress.oraclecloud.com/http-listener-port: "80"
+      oci-native-ingress.oraclecloud.com/https-listener-port: "8443"
+    tls:
+      - secretName: ai-optimizer-tls
   service:
     type: "NodePort"
 
@@ -67,6 +68,10 @@ server:
 client:
   enabled: true
   cookieSecret: "${client_cookie_secret}"
+  oidc:
+    clientId: "${oidc_client_id}"
+    clientSecretName: "ai-optimizer-oidc-${label}"
+    redirectUri: "${oidc_redirect_uri}"
   image:
     repository: ${repository_base}/ai-optimizer-client
     tag: "${app_version}"
@@ -82,9 +87,12 @@ client:
     enabled: true
     className: native-ic
     annotations:
-      oci-native-ingress.oraclecloud.com/healthcheck-protocol: HTTP
+      oci-native-ingress.oraclecloud.com/backend-tls-enabled: "true"
+      oci-native-ingress.oraclecloud.com/healthcheck-protocol: HTTPS
       oci-native-ingress.oraclecloud.com/healthcheck-path: "/_stcore/health"
-      oci-native-ingress.oraclecloud.com/http-listener-port: "80"
+      oci-native-ingress.oraclecloud.com/https-listener-port: "443"
+    tls:
+      - secretName: ai-optimizer-tls
   service:
     type: "NodePort"
 

@@ -1,7 +1,7 @@
 """Oracle repositories for authentication users, sessions, and authority."""
 
 from datetime import datetime
-from uuid import UUID, uuid4
+from uuid import UUID, uuid4, uuid5
 
 import oracledb
 from pydantic import SecretStr
@@ -13,6 +13,7 @@ from server.app.database.sql import execute_sql
 
 SCHEMA_VERSION = 1
 ADMIN_USER_ID = UUID("f4304c28-4bf6-5e7d-a284-33cc0a5a6c01")
+OIDC_USER_NAMESPACE = UUID("ab2c6cd7-a206-4e14-8d86-660efcf08b13")
 SESSION_CLEANUP_BATCH_SIZE = 500
 
 
@@ -120,6 +121,45 @@ async def get_user_by_oidc_subject(issuer: str, subject: str) -> AuthUser | None
             max_rows=1,
         )
     return _auth_user_from_row(rows[0]) if rows else None
+
+
+async def resolve_oidc_user(
+    issuer: str,
+    subject: str,
+    username: str,
+    display_name: str | None,
+    email: str | None,
+) -> AuthUser:
+    """Return the configured Admin or persist a stable OIDC member."""
+    user_id = (
+        ADMIN_USER_ID if subject == settings.oidc_admin_subject else uuid5(OIDC_USER_NAMESPACE, f"{issuer}\0{subject}")
+    )
+    pool = require_core_pool()
+    async with pool.acquire() as conn:
+        await execute_sql(
+            conn,
+            "MERGE INTO aio_users target USING (SELECT :issuer issuer, :subject subject FROM dual) source "
+            "ON (target.issuer = source.issuer AND target.subject = source.subject) "
+            "WHEN MATCHED THEN UPDATE SET username = CASE WHEN target.role = 'ADMIN' THEN target.username "
+            "ELSE :username END, display_name = :display_name, email = :email, "
+            "last_login = SYSTIMESTAMP, updated = SYSTIMESTAMP "
+            "WHEN NOT MATCHED THEN INSERT (user_id, username, auth_source, issuer, subject, display_name, email, "
+            "role, status, last_login) VALUES (:user_id, :username, 'OIDC', :issuer, :subject, :display_name, "
+            ":email, 'MEMBER', 'ACTIVE', SYSTIMESTAMP)",
+            {
+                "user_id": user_id.bytes,
+                "issuer": issuer,
+                "subject": subject,
+                "username": username[:255],
+                "display_name": display_name[:255] if display_name else None,
+                "email": email[:320] if email else None,
+            },
+        )
+        await conn.commit()
+    user = await get_user_by_oidc_subject(issuer, subject)
+    if user is None or user.user_id != user_id:
+        raise RuntimeError("OIDC identity does not match the configured authority")
+    return user
 
 
 async def get_user_by_id(user_id: UUID) -> AuthUser | None:

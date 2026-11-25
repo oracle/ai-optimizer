@@ -19,7 +19,7 @@ from streamlit import session_state as state
 
 from client.app.core import sidebar
 from client.app.core.api import api_delete, api_get, api_post
-from client.app.core.auth import is_authenticated, locked_notice
+from client.app.core.auth import is_admin, locked_notice
 from client.app.core.helpers import (
     available_models_lookup,
     extract_error_detail,
@@ -171,7 +171,7 @@ def _qa_update_gui(qa_testset: list) -> None:
     delete_col.button(
         "⚠ Delete Q&A",
         type="tertiary",
-        disabled=records == 1 or not is_authenticated(),
+        disabled=records == 1 or not is_admin(),
         width="stretch",
         on_click=_delete_record,
     )
@@ -738,7 +738,7 @@ def main() -> None:
         key="runtime_delete_test_set",
         type="tertiary",
         width="stretch",
-        disabled=testbed_running or not state.runtime_testbed["testset_id"] or not is_authenticated(),
+        disabled=testbed_running or not state.runtime_testbed["testset_id"] or not is_admin(),
         on_click=_qa_delete,
     )
 

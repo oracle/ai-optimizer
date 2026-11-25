@@ -24,9 +24,6 @@
                 "issuer": { "type": "string" },
                 "audience": { "type": "string" },
                 "requiredScopes": { "type": "array", "items": { "type": "string" } },
-                "clientId": { "type": "string" },
-                "clientSecretName": { "type": "string" },
-                "clientSecretKey": { "type": "string" },
                 "adminSubject": { "type": "string" },
                 "publicServerUrl": { "type": "string" }
               }
@@ -67,7 +64,7 @@
           "$ref": "#/definitions/imageWithOptionalTag"
         },
         "service": { "$ref": "#/definitions/service" },
-        "ssl": { "$ref": "#/definitions/ssl" },
+        "ssl": { "$ref": "#/definitions/tlsFiles" },
         "gateway": { "$ref": "#/definitions/gateway" },
         "ingress": { "$ref": "#/definitions/ingress" },
         "livenessProbe": { "$ref": "#/definitions/probe" },
@@ -238,6 +235,15 @@
       "type": "object",
       "properties": {
         "enabled": { "type": "boolean" },
+        "oidc": {
+          "type": "object",
+          "properties": {
+            "clientId": { "type": "string" },
+            "clientSecretName": { "type": "string" },
+            "clientSecretKey": { "type": "string" },
+            "redirectUri": { "type": "string" }
+          }
+        },
         "replicaCount": { "type": "integer", "minimum": 0 },
         "autoscaling": { "$ref": "#/definitions/autoscaling" },
         "imagePullSecrets": { "type": "array" },
@@ -245,16 +251,12 @@
           "$ref": "#/definitions/imageWithOptionalTag"
         },
         "service": { "$ref": "#/definitions/clientService" },
-        "ssl": { "$ref": "#/definitions/ssl" },
+        "ssl": { "$ref": "#/definitions/tlsFiles" },
         "gateway": { "$ref": "#/definitions/gateway" },
         "ingress": { "$ref": "#/definitions/ingress" },
         "cookieSecret": { "type": "string" },
         "cookieSecretName": { "type": "string" },
         "cookieSecretKey": { "type": "string" },
-        "password": { "type": "string" },
-        "passwordSecretName": { "type": "string" },
-        "passwordSecretKey": { "type": "string" },
-        "passwordAutoGenerate": { "type": "boolean" },
         "envSecret": { "$ref": "#/definitions/envSecret" },
         "livenessProbe": { "$ref": "#/definitions/probe" },
         "readinessProbe": { "$ref": "#/definitions/probe" },
@@ -493,11 +495,10 @@
         }
       ]
     },
-    "ssl": {
+    "tlsFiles": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "enabled": { "type": "boolean" },
         "certFile": { "type": "string" },
         "keyFile": { "type": "string" }
       }

@@ -17,6 +17,7 @@ from server.app.auth.service import AuthAuthorityUnavailable, AuthenticationErro
 from server.app.core.settings import settings
 from server.app.database.config import CoreDatabaseUnavailable, _build_connect_args, require_core_pool
 from server.app.database.schemas import DatabaseConfig
+from server.app.database.sql import execute_sql
 
 _TOKEN_BYTES = 32
 _TOKEN_DOMAIN = b"aio-auth-session-v1\x00"
@@ -72,20 +73,20 @@ async def verify_database_credentials(username: str, password: str, new_password
 async def database_account_status(username: str) -> str:
     canonical = normalize_database_username(username)
     pool = require_core_pool()
-    try:
-        async with pool.acquire() as conn, conn.cursor() as cursor:
-            status = cursor.var(str, size=128)
-            await cursor.callproc("AIO_AUTH_ADMIN.ACCOUNT_STATUS", [canonical, status])
-            value = status.getvalue()
-    except oracledb.Error:
-        user = await repository.get_user_by_database_username(canonical)
-        if user is not None and user.role == "admin":
-            return "OPEN"
-        raise
-    if str(value or "MISSING").upper() == "MISSING":
-        user = await repository.get_user_by_database_username(canonical)
-        if user is not None and user.role == "admin":
-            return "OPEN"
+    if settings.db_username and canonical == settings.db_username.upper():
+        async with pool.acquire() as conn:
+            rows = await execute_sql(
+                conn,
+                "SELECT account_status FROM user_users",
+                max_rows=1,
+            )
+        if not rows:
+            raise AuthAuthorityUnavailable("Admin database account status is unavailable")
+        return str(rows[0][0]).upper()
+    async with pool.acquire() as conn, conn.cursor() as cursor:
+        status = cursor.var(str, size=128)
+        await cursor.callproc("AIO_AUTH_ADMIN.ACCOUNT_STATUS", [canonical, status])
+        value = status.getvalue()
     return str(value or "MISSING").upper()
 
 

@@ -24,9 +24,8 @@ locals {
     optimizer_version        = var.optimizer_version
     optimizer_branch         = var.optimizer_branch
     app_version              = var.app_version
-    ssl_enabled              = var.ssl_enabled
-    ssl_cert_b64             = var.ssl_enabled ? base64encode(var.ssl_cert_pem) : ""
-    ssl_key_b64              = var.ssl_enabled ? base64encode(var.ssl_key_pem) : ""
+    ssl_cert_b64             = base64encode(var.ssl_cert_pem)
+    ssl_key_b64              = base64encode(var.ssl_key_pem)
     is_observability_enabled = var.is_observability_enabled
     signoz_authn             = random_string.signoz_authn.result
   })

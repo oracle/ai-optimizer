@@ -415,18 +415,17 @@ With the Client enabled, access it locally:
 kubectl -n ai-optimizer port-forward svc/ai-optimizer-client-http 8501:8501
 ```
 
-Open `http://localhost:8501` in a browser.
+Open `https://localhost:8501` in a browser.
 
 ### HTTPS and Public Access
 
 For public Kubernetes access, terminate TLS at an ingress or gateway. The <GitHubSourceLink path="helm#example-6-ingress-with-tls" type="tree">Helm chart ingress TLS example</GitHubSourceLink> shows how to create a Kubernetes TLS Secret and reference it from the Server and Client ingress values.
 
-For direct access to a Client pod, set `client.ssl.enabled` to `true`; this also configures the Client health probes for HTTPS. To use a certificate stored in a Secret, mount it and supply its paths:
+The Client pod and its health probes use HTTPS. To use a certificate stored in a Secret, mount it and supply its paths:
 
 ```yaml
 client:
   ssl:
-    enabled: true
     certFile: /app/tls/tls.crt
     keyFile: /app/tls/tls.key
   volumes:
@@ -492,4 +491,4 @@ helm upgrade --install ai-optimizer ai-optimizer/ai-optimizer \
 
 ### Access the Client
 
-After the installation completes, open `http://localhost:8501` in a browser.
+After the installation completes, open `https://localhost:8501` in a browser.

@@ -9,7 +9,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 
 The **AI Optimizer** exposes an [MCP](https://modelcontextprotocol.io/) server built on [FastMCP](https://gofastmcp.com/). All registered tools are available over the MCP protocol at the `/mcp` endpoint and through the REST API at `/mcp/tools`.
 
-An external client that presents a valid `X-API-Key` can invoke the tools registered on the API server. When SQLcl is registered, its process and commands run on the API server, not the client's workstation. SQLcl restrict level `4` is the default; an operator can configure a lower level with `AIO_SQLCL_MCP_LEVEL` when additional SQLcl capabilities are required. See [SQLcl MCP Server](../guides/sqlcl-mcp-server).
+An authenticated external client can invoke the tools registered on the API server. When SQLcl is registered, its process and commands run on the API server. SQLcl restrict level `4` is the default; an operator can configure a lower level with `AIO_SQLCL_MCP_LEVEL` when additional SQLcl capabilities are required. See [SQLcl MCP Server](../guides/sqlcl-mcp-server).
 
 Developers can add custom tools by dropping a Python file into the tools package — no other files need to be edited.
 
@@ -110,8 +110,10 @@ def add(a: int, b: int) -> AddResponse:
 
 After restarting the server, confirm the tool is registered:
 
+[Obtain a bearer token](../guides/access-control#obtain-a-bearer-token) in the shell used for the request.
+
 ```bash
-curl -H "X-API-Key: $AIO_API_KEY" http://localhost:8000/mcp/tools
+curl -H "Authorization: Bearer $AIO_BEARER_TOKEN" https://localhost:8000/mcp/tools
 ```
 
 The response will include your new tool alongside the built-in tools.
@@ -122,7 +124,7 @@ Registering a tool makes it available on the MCP server, but something still nee
 
 ### External MCP Clients
 
-Any MCP-compatible client can connect to the **AI Optimizer** server and use registered tools directly. See [External MCP Clients](../guides/mcp-clients) for generated configuration and client-specific setup. The client connects to the `/mcp` endpoint with an `X-API-Key` header.
+Any MCP-compatible client can connect to the **AI Optimizer** server and use registered tools directly. See [External MCP Clients](../guides/mcp-clients) for generated configuration and client-specific setup. The client connects to the `/mcp` endpoint with a bearer token.
 
 With this approach the tool is available immediately after registration — no additional server-side code is needed.
 

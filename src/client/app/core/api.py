@@ -98,11 +98,8 @@ def _spawn_server(port: str, env: dict, log_path: Path) -> tuple[subprocess.Pope
         port,
     ]
 
-    if settings.server_ssl:
-        # Resolve from settings (which already capture .env and os.environ); the
-        # resolver auto-generates a self-signed pair only when neither is set.
-        cert, key = resolve_or_generate_cert(settings.server_ssl_cert_file, settings.server_ssl_key_file, _SRC_DIR)
-        args.extend(["--ssl-certfile", str(cert), "--ssl-keyfile", str(key)])
+    cert, key = resolve_or_generate_cert(settings.server_ssl_cert_file, settings.server_ssl_key_file, _SRC_DIR)
+    args.extend(["--ssl-certfile", str(cert), "--ssl-keyfile", str(key)])
 
     proc = subprocess.Popen(  # keep handle open for uvicorn logging; closed in _stop_server
         args,
@@ -113,9 +110,7 @@ def _spawn_server(port: str, env: dict, log_path: Path) -> tuple[subprocess.Pope
     return proc, log_fh
 
 
-def _prepare_local_authentication(env: dict[str, str]) -> bool:
-    if any(key.startswith("AIO_OIDC_") and value for key, value in env.items()):
-        return True
+def _prepare_authentication(env: dict[str, str]) -> bool:
     setup = subprocess.run(
         [sys.executable, "-m", "server.app.auth.setup"],
         cwd=_SRC_DIR,
@@ -125,7 +120,7 @@ def _prepare_local_authentication(env: dict[str, str]) -> bool:
         check=False,
     )
     if setup.returncode != 0:
-        LOGGER.error("Local authentication setup failed: %s", setup.stderr.strip())
+        LOGGER.error("Authentication setup failed: %s", setup.stderr.strip())
         return False
     return True
 
@@ -170,7 +165,9 @@ def start_server(core_environment: Mapping[str, str] | None = None) -> bool:
     existing_pypath = os.environ.get("PYTHONPATH", "")
     pypath = f"{src_dir}{os.pathsep}{existing_pypath}" if existing_pypath else src_dir
     env = {**os.environ, "PYTHONPATH": pypath, **(core_environment or {})}
-    if core_environment is not None and not _prepare_local_authentication(env):
+    for name in ("AIO_API_KEY", "AIO_ADMIN_PASSWORD"):
+        env.pop(name, None)
+    if core_environment is not None and not _prepare_authentication(env):
         return False
 
     log_path = Path(src_dir) / f"apiserver_{port}.log"
@@ -212,9 +209,8 @@ def _local_server_base_url(api_prefix: str = "/v1") -> str:
 
 def _local_server_origin_url() -> str:
     """Return the origin URL for the locally spawned API server."""
-    scheme = "https" if settings.server_ssl else "http"
     host = connect_host(settings.server_address)
-    return f"{scheme}://{netloc(host, settings.server_port)}"
+    return f"https://{netloc(host, settings.server_port)}"
 
 
 def _stop_process(proc: subprocess.Popen) -> None:
@@ -264,6 +260,19 @@ def _request_headers(extra_headers: dict | None = None) -> dict:
         **_headers(),
         **{key: value for key, value in (extra_headers or {}).items() if key.casefold() != "client"},
     }
+
+
+def get_auth_config() -> dict | None:
+    """Fetch the public authentication flow configuration."""
+    base = _base_url()
+    try:
+        with httpx.Client(timeout=5, verify=verify_for_url(base)) as client:
+            response = client.get(f"{base}/auth/config")
+            response.raise_for_status()
+            return response.json()
+    except httpx.HTTPError as exc:
+        LOGGER.warning("Failed to fetch authentication configuration from %s: %s", base, exc)
+        return None
 
 
 def api_get(

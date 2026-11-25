@@ -81,27 +81,21 @@ OTel telemetry initialized: service=ai-optimizer-server exporters=['console']
 
 If this message is absent, see [Telemetry Does Not Initialize](../../troubleshoot#telemetry-does-not-initialize).
 
-Send a health request to the reachable [**AI Optimizer Server**](../../server/intro.mdx) URL. The example uses `http://localhost:8000`; replace it with the URL for the deployment when required:
+Send a health request to the reachable [**AI Optimizer Server**](../../server/intro.mdx) URL:
 
 ```bash
-curl http://localhost:8000/v1/healthz
+curl https://localhost:8000/v1/healthz
 ```
 
 Then find the completed `GET /v1/healthz` `SERVER` span in the logs.
 
-To inspect orchestration and LLM spans, configure a model provider and send a chat request. Use the API key shown on the [API Server](../../client/api_server) page or configured for the deployment.
-
-Export that value in the shell that sends the request:
-
-```bash
-export AIO_API_KEY='<server-api-key>'
-```
+To inspect orchestration and LLM spans, configure a model provider, [obtain a bearer token](../../guides/access-control#obtain-a-bearer-token), and send an authenticated chat request.
 
 Then send a chat completion, replacing the example URL when required:
 
 ```bash
-curl -X POST http://localhost:8000/v1/chat/completions \
-  -H "X-API-Key: $AIO_API_KEY" \
+curl -X POST https://localhost:8000/v1/chat/completions \
+  -H "Authorization: Bearer $AIO_BEARER_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"messages":[{"role":"user","content":"What is Oracle Database?"}]}'
 ```

@@ -37,11 +37,8 @@ module "vm" {
   vcn_id                 = local.vcn_ocid
   oci_services           = data.oci_core_services.core_services.services.0
   lb_id                  = oci_load_balancer_load_balancer.lb.id
-  lb_client_http_port    = local.lb_client_http_port
   lb_client_https_port   = local.lb_client_https_port
-  lb_server_http_port    = local.lb_server_http_port
   lb_server_https_port   = local.lb_server_https_port
-  ssl_enabled            = local.ssl_enabled
   ssl_cert_pem           = local.ssl_cert_pem
   ssl_key_pem            = local.ssl_key_pem
   ssl_ca_cert            = local.ssl_ca_cert_pem
@@ -63,6 +60,7 @@ module "vm" {
   oidc_required_scopes   = var.oidc_required_scopes
   oidc_client_id         = var.oidc_client_id
   oidc_client_secret     = var.oidc_client_secret
+  oidc_redirect_uri      = var.oidc_redirect_uri
   oidc_admin_subject     = var.oidc_admin_subject
   oidc_public_server_url = var.oidc_public_server_url
   providers = {

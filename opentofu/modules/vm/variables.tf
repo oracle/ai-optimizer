@@ -99,25 +99,12 @@ variable "db_conn" {
   }
 }
 
-variable "lb_client_http_port" {
-  type = number
-}
-
 variable "lb_client_https_port" {
-  type = number
-}
-
-variable "lb_server_http_port" {
   type = number
 }
 
 variable "lb_server_https_port" {
   type = number
-}
-
-variable "ssl_enabled" {
-  type    = bool
-  default = false
 }
 
 variable "ssl_cert_pem" {
@@ -163,6 +150,10 @@ variable "oidc_client_id" {
 variable "oidc_client_secret" {
   type      = string
   sensitive = true
+}
+
+variable "oidc_redirect_uri" {
+  type = string
 }
 
 variable "oidc_admin_subject" {
