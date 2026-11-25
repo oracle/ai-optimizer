@@ -1,5 +1,6 @@
 """Streamlit ASGI launcher with client-owned authentication routes."""
 
+import contextlib
 from pathlib import Path
 
 import streamlit as st
@@ -25,7 +26,8 @@ def run() -> None:
         "server.sslCertFile": settings.client_ssl_cert_file,
         "server.sslKeyFile": settings.client_ssl_key_file,
     }
-    app.run(config=config)
+    with contextlib.suppress(KeyboardInterrupt):
+        app.run(config=config)
 
 
 if __name__ == "__main__":

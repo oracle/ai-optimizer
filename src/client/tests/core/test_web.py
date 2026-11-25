@@ -48,3 +48,19 @@ def test_run_configures_https_listener(monkeypatch):
             "server.sslKeyFile": "/tls/key.pem",
         }
     )
+
+
+def test_run_handles_keyboard_interrupt(monkeypatch):
+    monkeypatch.setattr(web, "app", SimpleNamespace(run=Mock(side_effect=KeyboardInterrupt)))
+    monkeypatch.setattr(
+        web,
+        "settings",
+        SimpleNamespace(
+            client_port=8501,
+            client_address="localhost",
+            client_ssl_cert_file="/tls/cert.pem",
+            client_ssl_key_file="/tls/key.pem",
+        ),
+    )
+
+    web.run()
