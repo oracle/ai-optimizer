@@ -8,6 +8,7 @@ Canonical tests for the shared bind/connect address and self-signed TLS helpers.
 
 from unittest.mock import patch
 
+import pytest
 from cryptography import x509
 from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey
 from cryptography.hazmat.primitives.serialization import load_pem_private_key
@@ -79,7 +80,7 @@ class TestShouldInjectServerPort:
 
 
 class TestVerifyForUrl:
-    """TLS verification is dropped only for loopback HTTPS (self-signed local cert)."""
+    """Generated application certificates are accepted on internal endpoints."""
 
     def test_local_https_disables_verification(self):
         assert verify_for_url("https://127.0.0.1:8000/v1") is False
@@ -89,6 +90,10 @@ class TestVerifyForUrl:
 
     def test_external_https_keeps_verification(self):
         assert verify_for_url("https://release-ai.appoci.oraclecorp.com/v1") is True
+
+    def test_kubernetes_service_https_disables_verification(self):
+        assert verify_for_url("https://optimizer-server.default.svc:8000/v1") is False
+        assert verify_for_url("https://optimizer-server.default.svc.cluster.local:8000/v1") is False
 
     def test_http_keeps_default_verification_flag(self):
         assert verify_for_url("http://127.0.0.1:8000/v1") is True
@@ -164,13 +169,18 @@ class TestResolveOrGenerateCert:
         assert cert.name == "cert.pem"
         assert key.name == "key.pem"
 
-    def test_generates_when_only_one_provided(self, tmp_path):
-        """A single provided path is insufficient; fall back to generation."""
-        script_dir = tmp_path / "src"
-        script_dir.mkdir()
-        cert, key = net_addressing.resolve_or_generate_cert(str(tmp_path / "only.crt"), "", script_dir)
-        assert cert.name == "cert.pem"
-        assert cert.exists()
+    def test_rejects_only_one_provided_path(self, tmp_path):
+        """A configured certificate requires its matching private key."""
+        with pytest.raises(ValueError, match="must be provided together"):
+            net_addressing.resolve_or_generate_cert(str(tmp_path / "only.crt"), "", tmp_path / "src")
+
+    def test_uses_local_config_directory(self, tmp_path, monkeypatch):
+        """Generated certificates should persist in the configured data directory."""
+        data_dir = tmp_path / "data"
+        monkeypatch.setenv("AIO_LOCAL_CONFIG_DIR", str(data_dir))
+        cert, key = net_addressing.resolve_or_generate_cert("", "", tmp_path / "src")
+        assert cert == data_dir / "tls" / "cert.pem"
+        assert key == data_dir / "tls" / "key.pem"
 
     def test_skips_when_existing(self, tmp_path):
         """Existing generated files should be reused, not regenerated."""

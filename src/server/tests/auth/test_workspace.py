@@ -39,7 +39,6 @@ def test_every_authenticated_route_has_a_policy():
         "swagger_ui",
         "auth_config",
         "login",
-        "password_change",
     }
     protected = (set(_route_names(router.routes)) - public) | (set(_route_names(mcp_router.routes)) - {"mcp_healthz"})
     assert protected <= ROUTE_POLICIES.keys()

@@ -8,10 +8,16 @@ from pydantic import SecretStr
 
 from server.app.auth import local, repository, users
 from server.app.auth.models import RequestCredential
-from server.app.auth.provisioning import configure_provisioning_authority, install_provisioning_package
+from server.app.auth.provisioning import (
+    configure_provisioning_authority,
+    install_provisioning_package,
+    local_user_management_issues,
+    package_role_name,
+    provisioning_package_available,
+)
 from server.app.auth.setup import _ensure_login_data_role
 from server.app.core.settings import Settings, settings
-from server.app.database.objects import REQUIRED_SCHEMA_INDEXES, REQUIRED_SCHEMA_TABLES, SCHEMA_DDL
+from server.app.database.objects import RENAME_DDL, REQUIRED_SCHEMA_INDEXES, REQUIRED_SCHEMA_TABLES, SCHEMA_DDL
 from server.app.database.schemas import DatabaseConfig
 from server.app.database.sql import execute_sql
 from tests.oracle import TEST_DB_CONFIG
@@ -45,6 +51,54 @@ async def test_authentication_schema_ddl_is_repeatable(async_oracle_connection):
     index_rows = await execute_sql(conn, f"SELECT index_name FROM user_indexes WHERE index_name IN ({index_names})")
     assert len(table_rows or []) == len(REQUIRED_SCHEMA_TABLES)
     assert len(index_rows or []) == len(REQUIRED_SCHEMA_INDEXES)
+
+
+async def test_legacy_authentication_authority_schema_is_upgraded(async_oracle_connection):
+    conn = async_oracle_connection
+    conn.autocommit = True
+    try:
+        await execute_sql(conn, "DROP TABLE aio_auth_authority PURGE")
+        await execute_sql(
+            conn,
+            "CREATE TABLE aio_auth_authority ("
+            "installation_id VARCHAR2(255) NOT NULL, auth_mode VARCHAR2(32) NOT NULL, "
+            "schema_version NUMBER(9) NOT NULL, database_identity VARCHAR2(255) NOT NULL, "
+            "application_schema VARCHAR2(128) NOT NULL, admin_database_username VARCHAR2(128) NOT NULL, "
+            "oidc_issuer VARCHAR2(2048), oidc_admin_subject VARCHAR2(1024), "
+            "initialized TIMESTAMP(9) WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL, "
+            "last_validated TIMESTAMP(9) WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL, "
+            "CONSTRAINT aio_auth_authority_pk PRIMARY KEY (installation_id), "
+            "CONSTRAINT aio_auth_authority_mode_ck CHECK (auth_mode IN ('SINGLE_USER', 'LOCAL_USERS', 'OIDC')), "
+            "CONSTRAINT aio_auth_authority_oidc_ck CHECK ((auth_mode = 'OIDC' AND oidc_issuer IS NOT NULL "
+            "AND oidc_admin_subject IS NOT NULL) OR (auth_mode <> 'OIDC' AND oidc_issuer IS NULL "
+            "AND oidc_admin_subject IS NULL)))",
+        )
+        await execute_sql(
+            conn,
+            "INSERT INTO aio_auth_authority (installation_id, auth_mode, schema_version, database_identity, "
+            "application_schema, admin_database_username) VALUES "
+            "('legacy-installation', 'SINGLE_USER', 1, 'LEGACY_DB', 'LEGACY_SCHEMA', 'LEGACY_ADMIN')",
+        )
+
+        for ddl in (*RENAME_DDL, *SCHEMA_DDL):
+            await execute_sql(conn, ddl)
+
+        columns = await execute_sql(
+            conn,
+            "SELECT column_name FROM user_tab_columns WHERE table_name = 'AIO_AUTH_AUTHORITY'",
+        )
+        column_names = {row[0] for row in columns or []}
+        assert "AUTHORITY_ID" in column_names
+        assert "INSTALLATION_ID" not in column_names
+        assert "ADMIN_DATABASE_USERNAME" not in column_names
+        rows = await execute_sql(
+            conn,
+            "SELECT authority_id, auth_mode, database_identity, application_schema FROM aio_auth_authority",
+            max_rows=1,
+        )
+        assert rows == [(1, "LOCAL_USERS", "LEGACY_DB", "LEGACY_SCHEMA")]
+    finally:
+        await execute_sql(conn, "DELETE FROM aio_auth_authority")
 
 
 async def test_authentication_package_and_authority_setup_are_repeatable(async_oracle_connection, monkeypatch):
@@ -92,7 +146,7 @@ async def test_database_members_sessions_password_change_and_revocation(async_or
     admin_username = "AIO_M2_ADMIN"
     member_username = "AIO_M2_MEMBER"
     admin_password = "M2_Admin_41_Strong"
-    temporary_password = "M2_Temporary_41_Strong"
+    initial_password = "M2_Initial_41_Strong"
     member_password = "M2_Member_42_Strong"
 
     async def _drop_end_user(username: str) -> None:
@@ -109,6 +163,7 @@ async def test_database_members_sessions_password_change_and_revocation(async_or
     await _drop_end_user(admin_username)
     await _ensure_login_data_role(conn, "AIO_LOGIN_ROLE")
     await install_provisioning_package(conn)
+    assert await local_user_management_issues(conn) == []
     await execute_sql(conn, f'CREATE END USER "{admin_username}" IDENTIFIED BY "{admin_password}"')
     await execute_sql(conn, f'GRANT DATA ROLE "AIO_LOGIN_ROLE" TO "{admin_username}"')
 
@@ -141,14 +196,19 @@ async def test_database_members_sessions_password_change_and_revocation(async_or
         assert admin_principal.user_id == repository.ADMIN_USER_ID
         await local.logout_database_session(admin_session.token)
 
-        member = await users.create_member(member_username, temporary_password, "Member", None)
-        await local.change_database_password(member_username, temporary_password, member_password)
+        member = await users.create_member(member_username, initial_password, "Member", None)
+        initial_session, _ = await local.login_database_user(member_username, initial_password)
+        await local.change_database_password(member_username, initial_password, member_password)
+        with pytest.raises(local.AuthenticationError):
+            await local.DatabaseSessionAuthenticator().authenticate(
+                RequestCredential(kind="bearer", value=initial_session.token)
+            )
 
         issued, principal = await local.login_database_user(member_username, member_password, "127.0.0.1")
         assert principal.user_id == member.user_id
         digest_rows = await execute_sql(
             conn,
-            "SELECT token_digest FROM aio_auth_sessions WHERE user_id = :user_id",
+            "SELECT token_digest FROM aio_auth_sessions WHERE user_id = :user_id AND revoked IS NULL",
             {"user_id": member.user_id.bytes},
             max_rows=1,
         )
@@ -163,8 +223,13 @@ async def test_database_members_sessions_password_change_and_revocation(async_or
             await second_instance.authenticate(RequestCredential(kind="bearer", value=issued.token))
 
         await users.update_member(member.user_id, False, member.display_name, member.email)
-        await users.reset_member_password(member.user_id, temporary_password)
-        await local.change_database_password(member_username, temporary_password, member_password)
+        await users.reset_member_password(member.user_id, initial_password)
+        reset_session, _ = await local.login_database_user(member_username, initial_password)
+        await local.change_database_password(member_username, initial_password, member_password)
+        with pytest.raises(local.AuthenticationError):
+            await local.DatabaseSessionAuthenticator().authenticate(
+                RequestCredential(kind="bearer", value=reset_session.token)
+            )
         replacement, _ = await local.login_database_user(member_username, member_password)
         await local.logout_database_session(replacement.token)
         with pytest.raises(local.AuthenticationError):
@@ -204,8 +269,16 @@ async def test_provisioning_package_holds_end_user_privileges(oracle_db_containe
         owner_conn.autocommit = True
         await _ensure_login_data_role(system, "AIO_LOGIN_ROLE")
         await install_provisioning_package(owner_conn)
+        assert await provisioning_package_available(owner_conn)
         await configure_provisioning_authority(system, owner_conn, owner)
         await configure_provisioning_authority(system, owner_conn, owner)
+        assert await provisioning_package_available(owner_conn)
+        delegated_roles = await execute_sql(
+            owner_conn,
+            "SELECT granted_role, delegate_option FROM user_role_privs",
+        )
+        assert (package_role_name(owner), "YES") in (delegated_roles or [])
+        assert await local_user_management_issues(owner_conn) == []
 
         with pytest.raises(oracledb.DatabaseError):
             await execute_sql(
@@ -217,7 +290,7 @@ async def test_provisioning_package_holds_end_user_privileges(oracle_db_containe
             await cursor.callproc("AIO_AUTH_ADMIN.CREATE_USER", [member, password])
             account_status = cursor.var(str, size=128)
             await cursor.callproc("AIO_AUTH_ADMIN.ACCOUNT_STATUS", [member, account_status])
-            assert account_status.getvalue() == "EXPIRED"
+            assert account_status.getvalue() == "OPEN"
     finally:
         if owner_conn is not None:
             await owner_conn.close()

@@ -7,7 +7,10 @@ Unit tests for entrypoint.py
 # spell-checker: disable
 
 import os
+import sys
 from pathlib import Path
+
+import pytest
 
 import entrypoint
 
@@ -135,9 +138,16 @@ class TestDetectComponent:
 class TestStartServer:
     """Tests for start_server."""
 
-    def test_no_ssl(self, tmp_path, monkeypatch):
-        """start_server should call os.execvp with uvicorn and default port."""
-        monkeypatch.delenv("AIO_SERVER_SSL", raising=False)
+    @pytest.fixture(autouse=True)
+    def _server_certificate(self, monkeypatch):
+        from unittest.mock import Mock
+
+        ensure = Mock(return_value=(Path("/c.pem"), Path("/k.pem")))
+        monkeypatch.setattr(entrypoint, "ensure_ssl_cert", ensure)
+        return ensure
+
+    def test_https_launcher(self, tmp_path, monkeypatch, _server_certificate):
+        """start_server should launch uvicorn with TLS and the default port."""
         monkeypatch.delenv("AIO_SERVER_PORT", raising=False)
         monkeypatch.delenv("AIO_SERVER_ADDRESS", raising=False)
         from unittest.mock import patch
@@ -151,28 +161,19 @@ class TestStartServer:
         assert "0.0.0.0" in args[1]
         assert "--port" in args[1]
         assert "8000" in args[1]
-        assert "--ssl-certfile" not in args[1]
-
-    def test_with_ssl(self, tmp_path, monkeypatch):
-        """start_server should add SSL flags when AIO_SERVER_SSL=true."""
-        monkeypatch.setenv("AIO_SERVER_SSL", "true")
-        from unittest.mock import patch
-
-        with (
-            patch("os.execvp") as mock_exec,
-            patch.object(entrypoint, "ensure_ssl_cert", return_value=(Path("/c.pem"), Path("/k.pem"))),
-        ):
-            entrypoint.start_server(tmp_path)
-        args = mock_exec.call_args[0][1]
-        assert "--ssl-certfile" in args
-        assert "/c.pem" in args
-        assert "--ssl-keyfile" in args
-        assert "/k.pem" in args
+        assert "--ssl-certfile" in args[1]
+        assert "/c.pem" in args[1]
+        assert "--ssl-keyfile" in args[1]
+        assert "/k.pem" in args[1]
+        _server_certificate.assert_called_once_with(
+            tmp_path,
+            "AIO_SERVER_SSL_CERT_FILE",
+            "AIO_SERVER_SSL_KEY_FILE",
+        )
 
     def test_custom_port(self, tmp_path, monkeypatch):
         """start_server should use AIO_SERVER_PORT when set."""
         monkeypatch.setenv("AIO_SERVER_PORT", "9000")
-        monkeypatch.delenv("AIO_SERVER_SSL", raising=False)
         from unittest.mock import patch
 
         with patch("os.execvp") as mock_exec:
@@ -182,7 +183,6 @@ class TestStartServer:
     def test_custom_address(self, tmp_path, monkeypatch):
         """start_server should use AIO_SERVER_ADDRESS when set."""
         monkeypatch.setenv("AIO_SERVER_ADDRESS", "127.0.0.1")
-        monkeypatch.delenv("AIO_SERVER_SSL", raising=False)
         from unittest.mock import patch
 
         with patch("os.execvp") as mock_exec:
@@ -195,9 +195,16 @@ class TestStartServer:
 class TestStartClient:
     """Tests for start_client."""
 
-    def test_no_ssl(self, tmp_path, monkeypatch):
-        """start_client should call os.execvp with streamlit and default settings."""
-        monkeypatch.delenv("AIO_CLIENT_SSL", raising=False)
+    @pytest.fixture(autouse=True)
+    def _client_certificate(self, monkeypatch):
+        from unittest.mock import Mock
+
+        ensure = Mock(return_value=(Path("/c.pem"), Path("/k.pem")))
+        monkeypatch.setattr(entrypoint, "ensure_ssl_cert", ensure)
+        return ensure
+
+    def test_https_launcher(self, tmp_path, monkeypatch, _client_certificate):
+        """start_client should launch with resolved TLS certificate paths."""
         monkeypatch.delenv("AIO_CLIENT_PORT", raising=False)
         monkeypatch.delenv("AIO_CLIENT_ADDRESS", raising=False)
         from unittest.mock import patch
@@ -206,40 +213,26 @@ class TestStartClient:
             entrypoint.start_client(tmp_path)
         mock_exec.assert_called_once()
         args = mock_exec.call_args[0]
-        assert args[0] == "streamlit"
-        assert "run" in args[1]
-        assert "--server.port" in args[1]
-        assert "8501" in args[1]
-        assert "--server.address" in args[1]
-        assert "localhost" in args[1]
-        assert "--server.sslCertFile" not in args[1]
-
-    def test_with_ssl(self, tmp_path, monkeypatch):
-        """start_client should add SSL flags when AIO_CLIENT_SSL=true."""
-        monkeypatch.setenv("AIO_CLIENT_SSL", "true")
-        from unittest.mock import patch
-
-        with (
-            patch("os.execvp") as mock_exec,
-            patch.object(entrypoint, "ensure_ssl_cert", return_value=(Path("/c.pem"), Path("/k.pem"))),
-        ):
-            entrypoint.start_client(tmp_path)
-        args = mock_exec.call_args[0][1]
-        assert "--server.sslCertFile" in args
-        assert "--server.sslKeyFile" in args
+        assert args[0] == sys.executable
+        assert args[1] == [sys.executable, "-m", "client.app.web"]
+        _client_certificate.assert_called_once_with(
+            tmp_path,
+            "AIO_CLIENT_SSL_CERT_FILE",
+            "AIO_CLIENT_SSL_KEY_FILE",
+        )
+        assert os.environ["AIO_CLIENT_SSL_CERT_FILE"] == "/c.pem"
+        assert os.environ["AIO_CLIENT_SSL_KEY_FILE"] == "/k.pem"
 
     def test_custom_port_and_address(self, tmp_path, monkeypatch):
-        """start_client should use custom port and address from env vars."""
+        """start_client should preserve custom listener settings for the launcher."""
         monkeypatch.setenv("AIO_CLIENT_PORT", "8502")
         monkeypatch.setenv("AIO_CLIENT_ADDRESS", "0.0.0.0")
-        monkeypatch.delenv("AIO_CLIENT_SSL", raising=False)
         from unittest.mock import patch
 
-        with patch("os.execvp") as mock_exec:
+        with patch("os.execvp"):
             entrypoint.start_client(tmp_path)
-        args = mock_exec.call_args[0][1]
-        assert "8502" in args
-        assert "0.0.0.0" in args
+        assert os.environ["AIO_CLIENT_PORT"] == "8502"
+        assert os.environ["AIO_CLIENT_ADDRESS"] == "0.0.0.0"
 
     def test_cookie_secret_promoted_to_streamlit_env_var(self, tmp_path, monkeypatch):
         """start_client must export STREAMLIT_SERVER_COOKIE_SECRET (not pass a CLI flag).
@@ -251,7 +244,6 @@ class TestStartClient:
         secret = "operator-provided-secret-value"
         monkeypatch.setenv("AIO_CLIENT_COOKIE_SECRET", secret)
         monkeypatch.delenv("STREAMLIT_SERVER_COOKIE_SECRET", raising=False)
-        monkeypatch.delenv("AIO_CLIENT_SSL", raising=False)
         from unittest.mock import patch
 
         with patch("os.execvp") as mock_exec:
@@ -270,7 +262,6 @@ class TestStartClient:
         """
         monkeypatch.delenv("AIO_CLIENT_COOKIE_SECRET", raising=False)
         monkeypatch.delenv("STREAMLIT_SERVER_COOKIE_SECRET", raising=False)
-        monkeypatch.delenv("AIO_CLIENT_SSL", raising=False)
         from unittest.mock import patch
 
         with patch("os.execvp") as mock_exec:
@@ -284,7 +275,6 @@ class TestStartClient:
         """Empty AIO_CLIENT_COOKIE_SECRET must not create a Streamlit env var."""
         monkeypatch.setenv("AIO_CLIENT_COOKIE_SECRET", "")
         monkeypatch.delenv("STREAMLIT_SERVER_COOKIE_SECRET", raising=False)
-        monkeypatch.delenv("AIO_CLIENT_SSL", raising=False)
         from unittest.mock import patch
 
         with patch("os.execvp") as mock_exec:
@@ -299,7 +289,6 @@ class TestStartClient:
         secret = "sentinel-xyz-should-not-be-in-argv-123"
         monkeypatch.setenv("AIO_CLIENT_COOKIE_SECRET", secret)
         monkeypatch.delenv("STREAMLIT_SERVER_COOKIE_SECRET", raising=False)
-        monkeypatch.delenv("AIO_CLIENT_SSL", raising=False)
         from unittest.mock import patch
 
         with patch("os.execvp") as mock_exec:
@@ -307,6 +296,35 @@ class TestStartClient:
 
         args = mock_exec.call_args[0][1]
         assert not any(secret in str(a) for a in args), f"secret leaked into argv: {args}"
+
+
+class TestPrepareStreamlitAuthentication:
+    def test_writes_oidc_secrets_file(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("AIO_OIDC_ISSUER", "https://identity.example.test")
+        monkeypatch.setenv("AIO_OIDC_CLIENT_ID", "optimizer-client")
+        monkeypatch.setenv("AIO_OIDC_CLIENT_SECRET", "client-secret")
+        monkeypatch.setenv("AIO_OIDC_REDIRECT_URI", "https://optimizer.example.test/oauth2callback")
+        monkeypatch.setenv("AIO_OIDC_REQUIRED_SCOPES", '["optimizer.invoke"]')
+        monkeypatch.setenv("AIO_CLIENT_COOKIE_SECRET", "cookie-secret")
+
+        entrypoint.prepare_streamlit_authentication()
+
+        content = (tmp_path / ".streamlit" / "secrets.toml").read_text()
+        assert 'expose_tokens = "access"' in content
+        assert 'server_metadata_url = "https://identity.example.test/.well-known/openid-configuration"' in content
+        assert "openid profile email optimizer.invoke" in content
+        assert "client-secret" in content
+
+    def test_rejects_partial_oidc_client_configuration(self, monkeypatch):
+        monkeypatch.setenv("AIO_OIDC_ISSUER", "https://identity.example.test")
+        monkeypatch.delenv("AIO_OIDC_CLIENT_ID", raising=False)
+        monkeypatch.delenv("AIO_OIDC_CLIENT_SECRET", raising=False)
+        monkeypatch.delenv("AIO_OIDC_REDIRECT_URI", raising=False)
+        monkeypatch.delenv("AIO_CLIENT_COOKIE_SECRET", raising=False)
+
+        with pytest.raises(ValueError, match="OIDC client configuration is incomplete"):
+            entrypoint.prepare_streamlit_authentication()
 
 
 class TestMain:

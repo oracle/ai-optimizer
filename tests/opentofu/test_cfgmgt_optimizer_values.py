@@ -26,6 +26,7 @@ ROOT_PROVIDER_PATH = REPO_ROOT / "opentofu" / "provider.tf"
 ROOT_VARIABLES_PATH = REPO_ROOT / "opentofu" / "variables.tf"
 K8S_VARIABLES_PATH = REPO_ROOT / "opentofu" / "modules" / "kubernetes" / "variables.tf"
 VM_VARIABLES_PATH = REPO_ROOT / "opentofu" / "modules" / "vm" / "variables.tf"
+VM_DATABASE_TEMPLATE_PATH = REPO_ROOT / "opentofu" / "modules" / "vm" / "templates" / "cloudinit-database.tpl"
 BYO_URL = "iad.ocir.io/byo-namespace"
 COOKIE_SECRET = "cccccccccccccccccccccccccccccccc"
 
@@ -72,12 +73,12 @@ def _render(tmp_path: Path, is_obs: bool, byo_url: str) -> str:
                 node_pool_gpu_deploy     = false
                 install_ollama           = false
                 app_version              = "0.0.0"
-                ssl_enabled              = false
                 client_cookie_secret     = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
                 oidc_issuer              = "https://identity.example.test"
                 oidc_audience            = "optimizer-api"
                 oidc_required_scopes     = jsonencode(["optimizer.read"])
                 oidc_client_id           = "optimizer-client"
+                oidc_redirect_uri        = "https://optimizer.example.test/oauth2callback"
                 oidc_admin_subject       = "admin-subject"
                 oidc_public_server_url   = "https://optimizer.example.test"
                 is_observability_enabled = local.is_observability_enabled
@@ -167,6 +168,13 @@ def test_deployment_modules_reject_incomplete_db_conn(path: Path):
     assert "db_conn must provide a non-empty username, password, and service" in variables
 
 
+def test_vm_database_provisioning_grants_local_member_administration():
+    template = VM_DATABASE_TEMPLATE_PATH.read_text()
+
+    for privilege in ("CREATE END USER", "ALTER END USER", "DROP END USER"):
+        assert f'GRANT {privilege} TO "$AIO_DB_USERNAME"' in template
+
+
 @pytest.fixture(scope="module")
 def byo_helm_render(tmp_path_factory) -> tuple[str, str]:
     """Render the BYO values once per module and run helm template once.
@@ -248,6 +256,8 @@ def test_render_uses_current_chart_value_names_and_pinned_tags(tmp_path):
     assert "privAuthN:" not in rendered
     assert 'tag: "latest"' not in rendered
     assert rendered.count('tag: "0.0.0"') == 2
+    assert 'oci-native-ingress.oraclecloud.com/backend-tls-enabled: "true"' in rendered
+    assert "oci-native-ingress.oraclecloud.com/healthcheck-protocol: HTTPS" in rendered
 
 
 def test_byo_render_passes_helm_validation(byo_helm_render):

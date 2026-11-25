@@ -9,14 +9,18 @@ from pydantic import SecretStr, ValidationError
 from starlette.requests import Request
 
 from server.app.auth.models import Principal, RequestCredential, workspace_key
-from server.app.auth.provisioning import configure_provisioning_authority, package_role_name
+from server.app.auth.provisioning import (
+    configure_provisioning_authority,
+    local_user_management_issues,
+    missing_local_user_management_capabilities,
+    package_role_name,
+)
 from server.app.auth.service import AUTHENTICATORS, authenticator_ready, request_auth_context
 from server.app.auth.setup import (
     _ensure_connect_role,
     _ensure_login_data_role,
     _init_core_database_with_retry,
     _install_local_user_management,
-    _missing_local_user_management_capabilities,
 )
 from server.app.core.settings import (
     CoreDatabaseConfigurationError,
@@ -192,8 +196,6 @@ def test_valid_oidc_configuration_requires_https_trust():
         oidc_issuer="http://identity.example.test",
         oidc_audience="optimizer-api",
         oidc_required_scopes=["openid", "profile"],
-        oidc_client_id="optimizer-client",
-        oidc_client_secret=SecretStr("client-secret"),
         oidc_admin_subject="exact-subject",
         oidc_public_server_url="https://optimizer.example.test",
     )
@@ -207,17 +209,44 @@ async def test_setup_reports_missing_member_management_capability(monkeypatch):
             return []
         return []
 
-    monkeypatch.setattr("server.app.auth.setup.execute_sql", execute)
-    missing = await _missing_local_user_management_capabilities(cast(Any, object()))
+    monkeypatch.setattr("server.app.auth.provisioning.execute_sql", execute)
+    missing = await missing_local_user_management_capabilities(cast(Any, object()))
 
     assert "CREATE DATA ROLE privilege" in missing
 
 
+async def test_member_management_accepts_direct_authority(monkeypatch):
+    execute = AsyncMock(side_effect=[[("APP_SCHEMA",)], [], [("AIO_LOGIN_ROLE",)]])
+    missing = AsyncMock(return_value=[])
+    monkeypatch.setattr("server.app.auth.provisioning.provisioning_package_available", AsyncMock(return_value=True))
+    monkeypatch.setattr("server.app.auth.provisioning.execute_sql", execute)
+    monkeypatch.setattr("server.app.auth.provisioning.missing_local_user_management_capabilities", missing)
+
+    assert await local_user_management_issues(cast(Any, object())) == []
+    missing.assert_awaited_once()
+
+
+async def test_member_management_reports_unavailable_package(monkeypatch):
+    monkeypatch.setattr("server.app.auth.provisioning.provisioning_package_available", AsyncMock(return_value=False))
+
+    assert await local_user_management_issues(cast(Any, object())) == ["AIO_AUTH_ADMIN package is unavailable"]
+
+
+async def test_member_management_accepts_delegated_package_authority(monkeypatch):
+    execute = AsyncMock(side_effect=[[("APP_SCHEMA",)], [("AIO_AUTH_PACKAGE",)]])
+    missing = AsyncMock()
+    monkeypatch.setattr("server.app.auth.provisioning.provisioning_package_available", AsyncMock(return_value=True))
+    monkeypatch.setattr("server.app.auth.provisioning.execute_sql", execute)
+    monkeypatch.setattr("server.app.auth.provisioning.missing_local_user_management_capabilities", missing)
+
+    assert await local_user_management_issues(cast(Any, object())) == []
+    missing.assert_not_awaited()
+
+
 async def test_missing_member_privileges_do_not_block_local_authentication(monkeypatch, caplog):
     install = AsyncMock()
-    monkeypatch.setattr("server.app.auth.setup.provisioning_package_available", AsyncMock(return_value=False))
     monkeypatch.setattr(
-        "server.app.auth.setup._missing_local_user_management_capabilities",
+        "server.app.auth.setup.missing_local_user_management_capabilities",
         AsyncMock(return_value=["ALTER END USER privilege"]),
     )
     monkeypatch.setattr("server.app.auth.setup.install_provisioning_package", install)
@@ -230,7 +259,7 @@ async def test_missing_member_privileges_do_not_block_local_authentication(monke
     )
 
     assert available is False
-    install.assert_not_awaited()
+    install.assert_awaited_once()
     assert "Local member administration is unavailable: ALTER END USER privilege" in caplog.text
 
 

@@ -826,7 +826,7 @@ class TestRenderApiConfiguration:
         with (
             patch(f"{MODULE}.st", mock_st),
             patch(f"{MODULE}.state", _OPTIMIZER_HELP),
-            patch(f"{MODULE}.is_authenticated", return_value=False),
+            patch(f"{MODULE}.is_admin", return_value=False),
         ):
             _render_api_configuration(model, [], False)
 

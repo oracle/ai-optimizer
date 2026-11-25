@@ -82,6 +82,28 @@ async def test_database_session_authenticator_checks_account_and_touches_session
     touch.assert_awaited_once()
 
 
+async def test_admin_account_status_uses_database_user_state(monkeypatch):
+    class Pool:
+        def acquire(self):
+            return self
+
+        async def __aenter__(self):
+            return object()
+
+        async def __aexit__(self, *_args):
+            return None
+
+    monkeypatch.setattr(local.settings, "db_username", "APP_MEMBER")
+    monkeypatch.setattr(local, "require_core_pool", Pool)
+    execute = AsyncMock(return_value=[("LOCKED",)])
+    monkeypatch.setattr(local, "execute_sql", execute)
+
+    assert await local.database_account_status("APP_MEMBER") == "LOCKED"
+    call = execute.await_args
+    assert call is not None
+    assert "USER_USERS" in call.args[1].upper()
+
+
 async def test_locking_member_revokes_shared_sessions(monkeypatch):
     member = _user()
     admin_call = AsyncMock()
@@ -105,9 +127,9 @@ async def test_password_reset_revokes_shared_sessions(monkeypatch):
     monkeypatch.setattr(users, "_call_admin", admin_call)
     monkeypatch.setattr(repository, "revoke_user_sessions", revoke)
 
-    await users.reset_member_password(_USER_ID, "temporary-secret")
+    await users.reset_member_password(_USER_ID, "replacement-secret")
 
-    admin_call.assert_awaited_once_with("RESET", "APP_MEMBER", "temporary-secret")
+    admin_call.assert_awaited_once_with("RESET", "APP_MEMBER", "replacement-secret")
     revoke.assert_awaited_once_with(_USER_ID)
 
 
@@ -130,10 +152,10 @@ async def test_member_creation_reconciles_existing_managed_account(monkeypatch):
     monkeypatch.setattr(users, "_call_admin", admin_call)
     monkeypatch.setattr(repository, "create_database_member", AsyncMock(return_value=member))
 
-    result = await users.create_member("APP_MEMBER", "new-temporary-secret", None, None)
+    result = await users.create_member("APP_MEMBER", "initial-secret", None, None)
 
     assert result is member
-    admin_call.assert_awaited_once_with("RESET", "APP_MEMBER", "new-temporary-secret")
+    admin_call.assert_awaited_once_with("RESET", "APP_MEMBER", "initial-secret")
 
 
 async def test_reconciled_member_is_locked_when_metadata_creation_fails(monkeypatch):
@@ -144,10 +166,10 @@ async def test_reconciled_member_is_locked_when_metadata_creation_fails(monkeypa
     monkeypatch.setattr(repository, "create_database_member", AsyncMock(side_effect=RuntimeError("write failed")))
 
     with pytest.raises(RuntimeError, match="write failed"):
-        await users.create_member("APP_MEMBER", "new-temporary-secret", None, None)
+        await users.create_member("APP_MEMBER", "initial-secret", None, None)
 
     assert [item.args for item in admin_call.await_args_list] == [
-        ("RESET", "APP_MEMBER", "new-temporary-secret"),
+        ("RESET", "APP_MEMBER", "initial-secret"),
         ("LOCK", "APP_MEMBER"),
     ]
 

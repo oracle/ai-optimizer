@@ -45,6 +45,7 @@ def _import_main(
     state,
     get_settings_side_effect,
     *,
+    get_auth_side_effect=None,
     resolved=None,
     submitted=None,
     server_started=True,
@@ -60,6 +61,9 @@ def _import_main(
     import streamlit as real_st
 
     mock_get_settings = MagicMock(side_effect=get_settings_side_effect)
+    mock_get_auth = MagicMock(
+        side_effect=get_auth_side_effect or [{"mode": "local_users"}],
+    )
     mock_start = MagicMock(return_value=server_started)
     mock_api_get = MagicMock(return_value=[])
     mock_persist = MagicMock()
@@ -73,6 +77,7 @@ def _import_main(
         # Streamlit session_state binding
         patch.object(real_st, "session_state", state),
         # Prevent real HTTP calls — patch at the SOURCE module
+        patch(f"{API_MODULE}.get_auth_config", mock_get_auth),
         patch(f"{API_MODULE}.get_server_settings", mock_get_settings),
         patch(f"{API_MODULE}.start_server", mock_start),
         patch(f"{API_MODULE}.api_get", mock_api_get),
@@ -81,6 +86,7 @@ def _import_main(
         patch("client.app.core.local_bootstrap.local_core_config_path", return_value=config_path),
         patch("client.app.core.local_bootstrap.persist_local_core", mock_persist),
         patch("client.app.content.local_database_setup.display_local_database_setup", mock_display_setup),
+        patch("client.app.core.auth.require_sign_in"),
         patch.object(real_st, "stop", side_effect=SystemExit),
         patch.object(real_st, "rerun", side_effect=SystemExit),
         # Suppress logging config
@@ -89,7 +95,7 @@ def _import_main(
         with contextlib.suppress(SystemExit):
             import client.app.main  # noqa: F401
 
-    return mock_get_settings, mock_start, mock_stop, mock_persist, mock_display_setup
+    return mock_get_settings, mock_get_auth, mock_start, mock_stop, mock_persist, mock_display_setup
 
 
 # ---------------------------------------------------------------------------
@@ -109,7 +115,7 @@ class TestMainConnectionLogic:
         state = AttrDict({"optimizer_client": "test-123"})
         valid_settings = {"database_configs": [], "model_configs": [], "client_settings": {}}
 
-        _, mock_start, _, _, _ = _import_main(state, get_settings_side_effect=[valid_settings])
+        _, _, mock_start, _, _, _ = _import_main(state, get_settings_side_effect=[valid_settings])
 
         mock_start.assert_not_called()
         assert "settings" in state
@@ -119,17 +125,22 @@ class TestMainConnectionLogic:
         state = AttrDict({"optimizer_client": "test-456"})
         valid_settings = {"database_configs": [], "model_configs": [], "client_settings": {}}
 
-        mock_get, mock_start, _, _, _ = _import_main(state, get_settings_side_effect=[None, valid_settings])
+        mock_get, mock_get_auth, mock_start, _, _, _ = _import_main(
+            state,
+            get_settings_side_effect=[valid_settings],
+            get_auth_side_effect=[None, {"mode": "local_users"}],
+        )
 
         mock_start.assert_called_once_with(_core_config().child_environment())
-        assert mock_get.call_count == 2
+        assert mock_get_auth.call_count == 2
+        assert mock_get.call_count == 1
 
     def test_connection_failure_shows_error(self):
         """When all connection attempts fail, st.error is called."""
         state = AttrDict({"optimizer_client": "test-789"})
 
         with patch(f"{API_MODULE}._server_module_available", return_value=False):
-            _import_main(state, get_settings_side_effect=[None])
+            _import_main(state, get_settings_side_effect=[], get_auth_side_effect=[None])
 
         # state.settings should be None after both attempts fail
         assert state.get("settings") is None
@@ -146,28 +157,37 @@ class TestMainConnectionLogic:
 
         # First rerun: remote server still booting.
         with patch(f"{API_MODULE}._server_module_available", return_value=False):
-            _, mock_start, _, _, _ = _import_main(state, get_settings_side_effect=[None])
+            _, _, mock_start, _, _, _ = _import_main(
+                state,
+                get_settings_side_effect=[],
+                get_auth_side_effect=[None],
+            )
         mock_start.assert_not_called()
         assert state.get("settings") is None
 
         # Second rerun (simulated by re-importing main against the same
         # session state): the remote server is now answering /settings.
         with patch(f"{API_MODULE}._server_module_available", return_value=False):
-            mock_get2, mock_start2, _, _, _ = _import_main(state, get_settings_side_effect=[valid_settings])
+            mock_get2, mock_get_auth2, mock_start2, _, _, _ = _import_main(
+                state,
+                get_settings_side_effect=[valid_settings],
+            )
         mock_start2.assert_not_called()
         assert state.get("settings") == valid_settings, (
             "second rerun must retry the connection; the previous failed "
             "attempt was cached and the UI would stay stuck on the error."
         )
+        assert mock_get_auth2.call_count == 1
         assert mock_get2.call_count == 1
 
     def test_missing_local_core_shows_only_setup(self):
         state = AttrDict({"optimizer_client": "test-setup"})
         missing = ResolvedLocalCore(config=None, source=LocalCoreSource.MISSING)
 
-        _, mock_start, _, mock_persist, mock_display = _import_main(
+        _, _, mock_start, _, mock_persist, mock_display = _import_main(
             state,
-            get_settings_side_effect=[None],
+            get_settings_side_effect=[],
+            get_auth_side_effect=[None],
             resolved=missing,
         )
 
@@ -182,9 +202,10 @@ class TestMainConnectionLogic:
         missing = ResolvedLocalCore(config=None, source=LocalCoreSource.MISSING)
         submitted = _core_config()
 
-        _, mock_start, _, mock_persist, _ = _import_main(
+        _, _, mock_start, _, mock_persist, _ = _import_main(
             state,
-            get_settings_side_effect=[None],
+            get_settings_side_effect=[],
+            get_auth_side_effect=[None],
             resolved=missing,
             submitted=submitted,
         )
@@ -200,9 +221,10 @@ class TestMainConnectionLogic:
         submitted = _core_config()
         config_path = Path("/app/data/core.json")
 
-        _, mock_start, _, mock_persist, _ = _import_main(
+        _, _, mock_start, _, mock_persist, _ = _import_main(
             state,
-            get_settings_side_effect=[None],
+            get_settings_side_effect=[],
+            get_auth_side_effect=[None],
             resolved=missing,
             submitted=submitted,
             config_path=config_path,
@@ -215,9 +237,10 @@ class TestMainConnectionLogic:
         state = AttrDict({"optimizer_client": "test-setup-invalid"})
         missing = ResolvedLocalCore(config=None, source=LocalCoreSource.MISSING)
 
-        _, mock_start, mock_stop, mock_persist, _ = _import_main(
+        _, _, mock_start, mock_stop, mock_persist, _ = _import_main(
             state,
-            get_settings_side_effect=[None],
+            get_settings_side_effect=[],
+            get_auth_side_effect=[None],
             resolved=missing,
             submitted=_core_config(),
             server_started=False,
@@ -235,24 +258,27 @@ class TestMainConnectionLogic:
         valid_settings = {"database_configs": [], "model_configs": [], "client_settings": {}}
         retained = ResolvedLocalCore(config=_core_config(), source=LocalCoreSource.MEMORY)
 
-        mock_get, mock_start, _, mock_persist, mock_display = _import_main(
+        mock_get, mock_get_auth, mock_start, _, mock_persist, mock_display = _import_main(
             state,
-            get_settings_side_effect=[None, valid_settings],
+            get_settings_side_effect=[valid_settings],
+            get_auth_side_effect=[None, {"mode": "local_users"}],
             resolved=retained,
         )
 
         mock_start.assert_called_once_with(_core_config().child_environment())
         mock_display.assert_not_called()
         mock_persist.assert_not_called()
-        assert mock_get.call_count == 2
+        assert mock_get_auth.call_count == 2
+        assert mock_get.call_count == 1
 
     def test_memory_configuration_can_be_explicitly_edited(self):
         state = AttrDict({"optimizer_client": "test-edit", "_local_core_edit": True})
         retained = ResolvedLocalCore(config=_core_config(), source=LocalCoreSource.MEMORY)
 
-        _, mock_start, _, mock_persist, mock_display = _import_main(
+        _, _, mock_start, _, mock_persist, mock_display = _import_main(
             state,
-            get_settings_side_effect=[None],
+            get_settings_side_effect=[],
+            get_auth_side_effect=[None],
             resolved=retained,
         )
 

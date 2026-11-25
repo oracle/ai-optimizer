@@ -242,7 +242,7 @@ class TestPendingDbSelect:
             patch(f"{MODULE}.st", mock_st),
             patch(f"{MODULE}.state", state),
             patch(f"{MODULE}.helpers") as hlp,
-            patch(f"{MODULE}.is_authenticated", return_value=True),
+            patch(f"{MODULE}.is_admin", return_value=True),
         ):
             hlp.selectbox_index.return_value = 0
             _render_databases({}, [], None)
@@ -270,7 +270,7 @@ class TestPendingDbSelect:
             patch(f"{MODULE}.st", mock_st),
             patch(f"{MODULE}.state", state),
             patch(f"{MODULE}.helpers") as hlp,
-            patch(f"{MODULE}.is_authenticated", return_value=True),
+            patch(f"{MODULE}.is_admin", return_value=True),
         ):
             hlp.selectbox_index.return_value = 1
             _render_databases({"CORE": {"alias": "CORE"}}, ["CORE"], "CORE")
@@ -314,7 +314,7 @@ class TestPendingDbSelect:
             patch(f"{MODULE}.state", state),
             patch(f"{MODULE}.helpers") as hlp,
             patch(f"{MODULE}._fetch_database", return_value=fetched),
-            patch(f"{MODULE}.is_authenticated", return_value=False),
+            patch(f"{MODULE}.is_admin", return_value=False),
         ):
             hlp.selectbox_index.return_value = 0
             _render_databases({"MYDB": fetched}, ["MYDB"], "MYDB")

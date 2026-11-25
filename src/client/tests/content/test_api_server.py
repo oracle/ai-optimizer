@@ -85,12 +85,12 @@ class TestAdvertisedApiBaseUrl:
         settings = self._settings()
         with (
             patch(f"{MODULE}.client_settings", settings),
-            patch(f"{MODULE}._base_url", return_value="http://127.0.0.1:8000/v1"),
+            patch(f"{MODULE}._base_url", return_value="https://127.0.0.1:8000/v1"),
         ):
             from client.app.content.api_server import _advertised_api_base_url
 
-            result = _advertised_api_base_url("http://localhost:8501/api_server")
-        assert result == "http://127.0.0.1:8000/v1"
+            result = _advertised_api_base_url("https://localhost:8501/api_server")
+        assert result == "https://127.0.0.1:8000/v1"
 
 
 # ---------------------------------------------------------------------------

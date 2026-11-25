@@ -421,7 +421,7 @@ class TestDisplayPromptEng:
             patch(f"{MODULE}.st", mock_st),
             patch(f"{MODULE}.state", state),
             patch(f"{HELPERS}.state", state),
-            patch(f"{MODULE}.is_authenticated", return_value=False),
+            patch(f"{MODULE}.is_admin", return_value=False),
         ):
             from client.app.content.tools.tabs.prompt_eng import display_prompt_eng
 

@@ -95,8 +95,9 @@ def test_authentication_rejects_non_https_oidc_authority():
         "global.authentication.oidc.issuer=http://identity.example.test",
         "global.authentication.oidc.audience=optimizer-api",
         "global.authentication.oidc.requiredScopes[0]=optimizer.invoke",
-        "global.authentication.oidc.clientId=optimizer-client",
-        "global.authentication.oidc.clientSecretName=oidc-secret",
+        "client.oidc.clientId=optimizer-client",
+        "client.oidc.clientSecretName=oidc-secret",
+        "client.oidc.redirectUri=https://optimizer.example.test/oauth2callback",
         "global.authentication.oidc.adminSubject=admin-subject",
         "global.authentication.oidc.publicServerUrl=https://optimizer.example.test",
     )
@@ -104,13 +105,140 @@ def test_authentication_rejects_non_https_oidc_authority():
     assert "global.authentication.oidc.issuer must use HTTPS" in result.stderr
 
 
+def test_client_rejects_partial_tls_certificate_configuration():
+    result = _render("client.ssl.certFile=/tls/cert.pem")
+    assert result.returncode != 0
+    assert "client.ssl.certFile and client.ssl.keyFile must be supplied together" in result.stderr
+
+
+def test_server_rejects_partial_tls_certificate_configuration():
+    result = _render("server.ssl.certFile=/tls/cert.pem")
+    assert result.returncode != 0
+    assert "server.ssl.certFile and server.ssl.keyFile must be supplied together" in result.stderr
+
+
+def test_server_ingress_requires_tls():
+    result = _render("server.ingress.enabled=true")
+    assert result.returncode != 0
+    assert "server.ingress.tls is required" in result.stderr
+
+
+def test_client_ingress_requires_tls():
+    result = _render("client.ingress.enabled=true")
+    assert result.returncode != 0
+    assert "client.ingress.tls is required" in result.stderr
+
+
+def test_client_workload_uses_https():
+    result = _render()
+    assert result.returncode == 0, result.stderr
+    docs = _docs(result.stdout)
+    deployment = next(
+        doc
+        for doc in docs
+        if doc.get("kind") == "Deployment"
+        and doc.get("metadata", {}).get("labels", {}).get("app.kubernetes.io/component") == "client"
+    )
+    container = deployment["spec"]["template"]["spec"]["containers"][0]
+    assert container["livenessProbe"]["httpGet"]["scheme"] == "HTTPS"
+    assert container["readinessProbe"]["httpGet"]["scheme"] == "HTTPS"
+    service = next(
+        doc
+        for doc in docs
+        if doc.get("kind") == "Service"
+        and doc.get("metadata", {}).get("labels", {}).get("app.kubernetes.io/component") == "client"
+    )
+    assert service["spec"]["ports"][0]["appProtocol"] == "https"
+
+
+def test_server_workload_uses_https():
+    result = _render()
+    assert result.returncode == 0, result.stderr
+    docs = _docs(result.stdout)
+    deployment = next(
+        doc
+        for doc in docs
+        if doc.get("kind") == "Deployment"
+        and doc.get("metadata", {}).get("labels", {}).get("app.kubernetes.io/component") == "server"
+    )
+    container = deployment["spec"]["template"]["spec"]["containers"][0]
+    assert container["livenessProbe"]["httpGet"]["scheme"] == "HTTPS"
+    assert container["readinessProbe"]["httpGet"]["scheme"] == "HTTPS"
+    service = next(
+        doc
+        for doc in docs
+        if doc.get("kind") == "Service"
+        and doc.get("metadata", {}).get("labels", {}).get("app.kubernetes.io/component") == "server"
+    )
+    assert service["spec"]["ports"][0]["appProtocol"] == "https"
+
+
+def test_client_nginx_ingress_uses_https_backend():
+    result = _render(
+        "client.ingress.enabled=true",
+        "client.ingress.className=nginx",
+        "client.ingress.tls[0].secretName=client-tls",
+    )
+    assert result.returncode == 0, result.stderr
+    ingress = next(doc for doc in _docs(result.stdout) if doc.get("kind") == "Ingress")
+    assert ingress["metadata"]["annotations"]["nginx.ingress.kubernetes.io/backend-protocol"] == "HTTPS"
+
+
+def test_server_nginx_ingress_uses_https_backend():
+    result = _render(
+        "server.ingress.enabled=true",
+        "server.ingress.className=nginx",
+        "server.ingress.tls[0].secretName=server-tls",
+    )
+    assert result.returncode == 0, result.stderr
+    ingress = next(doc for doc in _docs(result.stdout) if doc.get("kind") == "Ingress")
+    assert ingress["metadata"]["annotations"]["nginx.ingress.kubernetes.io/backend-protocol"] == "HTTPS"
+
+
+def test_client_gateway_exposes_only_https():
+    result = _render(
+        "client.gateway.enabled=true",
+        "client.gateway.tls.mode=Terminate",
+        "client.gateway.tls.certificateRefs[0].name=client-tls",
+    )
+    assert result.returncode == 0, result.stderr
+    gateway = next(doc for doc in _docs(result.stdout) if doc.get("kind") == "Gateway")
+    assert gateway["spec"]["listeners"] == [
+        {
+            "name": "https",
+            "port": 443,
+            "protocol": "HTTPS",
+            "tls": {"mode": "Terminate", "certificateRefs": [{"name": "client-tls"}]},
+        }
+    ]
+
+
+def test_server_gateway_exposes_only_https():
+    result = _render(
+        "server.gateway.enabled=true",
+        "server.gateway.tls.mode=Terminate",
+        "server.gateway.tls.certificateRefs[0].name=server-tls",
+    )
+    assert result.returncode == 0, result.stderr
+    gateway = next(doc for doc in _docs(result.stdout) if doc.get("kind") == "Gateway")
+    assert gateway["spec"]["listeners"] == [
+        {
+            "name": "https",
+            "port": 8443,
+            "protocol": "HTTPS",
+            "tls": {"mode": "Terminate", "certificateRefs": [{"name": "server-tls"}]},
+        }
+    ]
+
+
 def test_oidc_client_secret_is_not_sent_to_authentication_setup():
     result = _render(
         "global.authentication.oidc.issuer=https://identity.example.test",
         "global.authentication.oidc.audience=optimizer-api",
         "global.authentication.oidc.requiredScopes[0]=optimizer.invoke",
-        "global.authentication.oidc.clientId=optimizer-client",
-        "global.authentication.oidc.clientSecretName=oidc-secret",
+        "client.oidc.clientId=optimizer-client",
+        "client.oidc.clientSecretName=oidc-secret",
+        "client.oidc.redirectUri=https://optimizer.example.test/oauth2callback",
         "global.authentication.oidc.adminSubject=admin-subject",
         "global.authentication.oidc.publicServerUrl=https://optimizer.example.test",
     )
@@ -128,10 +256,47 @@ def test_oidc_client_secret_is_not_sent_to_authentication_setup():
         if doc.get("kind") == "Deployment"
         and doc.get("metadata", {}).get("labels", {}).get("app.kubernetes.io/component") == "server"
     )
+    client = next(
+        doc
+        for doc in docs
+        if doc.get("kind") == "Deployment"
+        and doc.get("metadata", {}).get("labels", {}).get("app.kubernetes.io/component") == "client"
+    )
     auth_env = {item["name"] for item in auth_job["spec"]["template"]["spec"]["containers"][0]["env"]}
     server_env = {item["name"] for item in server["spec"]["template"]["spec"]["containers"][0]["env"]}
+    client_env = {item["name"] for item in client["spec"]["template"]["spec"]["containers"][0]["env"]}
     assert "AIO_OIDC_CLIENT_SECRET" not in auth_env
-    assert "AIO_OIDC_CLIENT_SECRET" in server_env
+    assert "AIO_OIDC_CLIENT_SECRET" not in server_env
+    assert "AIO_OIDC_CLIENT_SECRET" in client_env
+
+
+def test_server_only_oidc_does_not_require_web_client_credentials():
+    result = _render(
+        "client.enabled=false",
+        "global.authentication.oidc.issuer=https://identity.example.test",
+        "global.authentication.oidc.audience=optimizer-api",
+        "global.authentication.oidc.requiredScopes[0]=optimizer.invoke",
+        "global.authentication.oidc.adminSubject=admin-subject",
+        "global.authentication.oidc.publicServerUrl=https://optimizer.example.test",
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_web_client_registration_does_not_select_server_oidc():
+    result = _render(
+        "client.oidc.clientId=optimizer-client",
+        "client.oidc.clientSecretName=oidc-secret",
+        "client.oidc.redirectUri=https://optimizer.example.test/oauth2callback",
+    )
+    assert result.returncode == 0, result.stderr
+    server = next(
+        doc
+        for doc in _docs(result.stdout)
+        if doc.get("kind") == "Deployment"
+        and doc.get("metadata", {}).get("labels", {}).get("app.kubernetes.io/component") == "server"
+    )
+    server_env = {item["name"] for item in server["spec"]["template"]["spec"]["containers"][0]["env"]}
+    assert "AIO_OIDC_ISSUER" not in server_env
 
 
 def test_authentication_setup_runs_after_database_initialization():
@@ -573,7 +738,7 @@ class TestClientEnvSecretContract:
     points at a pre-existing operator-owned Secret. AIO_SERVER_URL and
     AIO_SERVER_PORT are derived from the in-cluster Service and have no
     sensible operator override, so they must travel via direct pod env —
-    otherwise the client falls back to http://localhost:8000 (the Pydantic
+    otherwise the client falls back to https://localhost:8000 (the Pydantic
     defaults in src/client/app/core/settings.py) and cannot reach the
     in-cluster server.
     """
@@ -594,10 +759,10 @@ class TestClientEnvSecretContract:
         assert url_entry is not None, (
             "AIO_SERVER_URL must be set as direct pod env so external-Secret "
             "operators reach the in-cluster server; otherwise the client "
-            "Pydantic default (http://localhost) wins"
+            "Pydantic default (https://localhost) wins"
         )
         assert port_entry is not None, "AIO_SERVER_PORT must be set as direct pod env for the same reason"
-        assert url_entry["value"].startswith("http://test-ai-optimizer-server-http"), (
+        assert url_entry["value"].startswith("https://test-ai-optimizer-server-https"), (
             f"AIO_SERVER_URL should resolve to the in-cluster server Service; got {url_entry['value']!r}"
         )
         assert port_entry["value"] == "8000", f"AIO_SERVER_PORT should default to 8000; got {port_entry['value']!r}"

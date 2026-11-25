@@ -1676,7 +1676,7 @@ class TestDisplaySettings:
             patch(f"{MODULE}._render_download_settings_section") as mock_download,
             patch(f"{MODULE}._render_upload_settings_section") as mock_upload,
             patch(f"{MODULE}._render_source_code_templates_section") as mock_src,
-            patch(f"{MODULE}.is_authenticated", return_value=False),
+            patch(f"{MODULE}.is_admin", return_value=False),
             patch(f"{MODULE}.locked_notice") as mock_notice,
         ):
             from client.app.content.config.tabs.settings import display_settings

@@ -53,7 +53,7 @@ class TestDisplayDeepSec:
             patch(f"{MODULE}.st", mock_st),
             patch(f"{MODULE}.state", _state()),
             patch(f"{MODULE}.api_get", return_value=status),
-            patch(f"{MODULE}.is_authenticated", return_value=True),
+            patch(f"{MODULE}.is_admin", return_value=True),
             patch(f"{MODULE}._render_data_roles") as mock_roles,
         ):
             from client.app.content.tools.tabs.deepsec import display_deepsec
@@ -68,7 +68,7 @@ class TestDisplayDeepSec:
             patch(f"{MODULE}.st", mock_st),
             patch(f"{MODULE}.state", _state()),
             patch(f"{MODULE}.api_get", return_value=_AVAILABLE),
-            patch(f"{MODULE}.is_authenticated", return_value=True),
+            patch(f"{MODULE}.is_admin", return_value=True),
             patch(f"{MODULE}._render_data_roles") as mock_roles,
             patch(f"{MODULE}._render_end_users") as mock_users,
             patch(f"{MODULE}._render_data_grants") as mock_grants,
@@ -88,7 +88,7 @@ class TestDisplayDeepSec:
             patch(f"{MODULE}.st", mock_st),
             patch(f"{MODULE}.state", _state()),
             patch(f"{MODULE}.api_get", return_value=_AVAILABLE),
-            patch(f"{MODULE}.is_authenticated", return_value=False),
+            patch(f"{MODULE}.is_admin", return_value=False),
             patch(f"{MODULE}.locked_notice") as mock_locked,
             patch(f"{MODULE}._render_data_roles"),
             patch(f"{MODULE}._render_end_users"),
@@ -401,7 +401,7 @@ class TestCapabilityDrivenListing:
             patch(f"{MODULE}.st", mock_st),
             patch(f"{MODULE}.state", _state()),
             patch(f"{MODULE}.api_get") as mock_get,
-            patch(f"{MODULE}.is_authenticated", return_value=True),
+            patch(f"{MODULE}.is_admin", return_value=True),
             patch(f"{MODULE}.helpers.state_configs_lookup", return_value={"CORE": {"username": "ACADEMY"}}),
         ):
             from client.app.content.tools.tabs.deepsec import _render_data_roles
@@ -419,7 +419,7 @@ class TestCapabilityDrivenListing:
             patch(f"{MODULE}.st", mock_st),
             patch(f"{MODULE}.state", _state()),
             patch(f"{MODULE}.api_get") as mock_get,
-            patch(f"{MODULE}.is_authenticated", return_value=True),
+            patch(f"{MODULE}.is_admin", return_value=True),
             patch(f"{MODULE}.helpers.state_configs_lookup", return_value={"CORE": {"username": "ACADEMY"}}),
         ):
             from client.app.content.tools.tabs.deepsec import _render_end_users
@@ -655,7 +655,7 @@ class TestRoleAssignment:
             patch(f"{MODULE}.st", mock_st),
             patch(f"{MODULE}.state", _state()),
             patch(f"{MODULE}.api_get", return_value=roles) as mock_get,
-            patch(f"{MODULE}.is_authenticated", return_value=True),
+            patch(f"{MODULE}.is_admin", return_value=True),
         ):
             from client.app.content.tools.tabs.deepsec import _render_data_roles
 
