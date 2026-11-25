@@ -657,9 +657,9 @@ complete connection; chart-provisioned users require a DSN.
 
 
 {{/* ******************************************
-DB Initialization Job gating. An ADB-S or OTHER external authentication
-Secret asserts that the application user already exists. OTHER can instead
-run initialization with an explicit privileged Secret.
+DB Initialization Job gating. An external authentication Secret asserts that
+the application user already exists unless an explicit privileged Secret asks
+the chart to provision it.
 *********************************************** */}}
 {{- define "ai-optimizer.server.database.shouldRunInit" -}}
 {{- $db := .Values.server.database | default dict -}}
@@ -667,7 +667,7 @@ run initialization with an explicit privileged Secret.
 {{- if and $db $type $db.privAuthn -}}
   {{- if eq (include "ai-optimizer.server.database.isOther" .) "true" -}}
     {{- if ne (include "ai-optimizer.server.database.explicitPrivAuthnName" .) "" -}}true{{- end -}}
-  {{- else if or (ne (include "ai-optimizer.server.database.isADBS" .) "true") (eq (include "ai-optimizer.server.database.explicitAuthnName" .) "") -}}
+  {{- else if or (ne (include "ai-optimizer.server.database.isADBS" .) "true") (eq (include "ai-optimizer.server.database.explicitAuthnName" .) "") (ne (include "ai-optimizer.server.database.explicitPrivAuthnName" .) "") -}}
 true
   {{- end -}}
 {{- end -}}

@@ -352,7 +352,7 @@ def patch_oracle_operator():
             "clusterrolebinding",
             ORACLE_OPERATOR_CRB,
             f"--clusterrole={ORACLE_OPERATOR_CR}",
-            f"--serviceaccount={ORACLE_OPERATOR_NS}:default",
+            f"--serviceaccount={ORACLE_OPERATOR_NS}:oracle-database-operator-controller-manager",
         ]
         _, stderr, rc = run_cmd(crb_cmd, capture_output=False)
         if rc != 0:
