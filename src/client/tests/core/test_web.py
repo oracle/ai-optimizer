@@ -1,4 +1,4 @@
-"""Tests for the HTTPS-only Streamlit launcher."""
+"""Tests for the Streamlit launcher."""
 
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -15,6 +15,7 @@ def test_run_requires_certificate_pair(monkeypatch):
         SimpleNamespace(
             client_port=8501,
             client_address="localhost",
+            client_ssl=True,
             client_ssl_cert_file="",
             client_ssl_key_file="",
         ),
@@ -33,6 +34,7 @@ def test_run_configures_https_listener(monkeypatch):
         SimpleNamespace(
             client_port=8502,
             client_address="0.0.0.0",
+            client_ssl=True,
             client_ssl_cert_file="/tls/cert.pem",
             client_ssl_key_file="/tls/key.pem",
         ),
@@ -58,6 +60,7 @@ def test_run_handles_keyboard_interrupt(monkeypatch):
         SimpleNamespace(
             client_port=8501,
             client_address="localhost",
+            client_ssl=True,
             client_ssl_cert_file="/tls/cert.pem",
             client_ssl_key_file="/tls/key.pem",
         ),

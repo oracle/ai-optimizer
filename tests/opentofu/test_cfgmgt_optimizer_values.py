@@ -83,6 +83,7 @@ def _render(tmp_path: Path, is_obs: bool, byo_url: str) -> str:
                 oidc_redirect_uri        = "https://optimizer.example.test/oauth2callback"
                 oidc_admin_subject       = "admin-subject"
                 oidc_public_server_url   = "https://optimizer.example.test"
+                ssl_hostname             = "optimizer.example.test"
                 is_observability_enabled = local.is_observability_enabled
                 ocir_url                 = local.byo_ocir_url
                 object_storage_bucket    = ""
@@ -294,7 +295,7 @@ def test_render_uses_current_chart_value_names_and_pinned_tags(tmp_path):
     assert "privAuthN:" not in rendered
     assert 'tag: "latest"' not in rendered
     assert rendered.count('tag: "0.0.0"') == 2
-    assert 'oci-native-ingress.oraclecloud.com/backend-tls-enabled: "true"' in rendered
+    assert rendered.count('oci-native-ingress.oraclecloud.com/backend-tls-enabled: "false"') == 2
     assert rendered.count("oci-native-ingress.oraclecloud.com/healthcheck-protocol: HTTP") == 2
 
 

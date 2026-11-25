@@ -29,16 +29,10 @@ class ClientSettings(BaseSettings):
     server_url: str = "https://localhost"
     server_address: str = "127.0.0.1"
     server_port: int = 8000
+    server_ssl: bool = True
     server_ssl_cert_file: str = ""
     server_ssl_key_file: str = ""
     server_url_prefix: str = ""
-
-    @field_validator("server_url")
-    @classmethod
-    def _require_https_server_url(cls, value: str) -> str:
-        if not value.startswith("https://"):
-            raise ValueError("AIO_SERVER_URL must use HTTPS")
-        return value
 
     @field_validator("server_url_prefix")
     @classmethod
@@ -51,6 +45,7 @@ class ClientSettings(BaseSettings):
     client_address: str = "localhost"
     client_port: int = 8501
     client_url_prefix: str = ""
+    client_ssl: bool = True
     client_ssl_cert_file: str = ""
     client_ssl_key_file: str = ""
     # Operator-set OCI source defaults. When valid at render time, these can pin

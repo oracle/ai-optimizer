@@ -18,6 +18,7 @@ def mock_settings():
     """MagicMock with default ClientSettings attributes."""
     m = MagicMock()
     m.server_url = "https://localhost"
+    m.server_ssl = True
     m.server_port = 8000
     m.server_url_prefix = ""
     m.client_address = "localhost"

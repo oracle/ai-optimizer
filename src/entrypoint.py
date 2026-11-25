@@ -72,7 +72,7 @@ def detect_component(script_dir: Path, arg: str) -> str:
 
 
 def start_server(script_dir: Path) -> None:
-    """Launch the FastAPI server over HTTPS."""
+    """Launch uvicorn for the FastAPI server, with optional TLS."""
     print("Starting Optimizer Server")
     args = [
         "uvicorn",
@@ -83,14 +83,15 @@ def start_server(script_dir: Path) -> None:
         os.environ.get("AIO_SERVER_PORT", "8000"),
     ]
 
-    cert, key = ensure_ssl_cert(script_dir, "AIO_SERVER_SSL_CERT_FILE", "AIO_SERVER_SSL_KEY_FILE")
-    args.extend(["--ssl-certfile", str(cert), "--ssl-keyfile", str(key)])
+    if os.environ.get("AIO_SERVER_SSL", "true").lower() == "true":
+        cert, key = ensure_ssl_cert(script_dir, "AIO_SERVER_SSL_CERT_FILE", "AIO_SERVER_SSL_KEY_FILE")
+        args.extend(["--ssl-certfile", str(cert), "--ssl-keyfile", str(key)])
 
     os.execvp("uvicorn", args)
 
 
 def start_client(script_dir: Path) -> None:
-    """Launch the Streamlit client over HTTPS."""
+    """Launch the Streamlit client, with optional TLS."""
     print("Starting Optimizer Client")
     prepare_streamlit_authentication()
     args = [sys.executable, "-m", "client.app.web"]
@@ -104,9 +105,10 @@ def start_client(script_dir: Path) -> None:
     if cookie_secret:
         os.environ["STREAMLIT_SERVER_COOKIE_SECRET"] = cookie_secret
 
-    cert, key = ensure_ssl_cert(script_dir, "AIO_CLIENT_SSL_CERT_FILE", "AIO_CLIENT_SSL_KEY_FILE")
-    os.environ["AIO_CLIENT_SSL_CERT_FILE"] = str(cert)
-    os.environ["AIO_CLIENT_SSL_KEY_FILE"] = str(key)
+    if os.environ.get("AIO_CLIENT_SSL", "true").lower() == "true":
+        cert, key = ensure_ssl_cert(script_dir, "AIO_CLIENT_SSL_CERT_FILE", "AIO_CLIENT_SSL_KEY_FILE")
+        os.environ["AIO_CLIENT_SSL_CERT_FILE"] = str(cert)
+        os.environ["AIO_CLIENT_SSL_KEY_FILE"] = str(key)
 
     os.execvp(sys.executable, args)
 

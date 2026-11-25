@@ -17,15 +17,15 @@ app = st.App(
 
 def run() -> None:
     """Run the Streamlit client with its configured listener settings."""
-    if not settings.client_ssl_cert_file or not settings.client_ssl_key_file:
-        raise RuntimeError("The Streamlit client requires a TLS certificate and private key")
-
     config: dict[str, object] = {
         "server.port": settings.client_port,
         "server.address": settings.client_address,
-        "server.sslCertFile": settings.client_ssl_cert_file,
-        "server.sslKeyFile": settings.client_ssl_key_file,
     }
+    if settings.client_ssl:
+        if not settings.client_ssl_cert_file or not settings.client_ssl_key_file:
+            raise RuntimeError("Client requires a TLS certificate and private key")
+        config["server.sslCertFile"] = settings.client_ssl_cert_file
+        config["server.sslKeyFile"] = settings.client_ssl_key_file
     with contextlib.suppress(KeyboardInterrupt):
         app.run(config=config)
 

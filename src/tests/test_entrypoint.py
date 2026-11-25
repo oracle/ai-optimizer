@@ -147,9 +147,10 @@ class TestStartServer:
         return ensure
 
     def test_https_launcher(self, tmp_path, monkeypatch, _server_certificate):
-        """start_server should launch uvicorn with TLS and the default port."""
+        """start_server should launch uvicorn with TLS by default."""
         monkeypatch.delenv("AIO_SERVER_PORT", raising=False)
         monkeypatch.delenv("AIO_SERVER_ADDRESS", raising=False)
+        monkeypatch.delenv("AIO_SERVER_SSL", raising=False)
         from unittest.mock import patch
 
         with patch("os.execvp") as mock_exec:
@@ -161,10 +162,7 @@ class TestStartServer:
         assert "0.0.0.0" in args[1]
         assert "--port" in args[1]
         assert "8000" in args[1]
-        assert "--ssl-certfile" in args[1]
-        assert "/c.pem" in args[1]
-        assert "--ssl-keyfile" in args[1]
-        assert "/k.pem" in args[1]
+        assert args[1][-4:] == ["--ssl-certfile", "/c.pem", "--ssl-keyfile", "/k.pem"]
         _server_certificate.assert_called_once_with(
             tmp_path,
             "AIO_SERVER_SSL_CERT_FILE",
@@ -179,6 +177,17 @@ class TestStartServer:
         with patch("os.execvp") as mock_exec:
             entrypoint.start_server(tmp_path)
         assert "9000" in mock_exec.call_args[0][1]
+
+    def test_tls_can_be_disabled_by_managed_deployments(self, tmp_path, monkeypatch, _server_certificate):
+        monkeypatch.setenv("AIO_SERVER_SSL", "false")
+        from unittest.mock import patch
+
+        with patch("os.execvp") as mock_exec:
+            entrypoint.start_server(tmp_path)
+        args = mock_exec.call_args[0][1]
+        assert "--ssl-certfile" not in args
+        assert "--ssl-keyfile" not in args
+        _server_certificate.assert_not_called()
 
     def test_custom_address(self, tmp_path, monkeypatch):
         """start_server should use AIO_SERVER_ADDRESS when set."""
@@ -207,6 +216,7 @@ class TestStartClient:
         """start_client should launch with resolved TLS certificate paths."""
         monkeypatch.delenv("AIO_CLIENT_PORT", raising=False)
         monkeypatch.delenv("AIO_CLIENT_ADDRESS", raising=False)
+        monkeypatch.delenv("AIO_CLIENT_SSL", raising=False)
         from unittest.mock import patch
 
         with patch("os.execvp") as mock_exec:

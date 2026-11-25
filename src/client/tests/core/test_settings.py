@@ -54,9 +54,9 @@ class TestClientSettingsFields:
         s = self._make(server_port=9000)
         assert s.server_port == 9000
 
-    def test_server_url_rejects_http(self):
-        with pytest.raises(ValueError, match="must use HTTPS"):
-            self._make(server_url="http://example.com")
+    def test_server_url_accepts_http_for_private_backend(self):
+        s = self._make(server_url="http://server.namespace.svc")
+        assert s.server_url == "http://server.namespace.svc"
 
     def test_server_url_prefix_default(self):
         """Default server_url_prefix is empty string."""

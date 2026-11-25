@@ -139,7 +139,7 @@ def test_client_ingress_requires_tls():
     assert "client.ingress.tls is required" in result.stderr
 
 
-def test_client_workload_uses_https():
+def test_client_workload_uses_https_by_default():
     result = _render()
     assert result.returncode == 0, result.stderr
     docs = _docs(result.stdout)
@@ -161,7 +161,7 @@ def test_client_workload_uses_https():
     assert service["spec"]["ports"][0]["appProtocol"] == "https"
 
 
-def test_server_workload_uses_https():
+def test_server_workload_uses_https_by_default():
     result = _render()
     assert result.returncode == 0, result.stderr
     docs = _docs(result.stdout)
@@ -183,10 +183,32 @@ def test_server_workload_uses_https():
     assert service["spec"]["ports"][0]["appProtocol"] == "https"
 
 
-def test_client_nginx_ingress_uses_https_backend():
+def test_workloads_use_http_when_pod_tls_is_disabled():
+    result = _render("server.ssl.enabled=false", "client.ssl.enabled=false")
+    assert result.returncode == 0, result.stderr
+    docs = _docs(result.stdout)
+    deployments = [doc for doc in docs if doc.get("kind") == "Deployment"]
+    services = [
+        doc
+        for doc in docs
+        if doc.get("kind") == "Service"
+        and doc.get("metadata", {}).get("labels", {}).get("app.kubernetes.io/component") in {"server", "client"}
+    ]
+    for deployment in deployments:
+        component = deployment.get("metadata", {}).get("labels", {}).get("app.kubernetes.io/component")
+        if component in {"server", "client"}:
+            container = deployment["spec"]["template"]["spec"]["containers"][0]
+            assert container["livenessProbe"]["httpGet"]["scheme"] == "HTTP"
+            assert container["readinessProbe"]["httpGet"]["scheme"] == "HTTP"
+    assert services
+    assert all(service["spec"]["ports"][0]["appProtocol"] == "http" for service in services)
+
+
+def test_client_nginx_ingress_uses_https_backend_when_enabled():
     result = _render(
         "client.ingress.enabled=true",
         "client.ingress.className=nginx",
+        "client.ssl.enabled=true",
         "client.ingress.tls[0].secretName=client-tls",
     )
     assert result.returncode == 0, result.stderr
@@ -194,10 +216,11 @@ def test_client_nginx_ingress_uses_https_backend():
     assert ingress["metadata"]["annotations"]["nginx.ingress.kubernetes.io/backend-protocol"] == "HTTPS"
 
 
-def test_server_nginx_ingress_uses_https_backend():
+def test_server_nginx_ingress_uses_https_backend_when_enabled():
     result = _render(
         "server.ingress.enabled=true",
         "server.ingress.className=nginx",
+        "server.ssl.enabled=true",
         "server.ingress.tls[0].secretName=server-tls",
     )
     assert result.returncode == 0, result.stderr

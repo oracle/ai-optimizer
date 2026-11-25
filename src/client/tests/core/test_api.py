@@ -28,6 +28,7 @@ def _mock_settings(**overrides):
     m.server_url = overrides.get("server_url", "https://localhost")
     m.server_address = overrides.get("server_address", "127.0.0.1")
     m.server_port = overrides.get("server_port", 8000)
+    m.server_ssl = overrides.get("server_ssl", True)
     m.server_ssl_cert_file = overrides.get("server_ssl_cert_file", "")
     m.server_ssl_key_file = overrides.get("server_ssl_key_file", "")
     m.server_url_prefix = overrides.get("server_url_prefix", "")
@@ -762,6 +763,7 @@ class TestSpawnServer:
         cert_file = tmp_path / "configured.crt"
         key_file = tmp_path / "configured.key"
         settings = _mock_settings(
+            server_ssl=True,
             server_ssl_cert_file=str(cert_file),
             server_ssl_key_file=str(key_file),
         )
@@ -851,7 +853,7 @@ class TestWaitForServerReady:
         mock_proc = MagicMock()
         mock_proc.poll.return_value = None
         ok_resp = MagicMock(status_code=200)
-        settings = _mock_settings(server_port=9443)
+        settings = _mock_settings(server_port=9443, server_ssl=True)
         with (
             patch(f"{MODULE}.settings", settings),
             patch(f"{MODULE}.httpx.get", return_value=ok_resp) as mock_get,

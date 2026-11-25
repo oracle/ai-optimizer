@@ -98,8 +98,9 @@ def _spawn_server(port: str, env: dict, log_path: Path) -> tuple[subprocess.Pope
         port,
     ]
 
-    cert, key = resolve_or_generate_cert(settings.server_ssl_cert_file, settings.server_ssl_key_file, _SRC_DIR)
-    args.extend(["--ssl-certfile", str(cert), "--ssl-keyfile", str(key)])
+    if getattr(settings, "server_ssl", True):
+        cert, key = resolve_or_generate_cert(settings.server_ssl_cert_file, settings.server_ssl_key_file, _SRC_DIR)
+        args.extend(["--ssl-certfile", str(cert), "--ssl-keyfile", str(key)])
 
     proc = subprocess.Popen(  # keep handle open for uvicorn logging; closed in _stop_server
         args,
@@ -209,8 +210,9 @@ def _local_server_base_url(api_prefix: str = "/v1") -> str:
 
 def _local_server_origin_url() -> str:
     """Return the origin URL for the locally spawned API server."""
+    scheme = "https" if getattr(settings, "server_ssl", True) else "http"
     host = connect_host(settings.server_address)
-    return f"https://{netloc(host, settings.server_port)}"
+    return f"{scheme}://{netloc(host, settings.server_port)}"
 
 
 def _stop_process(proc: subprocess.Popen) -> None:
