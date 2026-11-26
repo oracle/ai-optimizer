@@ -50,7 +50,12 @@ _INTERNAL_HOST_RE = re.compile(
 )
 
 
-def _render(tmp_path: Path, is_obs: bool, byo_url: str) -> str:
+def _render(
+    tmp_path: Path,
+    is_obs: bool,
+    byo_url: str,
+    ssl_hostname: str = "optimizer.example.test",
+) -> str:
     """Render ai-optimizer-values.yaml the way cfgmgt_optimizer.tf does:
     is_observability_enabled forwards directly; byo_ocir_url is
     forwarded as ocir_url."""
@@ -83,7 +88,7 @@ def _render(tmp_path: Path, is_obs: bool, byo_url: str) -> str:
                 oidc_redirect_uri        = "https://optimizer.example.test/oauth2callback"
                 oidc_admin_subject       = "admin-subject"
                 oidc_public_server_url   = "https://optimizer.example.test"
-                ssl_hostname             = "optimizer.example.test"
+                ssl_hostname             = "{ssl_hostname}"
                 is_observability_enabled = local.is_observability_enabled
                 ocir_url                 = local.byo_ocir_url
                 object_storage_bucket    = ""
@@ -297,6 +302,19 @@ def test_render_uses_current_chart_value_names_and_pinned_tags(tmp_path):
     assert rendered.count('tag: "0.0.0"') == 2
     assert rendered.count('oci-native-ingress.oraclecloud.com/backend-tls-enabled: "false"') == 2
     assert rendered.count("oci-native-ingress.oraclecloud.com/healthcheck-protocol: HTTP") == 2
+
+
+def test_self_signed_render_uses_tls_secret_without_hostname(tmp_path):
+    rendered = _render(
+        tmp_path,
+        is_obs=False,
+        byo_url="",
+        ssl_hostname="",
+    )
+    assert rendered.count("secretName: ai-optimizer-tls") == 2
+    assert "oci-native-ingress.oraclecloud.com/certificate-ocid:" not in rendered
+    assert 'host: ""' not in rendered
+    assert '- ""' not in rendered
 
 
 def test_byo_render_passes_helm_validation(byo_helm_render):

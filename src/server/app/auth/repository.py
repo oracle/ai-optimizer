@@ -56,61 +56,6 @@ def _configured_authority(app_settings: Settings, identity: tuple[str, str]) -> 
     )
 
 
-def _incorrect_discovery_endpoint_issuer(app_settings: Settings) -> str | None:
-    discovery_url = (app_settings.oidc_discovery_url or "").rstrip("/")
-    suffix = "/.well-known/openid-configuration"
-    if not discovery_url.endswith(suffix):
-        return None
-    return discovery_url.removesuffix(suffix).rstrip("/")
-
-
-async def _repair_incorrect_discovery_endpoint_issuer(
-    conn: oracledb.AsyncConnection,
-    existing: tuple,
-    expected: tuple,
-    app_settings: Settings,
-) -> bool:
-    """Repair a discovery endpoint base URL previously written as the token issuer."""
-    incorrect_issuer = _incorrect_discovery_endpoint_issuer(app_settings)
-    existing_issuer = existing[4]
-    same_authority = existing[:4] == expected[:4] and existing[5] == expected[5]
-    if (
-        app_settings.auth_mode != "oidc"
-        or not same_authority
-        or not isinstance(existing_issuer, str)
-        or existing_issuer.rstrip("/") != incorrect_issuer
-        or existing_issuer == expected[4]
-    ):
-        return False
-
-    rows = await execute_sql(
-        conn,
-        "SELECT COUNT(*) FROM aio_users WHERE auth_source = 'OIDC' AND user_id <> :admin_user_id",
-        {"admin_user_id": ADMIN_USER_ID.bytes},
-        max_rows=1,
-    )
-    if not rows or rows[0][0] != 0:
-        return False
-
-    await execute_sql(
-        conn,
-        "UPDATE aio_auth_authority SET oidc_issuer = :issuer, last_validated = SYSTIMESTAMP "
-        "WHERE authority_id = 1 AND oidc_issuer = :incorrect_issuer",
-        {"issuer": expected[4], "incorrect_issuer": existing_issuer},
-    )
-    await execute_sql(
-        conn,
-        "UPDATE aio_users SET issuer = :issuer, updated = SYSTIMESTAMP "
-        "WHERE user_id = :admin_user_id AND auth_source = 'OIDC' AND issuer = :incorrect_issuer",
-        {
-            "issuer": expected[4],
-            "incorrect_issuer": existing_issuer,
-            "admin_user_id": ADMIN_USER_ID.bytes,
-        },
-    )
-    return True
-
-
 def _admin_database_identity(app_settings: Settings) -> str | None:
     if app_settings.auth_mode == "oidc":
         return None
@@ -487,13 +432,7 @@ async def bind_authority(app_settings: Settings = settings) -> AuthAuthority:
         )
         if rows:
             existing = tuple(rows[0][:6]) if len(rows) == 1 else ()
-            repaired = len(rows) == 1 and await _repair_incorrect_discovery_endpoint_issuer(
-                conn,
-                existing,
-                expected,
-                app_settings,
-            )
-            if existing != expected and not repaired:
+            if existing != expected:
                 raise ValueError("Authentication authority does not match the configured deployment")
         else:
             await execute_sql(
