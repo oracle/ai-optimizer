@@ -1,6 +1,7 @@
 """OIDC access-token validation and principal provisioning."""
 
 import asyncio
+import logging
 
 import httpx
 import jwt
@@ -15,6 +16,7 @@ from server.app.core.settings import settings
 _ALGORITHMS = ("RS256", "RS384", "RS512", "PS256", "PS384", "PS512", "ES256", "ES384", "ES512", "EdDSA")
 _DISCOVERY_TIMEOUT_SECONDS = 10.0
 _JWKS_CACHE_SECONDS = 300
+LOGGER = logging.getLogger(__name__)
 
 
 def _required_string(claims: dict, name: str) -> str:
@@ -66,12 +68,14 @@ class OIDCAuthenticator:
             )
         except PyJWKClientConnectionError:
             raise AuthAuthorityUnavailable("OIDC signing-key authority is unavailable") from None
-        except (InvalidTokenError, PyJWKClientError, ValueError, TypeError):
+        except (InvalidTokenError, PyJWKClientError, ValueError, TypeError) as exc:
+            LOGGER.info("OIDC access token rejected: %s", type(exc).__name__)
             raise AuthenticationError("Invalid bearer credential") from None
 
         subject = _required_string(claims, "sub")
         scopes = _claim_scopes(claims)
         if not set(settings.oidc_required_scopes).issubset(scopes):
+            LOGGER.info("OIDC access token rejected: required scope missing")
             raise AuthenticationError("Invalid bearer credential")
         email = _optional_string(claims, "email")
         username = _optional_string(claims, "preferred_username") or email or subject
@@ -87,6 +91,7 @@ class OIDCAuthenticator:
         except Exception as exc:
             raise AuthAuthorityUnavailable("OIDC user authority is unavailable") from exc
         if user.status != "active":
+            LOGGER.info("OIDC access token rejected: user inactive")
             raise AuthenticationError("Invalid bearer credential")
         return Principal(
             user_id=user.user_id,

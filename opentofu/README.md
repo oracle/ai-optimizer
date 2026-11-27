@@ -139,7 +139,7 @@ To use this infrastructure in another project:
    tofu apply
    ```
 
-The apply registers an access-controlled OAuth application in the identity domain containing the OCI user applying the stack. That user is granted the application and becomes AI Optimizer Admin. The generated OAuth client secret is stored in OpenTofu state; protect state and plan artifacts.
+The apply enables public access to the selected identity domain's signing certificate and registers an access-controlled OAuth application. The applying user is granted the application and becomes AI Optimizer Admin. The generated OAuth client secret is stored in OpenTofu state; protect state and plan artifacts.
 
 ## Testing
 

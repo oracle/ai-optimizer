@@ -15,11 +15,11 @@ The stack provisions compute, networking, load balancer, Oracle AI Database reso
 
 ## OCI IAM authentication
 
-The stack selects the active identity domain containing the OCI user applying the stack and registers AI Optimizer as an access-controlled OAuth client and resource server. The registration uses the load balancer URLs for its audience and Streamlit callback, the identity-domain endpoint for discovery, and OCI IAM's published issuer for token validation. It passes those values, the generated scope, and client credentials directly to the VM or OKE deployment.
+The stack selects the active identity domain containing the OCI user applying the stack and registers AI Optimizer as an access-controlled OAuth client and resource server. It also enables public access to the domain's signing certificate so OIDC clients can validate tokens. The registration uses the load balancer URLs for its audience and Streamlit callback, the identity-domain endpoint for discovery, and OCI IAM's published issuer for token validation. It passes those values, the generated scope, and client credentials directly to the VM or OKE deployment.
 
 The OCI user applying the stack receives access to the IAM application and becomes the reserved AI Optimizer Admin. Grant the IAM application to additional users or groups from **Identity & Security → Domains → _the selected domain_ → Integrated applications**. They join AI Optimizer as members on first sign-in.
 
-The deployment principal needs permission to read users and manage applications and grants in the selected identity domain. Assign the appropriate identity-domain administrator role before applying the stack.
+The deployment principal needs permission to read users and manage applications, grants, and settings in the selected identity domain. Assign the appropriate identity-domain administrator role before applying the stack.
 
 :::warning[Protect deployment state]
 The generated OAuth client secret is stored in OpenTofu or Resource Manager state. Restrict access to state and plan artifacts.
