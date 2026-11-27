@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Local session</title>
+  </head>
+  <body>
+    <script>
+      const send = (type, fields = {}) => {
+        window.parent.postMessage({ isStreamlitMessage: true, type, ...fields }, "*");
+      };
+
+      window.addEventListener("message", async (event) => {
+        if (event.source !== window.parent || event.data?.type !== "streamlit:render") return;
+        const { action, endpoint, token } = event.data.args;
+        try {
+          const streamlitUrl = new URLSearchParams(window.location.search).get("streamlitUrl");
+          const parentUrl = new URL(streamlitUrl || document.referrer);
+          const basePath = parentUrl.pathname.endsWith("/") ? parentUrl.pathname : `${parentUrl.pathname}/`;
+          const sessionUrl = new URL(`${basePath}${endpoint}`, parentUrl.origin);
+          const request = (requestedAction) => fetch(sessionUrl, {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: requestedAction, token }),
+          });
+          const response = await request(action);
+          const persisted = response.ok && (action !== "set" || (await request("check")).ok);
+          send("streamlit:setComponentValue", { value: persisted });
+        } catch (_) {
+          send("streamlit:setComponentValue", { value: false });
+        }
+      });
+
+      send("streamlit:componentReady", { apiVersion: 1 });
+      send("streamlit:setFrameHeight", { height: 0 });
+    </script>
+  </body>
+</html>

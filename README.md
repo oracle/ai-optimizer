@@ -74,7 +74,7 @@ To run the application on bare metal, download the [source](https://github.com/o
    uv run python src/entrypoint.py client
    ```
 
-1. Navigate to `http://localhost:8501`.
+1. Navigate to `https://localhost:8501`.
 
 1. [Configure](https://oracle.github.io/ai-optimizer/docs/client/configuration/) the **AI Optimizer**.
 
@@ -96,7 +96,7 @@ To run the application in a container, download the [source](https://github.com/
    podman run -v ai-optimizer-data:/app/data -p 8501:8501 -it --rm localhost/ai-optimizer-aio:dev
    ```
 
-1. Navigate to `http://localhost:8501`.
+1. Navigate to `https://localhost:8501`.
 
 1. Complete the required Oracle AI Database setup page. A successful configuration is stored in the `ai-optimizer-data` container volume.
 

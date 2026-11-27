@@ -20,7 +20,6 @@ from fastapi import (
     APIRouter,
     File,
     Form,
-    Header,
     HTTPException,
     Query,
     UploadFile,
@@ -32,8 +31,8 @@ from pydantic import ValidationError
 from server.app.api.v1.endpoints._helpers import _safe_filename_or_400
 from server.app.api.v1.endpoints.chat import get_orchestrator
 from server.app.api.v1.schemas.chat import MessageResponse
-from server.app.api.v1.schemas.common import ClientId
 from server.app.api.v1.schemas.testbed import Evaluation, EvaluationReport, QASetData, QASets, RejectedFile
+from server.app.auth.dependencies import WorkspaceKey
 from server.app.core.error_detail import response_error_detail
 from server.app.core.file_utils import get_temp_directory
 from server.app.core.settings import resolve_client
@@ -199,8 +198,8 @@ async def generate_testset_endpoint(
     name: Annotated[TestsetName, Form()],
     ll_model: Annotated[str, Form()],
     embed_model: Annotated[str, Form()],
+    client: WorkspaceKey,
     questions: Annotated[QuestionCount, Form()] = 2,
-    client: Annotated[ClientId, Header()] = "server",
 ):
     """Generate a Q&A testset from uploaded PDF files."""
     # Fail fast: verify CORE DB is available before starting expensive LLM work.
@@ -270,7 +269,7 @@ async def generate_testset_endpoint(
 async def evaluate_testset(
     tid: Annotated[TestsetId, Query()],
     judge: str,
-    client: Annotated[ClientId, Header()] = "server",
+    client: WorkspaceKey,
 ):
     """Run an evaluation against a testset using the configured chatbot and judge model."""
     if _TESTBED_LOCK.locked():

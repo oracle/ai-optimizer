@@ -6,9 +6,9 @@ sidebar_position: 5
 ---
 import DocCardList from '@theme/DocCardList';
 
-The **AI Optimizer Server** exposes server capabilities through REST endpoints. Use the built-in Swagger UI at `/v1/docs` for the complete API reference. The page prompts for the `x-api-key` before rendering the documentation.
+The **AI Optimizer Server** exposes server capabilities through REST endpoints. Use the built-in Swagger UI at `/v1/docs` for the complete API reference.
 
-Protected API requests require authentication using the `x-api-key` header, which must match the API key configured on the server. The `/v1/liveness`, `/v1/readiness`, and `/v1/healthz` health-probe endpoints do not require the header.
+Protected API requests require an Oracle database or OIDC bearer token. [Obtain a bearer token](../../guides/access-control#obtain-a-bearer-token) before running an authenticated example. The `/v1/liveness`, `/v1/readiness`, and `/v1/healthz` health-probe endpoints are public.
 
 :::tip[Just Ask]
 Looking for more working examples for calling the **AI Optimizer Server** API directly?  Contact us using the links at the bottom of this page.

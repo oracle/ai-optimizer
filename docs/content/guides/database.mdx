@@ -43,6 +43,8 @@ If you start the bare-metal client or all-in-one container without the three req
 
 Settings entered on the bare-metal setup page last until the client stops. The all-in-one container stores them in its application-data volume.
 
+With database authentication, startup maps the configured database user to Admin.
+
 :::note[Standalone Server]
 The setup page is provided by the client. If you run the [Server](../server/intro) directly, set the database environment variables before starting it.
 :::
@@ -55,7 +57,7 @@ The [Kubernetes / Helm](../advanced-guides/k8s-helm#configure-the-database) guid
 
 ### Client Display
 
-After the Server starts, the [Databases](../client/configuration/databases) page displays the required connection with the reserved alias **CORE**. The deployment startup configuration controls CORE. Use the page to add and select database connections for Split/Embed, Vector Search, and NL2SQL.
+After the Server starts, the [Databases](../client/configuration/databases) page displays the required AI Optimizer application-database connection. It appears with the reserved internal alias **CORE** and is controlled by the deployment startup configuration. Use the page to add and select other database connections for Split/Embed, Vector Search, and NL2SQL.
 
 ## Run Local Oracle AI Database Free
 
@@ -146,6 +148,36 @@ EXIT;
 Creating multiple users in the same database allows developers to separate their experiments by changing the Database User.
 
 :::
+
+### Local End-User and Data-Role Foundation
+
+Authentication member administration and Deep Data Security both manage Oracle local end users and data roles. Run the following shared setup as a privileged database user. Replace `<DATABASE_USER>` with the database connection that will perform those operations.
+
+```sql
+GRANT CREATE END USER TO "<DATABASE_USER>";
+GRANT DROP END USER TO "<DATABASE_USER>";
+GRANT CREATE DATA ROLE TO "<DATABASE_USER>";
+GRANT GRANT ANY DATA ROLE TO "<DATABASE_USER>";
+GRANT SELECT ON DBA_END_USERS TO "<DATABASE_USER>";
+GRANT SELECT ON DBA_DATA_ROLES TO "<DATABASE_USER>";
+GRANT SELECT ON DBA_DATA_ROLE_GRANTS TO "<DATABASE_USER>";
+
+CREATE ROLE AIO_DDS_ROLE;
+GRANT CREATE SESSION TO AIO_DDS_ROLE;
+GRANT AIO_DDS_ROLE TO "<DATABASE_USER>" WITH ADMIN OPTION;
+```
+
+### Authentication Member Administration
+
+Apply the shared foundation to the CORE account configured by `AIO_DB_USERNAME`. Member password reset and account lock or unlock also require:
+
+```sql
+GRANT ALTER END USER TO "<DATABASE_USER>";
+```
+
+OpenTofu applies the shared foundation and authentication authority during database provisioning. Helm applies them when `server.database.privAuthn` is configured. Apply the manual grants for bare-metal and standalone-container installations.
+
+These privileges are optional. Admin authentication remains available without them, while member administration shows an availability notice.
 
 ### NL2SQL Access
 

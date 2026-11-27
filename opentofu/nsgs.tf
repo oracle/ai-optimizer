@@ -12,24 +12,8 @@ resource "oci_core_network_security_group" "lb" {
   }
 }
 
-resource "oci_core_network_security_group_security_rule" "lb_client_http_ingress" {
-  for_each                  = local.client_allowed_cidrs
-  network_security_group_id = oci_core_network_security_group.lb.id
-  description               = "Loadbalancer Client HTTP Access - ${each.value}."
-  direction                 = "INGRESS"
-  protocol                  = "6"
-  source                    = each.value
-  source_type               = "CIDR_BLOCK"
-  tcp_options {
-    destination_port_range {
-      min = local.lb_client_http_port
-      max = local.lb_client_http_port
-    }
-  }
-}
-
 resource "oci_core_network_security_group_security_rule" "lb_client_https_ingress" {
-  for_each                  = local.ssl_enabled ? local.client_allowed_cidrs : toset([])
+  for_each                  = local.client_allowed_cidrs
   network_security_group_id = oci_core_network_security_group.lb.id
   description               = "Loadbalancer Client HTTPS Access - ${each.value}."
   direction                 = "INGRESS"
@@ -44,24 +28,8 @@ resource "oci_core_network_security_group_security_rule" "lb_client_https_ingres
   }
 }
 
-resource "oci_core_network_security_group_security_rule" "lb_server_http_ingress" {
-  for_each                  = local.server_allowed_cidrs
-  network_security_group_id = oci_core_network_security_group.lb.id
-  description               = "Loadbalancer Server HTTP Access - ${each.value}."
-  direction                 = "INGRESS"
-  protocol                  = "6"
-  source                    = each.value
-  source_type               = "CIDR_BLOCK"
-  tcp_options {
-    destination_port_range {
-      min = local.lb_server_http_port
-      max = local.lb_server_http_port
-    }
-  }
-}
-
 resource "oci_core_network_security_group_security_rule" "lb_server_https_ingress" {
-  for_each                  = local.ssl_enabled ? local.server_allowed_cidrs : toset([])
+  for_each                  = local.server_allowed_cidrs
   network_security_group_id = oci_core_network_security_group.lb.id
   description               = "Loadbalancer Server HTTPS Access - ${each.value}."
   direction                 = "INGRESS"

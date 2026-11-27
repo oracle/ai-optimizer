@@ -167,7 +167,7 @@ class TestGetMcpClient:
                 "oracle-ai-optimizer": {
                     "type": "http",
                     "url": "http://test/mcp",
-                    "headers": {"X-API-Key": "test-key"},
+                    "headers": {"Authorization": "Bearer ${AIO_BEARER_TOKEN}"},
                 }
             }
         }
@@ -493,7 +493,7 @@ class TestDisplayMcp:
             patch(f"{MODULE}.get_mcp"),
             patch(f"{MODULE}.get_mcp_status", return_value={"status": "ok", "name": "MCP", "version": "1.0"}),
             patch(f"{MODULE}.get_mcp_client", return_value="{}") as mock_get_client,
-            patch(f"{MODULE}.is_authenticated", return_value=True),
+            patch(f"{MODULE}.is_admin", return_value=True),
         ):
             from client.app.content.config.tabs.mcp import display_mcp
 
@@ -540,7 +540,7 @@ class TestDisplayMcp:
             patch(f"{MODULE}.get_mcp"),
             patch(f"{MODULE}.get_mcp_status", return_value={"status": "ok", "name": "MCP", "version": "1.0"}),
             patch(f"{MODULE}.get_mcp_client", return_value="{}"),
-            patch(f"{MODULE}.is_authenticated", return_value=True),
+            patch(f"{MODULE}.is_admin", return_value=True),
             patch(f"{MODULE}.render_configs") as mock_render,
         ):
             from client.app.content.config.tabs.mcp import display_mcp
@@ -569,7 +569,7 @@ class TestDisplayMcp:
             patch(f"{MODULE}.get_mcp"),
             patch(f"{MODULE}.get_mcp_status", return_value={"status": "ok", "name": "MCP", "version": "1.0"}),
             patch(f"{MODULE}.get_mcp_client", return_value="{}"),
-            patch(f"{MODULE}.is_authenticated", return_value=True),
+            patch(f"{MODULE}.is_admin", return_value=True),
             patch(f"{MODULE}.render_configs") as mock_render,
         ):
             from client.app.content.config.tabs.mcp import display_mcp
@@ -594,7 +594,7 @@ class TestDisplayMcp:
             patch(f"{MODULE}.get_mcp"),
             patch(f"{MODULE}.get_mcp_status", return_value={"status": "ok", "name": "MCP", "version": "1.0"}),
             patch(f"{MODULE}.get_mcp_client", return_value="{}") as mock_get_client,
-            patch(f"{MODULE}.is_authenticated", return_value=False),
+            patch(f"{MODULE}.is_admin", return_value=False),
             patch(f"{MODULE}.locked_notice") as mock_locked_notice,
             patch(f"{MODULE}.render_configs"),
         ):

@@ -27,7 +27,6 @@ def _make_state(extra=None):
     data = AttrDict(
         {
             "settings": base_test_settings(),
-            "optimizer_client": "test-client",
         }
     )
     if extra:
@@ -78,7 +77,6 @@ class TestFetchActiveJobs:
         mock_get.assert_called_once_with(
             "embed/jobs",
             params={"active_only": "true"},
-            extra_headers={"client": "test-client"},
             timeout=5,
         )
 
@@ -483,29 +481,45 @@ class TestSubmitTimeHooks:
 class TestRenderActiveEmbedJobs:
     """Tests for the public helper that pages call."""
 
-    def test_invokes_fragment(self):
-        """Verify the public helper delegates to the polling fragment."""
-        with patch(f"{MODULE}._embed_jobs_fragment") as mock_fragment:
+    def test_idle_page_does_not_mount_polling_fragment(self):
+        with (
+            patch(f"{MODULE}.state", AttrDict()),
+            patch(f"{MODULE}._fetch_active_jobs", return_value=[]),
+            patch(f"{MODULE}._render_jobs_panel") as render,
+            patch(f"{MODULE}._embed_jobs_fragment") as fragment,
+        ):
             from client.app.core.embed_status import render_active_embed_jobs
 
             render_active_embed_jobs()
-        mock_fragment.assert_called_once_with(refresh_on_idle=False, hide_when_idle=False)
+        render.assert_called_once_with([], hide_when_idle=False)
+        fragment.assert_not_called()
 
-    def test_passes_refresh_on_idle(self):
-        """Verify refresh_on_idle is forwarded so the database page can opt in."""
-        with patch(f"{MODULE}._embed_jobs_fragment") as mock_fragment:
+    def test_active_job_mounts_polling_fragment(self):
+        active = [{"job_id": "job-1", "status": "running"}]
+        with (
+            patch(f"{MODULE}.state", AttrDict()),
+            patch(f"{MODULE}._fetch_active_jobs", return_value=active),
+            patch(f"{MODULE}._embed_jobs_fragment") as fragment,
+        ):
             from client.app.core.embed_status import render_active_embed_jobs
 
             render_active_embed_jobs(refresh_on_idle=True)
-        mock_fragment.assert_called_once_with(refresh_on_idle=True, hide_when_idle=False)
+        fragment.assert_called_once_with(refresh_on_idle=True, hide_when_idle=False)
 
-    def test_passes_hide_when_idle(self):
-        """Verify hide_when_idle is forwarded so the embedding tab can opt in."""
-        with patch(f"{MODULE}._embed_jobs_fragment") as mock_fragment:
+    def test_seen_job_keeps_polling_until_completion(self):
+        from client.app.core.embed_status import _SEEN_JOBS_KEY
+
+        state = AttrDict({_SEEN_JOBS_KEY: {"job-1"}})
+        with (
+            patch(f"{MODULE}.state", state),
+            patch(f"{MODULE}._fetch_active_jobs") as fetch,
+            patch(f"{MODULE}._embed_jobs_fragment") as fragment,
+        ):
             from client.app.core.embed_status import render_active_embed_jobs
 
             render_active_embed_jobs(hide_when_idle=True)
-        mock_fragment.assert_called_once_with(refresh_on_idle=False, hide_when_idle=True)
+        fetch.assert_not_called()
+        fragment.assert_called_once_with(refresh_on_idle=False, hide_when_idle=True)
 
 
 # ---------------------------------------------------------------------------

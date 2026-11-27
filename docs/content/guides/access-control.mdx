@@ -1,66 +1,86 @@
 ---
 title: Access Control
-description: Configure access control for shared deployments.
+description: Configure database-account or OIDC authentication for AI Optimizer Server.
 sidebar_position: 10
 ---
 
-{/* Copyright (c) 2024, 2026, Oracle and/or its affiliates.
-Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl. */}
+{/_ Copyright (c) 2024, 2026, Oracle and/or its affiliates.
+Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl. _/}
 
-One **AI Optimizer Server** can serve many web client sessions, IDE and MCP clients, and external applications. Teams sharing one server use [separate client sessions](../server/multi-user-sessions) to keep conversations and working selections apart while using the same configured resources.
+AI Optimizer supports Oracle database and OIDC authentication. Each deployment has one reserved `Admin` identity.
 
-## Choose a Deployment Boundary
+## Database authentication
 
-- **Trusted collaborators:** Use one server and [protect shared configuration](#protecting-the-shared-configuration) controls with a password.
-- **External applications:** Authenticate requests with the API key.
-- **Untrusted users or tenants:** Use separate deployments with different API keys.
+The Oracle account configured by `AIO_DB_USERNAME` is Admin. Database members require the `AIO_LOGIN_ROLE` data role.
 
-## Client IDs and Access Boundary
+With the [end-user administration privileges](./database#authentication-member-administration), Admin can create members, update profiles, lock or unlock accounts, and reset passwords from **Configuration → Users**.
 
-A client ID selects a session; it does not authenticate a client or restrict access to a session.
+## OIDC authentication
 
-Any client with the API key can use any client ID, including `server`. A client that knows or guesses another client ID can read that session's conversation history and submit requests using its settings.
+AI Optimizer Server validates bearer tokens from the configured identity provider. The configured Admin subject receives the Admin identity; other accepted subjects receive member identities.
 
-:::tip
-Use client IDs to separate conversation context and client settings. To isolate untrusted tenants, run separate deployments of the **AI Optimizer** with different API keys.
-:::
+`AIO_OIDC_ISSUER` is the exact token issuer. Discovery defaults to the issuer's `/.well-known/openid-configuration` endpoint. Set `AIO_OIDC_DISCOVERY_URL` when the provider publishes its configuration at another URL.
 
-## Protecting the Shared Configuration
+REST and MCP clients use their own OAuth registrations. The optional Streamlit client uses an authorization-code registration.
 
-The password gate keeps unauthenticated browser sessions from changing shared configuration, including adding or deleting databases, editing models, resetting settings, and exporting configuration that contains secrets.
+OCI OpenTofu deployments create the Streamlit client/resource-server registration in the deploying OCI user's identity domain, grant it to that user, and configure the user as Admin. Grant the generated IAM application to additional users or groups to admit members.
 
-For shared or multi-client deployments, set a **shared password** to protect these controls using the [`AIO_CLIENT_PASSWORD`](../guides/env-vars#client) environment variable to enable the gate.
+## User settings
 
-When the password is set, the gate is enabled and protected controls are read-only until a user signs in.
+Each account has its own model, tool, database, and OCI selections, chat history, embedding jobs, evaluations, and Deep Data Security sessions.
 
-When it is unset, the gate is disabled and all controls are accessible.
+## Authorization
 
-:::note
-This check applies only to the web client. It does not replace or affect API Server authentication. External clients still authenticate with `AIO_API_KEY`. See [Environment Variables](../guides/env-vars).
-:::
+Members can use their own settings, chat, history, evaluations, and read-only tools. Admin can also change shared databases, models, OCI profiles, prompts, vector stores, Deep Data Security policy, and deployment settings.
 
-### What the gate covers
+MCP uses the same bearer identity. Read-only MCP capabilities are available to members; database-changing SQLcl capabilities require Admin.
 
-When a password is configured, the following remain read-only until sign-in:
+## Obtain a bearer token
 
-- **Configuration** tabs: Databases, Models, OCI, MCP, and Settings
-- The **API Server** page (including the server key)
-- Stored connection fields (passwords and keys render as a redacted `••••••••` placeholder rather than editable inputs)
-- **Reset** / **Delete** actions and configuration **import/export**
-- **Prompt Engineering** edits
+The command examples use `AIO_BEARER_TOKEN` as a shell variable containing the caller's token.
 
-Personal workspace pages, including **ChatBot**, **Tools**, and **Testbed**, stay usable while signed out. Only controls that change shared configuration are protected.
+### Database accounts
 
-### Signing in and out
+Sign in with a managed database account:
 
-When the password is configured, a **🔐 Sign-in** entry appears in the sidebar. Select it, or the inline **Sign in** link next to a protected control, to open the password dialog. Enter the shared password and press **Enter**.
+```bash
+curl -X POST https://localhost:8000/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"<database-username>","password":"<database-password>"}'
+```
 
-![Access Control](../_assets/images/access-control-signin.png)
+The response contains the bearer token and its expiry:
 
-Authentication applies to one browser session. Signing in unlocks protected controls for that session only, and other browser sessions are unaffected. Once signed in, the entry becomes **🔓 Sign-out**, which clears that session's authenticated state.
+```json
+{
+  "access_token": "<token>",
+  "token_type": "bearer",
+  "expires": "<timestamp>"
+}
+```
 
-![Access Control](../_assets/images/access-control-signout.png)
+Export the returned `access_token` in the shell used by the REST or MCP client:
 
-:::warning
-The password is _shared_. It protects shared controls, but does not identify the browser session that supplies it.
-:::
+```bash
+export AIO_BEARER_TOKEN='<token>'
+```
+
+### OIDC clients
+
+Use the external client's OAuth registration to obtain an access token for the configured `AIO_OIDC_AUDIENCE` and `AIO_OIDC_REQUIRED_SCOPES`, then export that access token as `AIO_BEARER_TOKEN`. The optional Streamlit client uses its own authorization-code registration; REST and MCP clients use their own OAuth registrations.
+
+## Database sessions
+
+`POST /v1/auth/login` accepts the managed database username and password and returns an opaque bearer token. Send that token as `Authorization: Bearer <token>` on protected requests. `POST /v1/auth/logout` revokes the current token.
+
+Database sessions use the configured absolute lifetime, idle timeout, and per-user limit. Account locks and password resets made through AI Optimizer revoke active sessions. External account-state changes are applied within `AIO_AUTH_ACCOUNT_STATUS_CACHE_SECONDS`.
+
+Authenticated members can change their own password with `POST /v1/auth/password-change`; password rules and failure accounting come from the database profile. Locked or expired accounts require Admin recovery. Admin password changes use database administration so `AIO_DB_PASSWORD` can be updated at the same time.
+
+Password changes made outside AI Optimizer leave existing sessions active until logout or expiry.
+
+## Admin credential recovery
+
+For database authentication, recover the `AIO_DB_USERNAME` account using database administration. Update `AIO_DB_PASSWORD`, or the backing Helm database Secret, and restart AI Optimizer.
+
+For OIDC, run `python -m server.app.auth.recovery` with `AIO_RECOVERY_OIDC_ADMIN_SUBJECT` from an environment with the deployment configuration and database access. Set `AIO_OIDC_ADMIN_SUBJECT` to the replacement subject before restarting AI Optimizer.

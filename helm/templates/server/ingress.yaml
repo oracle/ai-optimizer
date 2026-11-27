@@ -3,9 +3,16 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 spell-checker: ignore nindent */}}
 
 {{- if .Values.server.ingress.enabled -}}
+{{- $annotations := deepCopy (.Values.server.ingress.annotations | default dict) -}}
+{{- if and .Values.server.ssl.enabled (eq .Values.server.ingress.className "nginx") (not (hasKey $annotations "nginx.ingress.kubernetes.io/backend-protocol")) -}}
+  {{- $_ := set $annotations "nginx.ingress.kubernetes.io/backend-protocol" "HTTPS" -}}
+{{- end -}}
+{{- if and (eq .Values.server.ingress.className "native-ic") (not (hasKey $annotations "oci-native-ingress.oraclecloud.com/backend-tls-enabled")) -}}
+  {{- $_ := set $annotations "oci-native-ingress.oraclecloud.com/backend-tls-enabled" (ternary "true" "false" .Values.server.ssl.enabled) -}}
+{{- end -}}
 {{- if and .Values.server.ingress.className (not (semverCompare ">=1.18-0" .Capabilities.KubeVersion.GitVersion)) }}
-  {{- if not (hasKey .Values.server.ingress.annotations "kubernetes.io/ingress.class") }}
-  {{- $_ := set .Values.server.ingress.annotations "kubernetes.io/ingress.class" .Values.server.ingress.className}}
+  {{- if not (hasKey $annotations "kubernetes.io/ingress.class") }}
+  {{- $_ := set $annotations "kubernetes.io/ingress.class" .Values.server.ingress.className}}
   {{- end }}
 {{- end }}
 apiVersion: networking.k8s.io/v1
@@ -15,7 +22,7 @@ metadata:
   labels:
     app.kubernetes.io/component: server
     {{- include "ai-optimizer.labels" . | nindent 4 }}
-  {{- with .Values.server.ingress.annotations }}
+  {{- with $annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
@@ -36,7 +43,12 @@ spec:
     {{- end }}
   {{- end }}
   rules:
+    {{- if .Values.server.ingress.host }}
+    - host: {{ .Values.server.ingress.host | quote }}
+      http:
+    {{- else }}
     - http:
+    {{- end }}
         paths:
           - pathType: Prefix
             path: {{ include "ai-optimizer.getPath" . }}v1

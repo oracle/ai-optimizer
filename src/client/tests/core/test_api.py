@@ -7,6 +7,7 @@ Unit tests for client.app.core.api
 # spell-checker: disable
 
 import json
+import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -24,14 +25,13 @@ pytestmark = pytest.mark.unit
 def _mock_settings(**overrides):
     """Create a mock settings object with defaults."""
     m = MagicMock()
-    m.server_url = overrides.get("server_url", "http://localhost")
+    m.server_url = overrides.get("server_url", "https://localhost")
     m.server_address = overrides.get("server_address", "127.0.0.1")
     m.server_port = overrides.get("server_port", 8000)
-    m.server_ssl = overrides.get("server_ssl", False)
+    m.server_ssl = overrides.get("server_ssl", True)
     m.server_ssl_cert_file = overrides.get("server_ssl_cert_file", "")
     m.server_ssl_key_file = overrides.get("server_ssl_key_file", "")
     m.server_url_prefix = overrides.get("server_url_prefix", "")
-    m.api_key = overrides.get("api_key", "test-key")
     return m
 
 
@@ -106,7 +106,7 @@ class TestBaseUrl:
             from client.app.core.api import _base_url
 
             result = _base_url()
-        assert result == "http://localhost:8000/v1"
+        assert result == "https://localhost:8000/v1"
 
     def test_custom_api_prefix(self):
         """Verify a custom api_prefix replaces the default /v1."""
@@ -115,7 +115,7 @@ class TestBaseUrl:
             from client.app.core.api import _base_url
 
             result = _base_url("/v2")
-        assert result == "http://localhost:8000/v2"
+        assert result == "https://localhost:8000/v2"
 
     def test_server_url_prefix(self):
         """Verify server_url_prefix is included in the base URL."""
@@ -124,25 +124,25 @@ class TestBaseUrl:
             from client.app.core.api import _base_url
 
             result = _base_url()
-        assert result == "http://localhost:8000/app/v1"
+        assert result == "https://localhost:8000/app/v1"
 
     def test_url_with_port_in_server_url(self):
         """Verify port embedded in server_url takes precedence."""
-        settings = _mock_settings(server_url="http://myhost:9000")
+        settings = _mock_settings(server_url="https://myhost:9000")
         with patch(f"{MODULE}.settings", settings):
             from client.app.core.api import _base_url
 
             result = _base_url()
-        assert result == "http://myhost:9000/v1"
+        assert result == "https://myhost:9000/v1"
 
     def test_url_with_path_in_server_url(self):
         """Verify a path in an external server_url is preserved without adding a port."""
-        settings = _mock_settings(server_url="http://myhost/base")
+        settings = _mock_settings(server_url="https://myhost/base")
         with patch(f"{MODULE}.settings", settings):
             from client.app.core.api import _base_url
 
             result = _base_url()
-        assert result == "http://myhost/base/v1"
+        assert result == "https://myhost/base/v1"
 
     def test_external_https_url_without_port_uses_scheme_default(self):
         """HTTPS URLs without a port must not inherit AIO_SERVER_PORT."""
@@ -155,39 +155,39 @@ class TestBaseUrl:
 
     def test_kubernetes_service_url_without_port_uses_server_port(self):
         """In-cluster service URLs use AIO_SERVER_PORT when the URL omits a port."""
-        settings = _mock_settings(server_url="http://optimizer-server.default.svc", server_port=8000)
+        settings = _mock_settings(server_url="https://optimizer-server.default.svc", server_port=8000)
         with patch(f"{MODULE}.settings", settings):
             from client.app.core.api import _base_url
 
             result = _base_url()
-        assert result == "http://optimizer-server.default.svc:8000/v1"
+        assert result == "https://optimizer-server.default.svc:8000/v1"
 
     def test_kubernetes_cluster_local_url_without_port_uses_server_port(self):
         """Fully-qualified Kubernetes service URLs also use AIO_SERVER_PORT."""
-        settings = _mock_settings(server_url="http://optimizer-server.default.svc.cluster.local", server_port=8000)
+        settings = _mock_settings(server_url="https://optimizer-server.default.svc.cluster.local", server_port=8000)
         with patch(f"{MODULE}.settings", settings):
             from client.app.core.api import _base_url
 
             result = _base_url()
-        assert result == "http://optimizer-server.default.svc.cluster.local:8000/v1"
+        assert result == "https://optimizer-server.default.svc.cluster.local:8000/v1"
 
     def test_wildcard_ipv4_url_uses_loopback_for_connect(self):
         """0.0.0.0 is a bind address, not the canonical client target."""
-        settings = _mock_settings(server_url="http://0.0.0.0")
+        settings = _mock_settings(server_url="https://0.0.0.0")
         with patch(f"{MODULE}.settings", settings):
             from client.app.core.api import _base_url
 
             result = _base_url()
-        assert result == "http://127.0.0.1:8000/v1"
+        assert result == "https://127.0.0.1:8000/v1"
 
     def test_wildcard_ipv6_url_uses_loopback_for_connect(self):
         """The IPv6 wildcard bind address is converted to IPv6 loopback."""
-        settings = _mock_settings(server_url="http://[::]", server_port=9000)
+        settings = _mock_settings(server_url="https://[::]", server_port=9000)
         with patch(f"{MODULE}.settings", settings):
             from client.app.core.api import _base_url
 
             result = _base_url()
-        assert result == "http://[::1]:9000/v1"
+        assert result == "https://[::1]:9000/v1"
 
 
 # ---------------------------------------------------------------------------
@@ -196,23 +196,21 @@ class TestBaseUrl:
 class TestHeaders:
     """Tests for the _headers helper."""
 
-    def test_with_api_key(self):
-        """Verify X-API-Key header is set when api_key is configured."""
-        settings = _mock_settings(api_key="secret123")
-        with patch(f"{MODULE}.settings", settings):
+    def test_with_bearer_token(self):
+        """The current user session token is sent as a bearer credential."""
+        with patch(f"{MODULE}.st.session_state", {"auth_token": "secret123"}):
             from client.app.core.api import _headers
 
             result = _headers()
-        assert result == {"X-API-Key": "secret123"}
+        assert result == {"Authorization": "Bearer secret123"}
 
-    def test_empty_api_key(self):
-        """Verify X-API-Key defaults to empty string when api_key is None."""
-        settings = _mock_settings(api_key=None)
-        with patch(f"{MODULE}.settings", settings):
+    def test_without_bearer_token(self):
+        """Unauthenticated public requests carry no authorization header."""
+        with patch(f"{MODULE}.st.session_state", {}):
             from client.app.core.api import _headers
 
             result = _headers()
-        assert result == {"X-API-Key": ""}
+        assert result == {}
 
 
 # ---------------------------------------------------------------------------
@@ -251,8 +249,7 @@ class TestApiGet:
         _, kwargs = instance.get.call_args
         assert kwargs["params"] == {"foo": "bar"}
 
-    def test_extra_headers_merged(self):
-        """Verify extra_headers are merged into the client headers."""
+    def test_legacy_client_header_is_removed(self):
         resp = _resp(200, json_data={})
         ctx, _ = _mock_client_ctx(response=resp)
         settings = _mock_settings()
@@ -263,9 +260,8 @@ class TestApiGet:
             from client.app.core.api import api_get
 
             api_get("path", extra_headers={"client": "c1"})
-        # Check headers passed to Client constructor include the extra header
         _, kwargs = mock_cls.call_args
-        assert kwargs["headers"]["client"] == "c1"
+        assert "client" not in kwargs["headers"]
 
     def test_custom_api_prefix(self):
         """Verify a custom api_prefix is reflected in the request URL."""
@@ -606,7 +602,7 @@ class TestGetServerSettings:
         ):
             from client.app.core.api import get_server_settings
 
-            result = get_server_settings(client="test")
+            result = get_server_settings()
         assert result == {"settings": "ok"}
 
     def test_local_https_disables_cert_verification(self):
@@ -620,7 +616,7 @@ class TestGetServerSettings:
         ):
             from client.app.core.api import get_server_settings
 
-            result = get_server_settings(client="test")
+            result = get_server_settings()
         assert result == {"settings": "ok"}
         assert mock_cls.call_args.kwargs["verify"] is False
 
@@ -635,7 +631,7 @@ class TestGetServerSettings:
         ):
             from client.app.core.api import get_server_settings
 
-            result = get_server_settings(client="test")
+            result = get_server_settings()
         assert result == {"settings": "ok"}
         assert mock_cls.call_args.kwargs["verify"] is True
 
@@ -653,11 +649,10 @@ class TestGetServerSettings:
         ):
             from client.app.core.api import get_server_settings
 
-            result = get_server_settings(client="test")
+            result = get_server_settings()
         assert result is None
 
-    def test_params_forwarded(self):
-        """The standard GET path forwards only the client param."""
+    def test_client_selector_is_not_forwarded(self):
         resp = _resp(200, json_data={"ok": True})
         ctx, instance = _mock_client_ctx(response=resp)
         settings = _mock_settings()
@@ -667,10 +662,8 @@ class TestGetServerSettings:
         ):
             from client.app.core.api import get_server_settings
 
-            get_server_settings(client="my-client", include_sensitive=False)
-        _, kwargs = instance.get.call_args
-        assert kwargs["params"]["client"] == "my-client"
-        assert "include_sensitive" not in kwargs["params"]
+            get_server_settings(include_sensitive=False)
+        instance.get.assert_called_once_with("https://localhost:8000/v1/settings")
 
     def test_include_sensitive_routes_to_export(self):
         """``include_sensitive=True`` triggers the export helper."""
@@ -685,7 +678,7 @@ class TestGetServerSettings:
         ):
             from client.app.core.api import get_server_settings
 
-            get_server_settings(client="my-client", include_sensitive=True)
+            get_server_settings(include_sensitive=True)
         # Verify the post path (which the export helper uses) was hit.
         # Either get or post on the mock instance is fine because we aliased.
         assert instance.get.called or getattr(instance, "post", instance.get).called
@@ -696,6 +689,14 @@ class TestGetServerSettings:
 # ---------------------------------------------------------------------------
 class TestSpawnServer:
     """Tests for _spawn_server."""
+
+    @pytest.fixture(autouse=True)
+    def _server_certificate(self, tmp_path):
+        with patch(
+            f"{MODULE}.resolve_or_generate_cert",
+            return_value=(tmp_path / "cert.pem", tmp_path / "key.pem"),
+        ):
+            yield
 
     def test_subprocess_called(self, tmp_path):
         """Verify _spawn_server invokes subprocess.Popen with uvicorn arguments."""
@@ -738,7 +739,7 @@ class TestSpawnServer:
         """Verify _spawn_server adds the resolved server SSL flags."""
         log_path = tmp_path / "test.log"
         mock_proc = MagicMock()
-        settings = _mock_settings(server_ssl=True)
+        settings = _mock_settings()
         with (
             patch(f"{MODULE}.settings", settings),
             patch(f"{MODULE}.resolve_or_generate_cert", return_value=(tmp_path / "cert.pem", tmp_path / "key.pem")),
@@ -821,7 +822,7 @@ class TestWaitForServerReady:
         mock_proc = MagicMock()
         mock_proc.poll.return_value = None
         ok_resp = MagicMock(status_code=200)
-        settings = _mock_settings(server_url="http://api.example.com", server_port=9000)
+        settings = _mock_settings(server_url="https://api.example.com", server_port=9000)
         with (
             patch(f"{MODULE}.settings", settings),
             patch(f"{MODULE}.httpx.get", return_value=ok_resp) as mock_get,
@@ -830,7 +831,7 @@ class TestWaitForServerReady:
             from client.app.core.api import _wait_for_server_ready
 
             assert _wait_for_server_ready(mock_proc, timeout=5) is True
-        mock_get.assert_called_once_with("http://127.0.0.1:9000/v1/liveness", timeout=1.0, verify=True)
+        mock_get.assert_called_once_with("https://127.0.0.1:9000/v1/liveness", timeout=1.0, verify=False)
 
     def test_probes_configured_local_bind_address(self):
         """A concrete local bind address remains the readiness target."""
@@ -846,14 +847,13 @@ class TestWaitForServerReady:
             from client.app.core.api import _wait_for_server_ready
 
             assert _wait_for_server_ready(mock_proc, timeout=5) is True
-        mock_get.assert_called_once_with("http://localhost:9000/v1/liveness", timeout=1.0, verify=True)
+        mock_get.assert_called_once_with("https://localhost:9000/v1/liveness", timeout=1.0, verify=False)
 
-    def test_probes_https_when_spawned_server_uses_ssl(self):
-        """AIO_SERVER_SSL must make the local readiness probe use HTTPS."""
+    def test_probes_https(self):
         mock_proc = MagicMock()
         mock_proc.poll.return_value = None
         ok_resp = MagicMock(status_code=200)
-        settings = _mock_settings(server_ssl=True, server_port=9443)
+        settings = _mock_settings(server_port=9443, server_ssl=True)
         with (
             patch(f"{MODULE}.settings", settings),
             patch(f"{MODULE}.httpx.get", return_value=ok_resp) as mock_get,
@@ -913,7 +913,7 @@ class TestStartServer:
 
             assert start_server() is True
         mock_spawn.assert_not_called()
-        assert settings.server_url == "http://127.0.0.1:8000"
+        assert settings.server_url == "https://127.0.0.1:8000"
 
     def test_starts_new_server(self):
         """Verify start_server spawns a new server process and waits for readiness."""
@@ -931,7 +931,7 @@ class TestStartServer:
             from client.app.core.api import start_server
 
             assert start_server() is True
-        assert settings.server_url == "http://127.0.0.1:8000"
+        assert settings.server_url == "https://127.0.0.1:8000"
 
     def test_startup_exit_points_to_server_log(self, caplog):
         """An early server exit reports the log location without copying its contents."""
@@ -1012,40 +1012,50 @@ class TestStartServer:
             patch(f"{MODULE}._SERVER", {"process": None, "log_file": None}),
             patch(f"{MODULE}.settings", settings),
             patch(f"{MODULE}._spawn_server", return_value=(mock_proc, mock_fh)) as mock_spawn,
+            patch(f"{MODULE}.subprocess.run") as mock_setup,
             patch(f"{MODULE}._wait_for_server_ready", return_value=True),
             patch(f"{MODULE}.atexit.register"),
         ):
+            mock_setup.return_value.returncode = 0
             from client.app.core.api import start_server
 
             assert start_server(core_environment) is True
 
         child_environment = mock_spawn.call_args.args[1]
         assert {key: child_environment[key] for key in core_environment} == core_environment
+        setup_environment = mock_setup.call_args.kwargs["env"]
+        assert setup_environment["AIO_DB_USERNAME"] == "AI_OPTIMIZER"
+        assert setup_environment["AIO_DB_PASSWORD"] == "secret"
 
-    def test_generates_api_key_when_none(self):
-        """Verify start_server generates an API key when none is configured."""
+    def test_oidc_configuration_runs_authority_setup(self):
+        environment = {"AIO_OIDC_ISSUER": "https://identity.example.test"}
+        with patch(f"{MODULE}.subprocess.run") as mock_setup:
+            mock_setup.return_value.returncode = 0
+            from client.app.core.api import _prepare_authentication
+
+            assert _prepare_authentication(environment) is True
+
+        mock_setup.assert_called_once()
+
+    def test_start_server_does_not_generate_shared_credentials(self):
+        """Local startup forwards configuration without creating a shared key."""
         mock_proc = MagicMock()
         mock_proc.poll.return_value = None
         mock_fh = MagicMock()
-        settings = _mock_settings(api_key=None)
-        # Need to handle the falsy check: `if not settings.api_key`
-        settings.api_key = None
+        settings = _mock_settings()
         with (
             patch(f"{MODULE}._SERVER", {"process": None, "log_file": None}),
             patch(f"{MODULE}.settings", settings),
-            patch(f"{MODULE}._spawn_server", return_value=(mock_proc, mock_fh)),
+            patch(f"{MODULE}._spawn_server", return_value=(mock_proc, mock_fh)) as mock_spawn,
             patch(f"{MODULE}._wait_for_server_ready", return_value=True),
             patch(f"{MODULE}.atexit.register"),
-            patch(f"{MODULE}.secrets.token_urlsafe", return_value="generated-key"),
+            patch.dict(os.environ, {"AIO_API_KEY": "legacy", "AIO_ADMIN_PASSWORD": "legacy"}),
         ):
             from client.app.core.api import start_server
 
             assert start_server() is True
-        # ``settings.api_key`` is a ``SecretStr`` after migration; reveal it
-        # for the assertion.
-        from client.app.core.secrets import reveal
-
-        assert reveal(settings.api_key) == "generated-key"
+        assert "AIO_API_KEY" not in mock_spawn.call_args.args[1]
+        assert "AIO_ADMIN_PASSWORD" not in mock_spawn.call_args.args[1]
 
 
 # ---------------------------------------------------------------------------

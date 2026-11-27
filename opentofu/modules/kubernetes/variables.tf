@@ -160,11 +160,6 @@ variable "deploy_optimizer" {
   default = true
 }
 
-variable "ssl_enabled" {
-  type    = bool
-  default = false
-}
-
 variable "ssl_cert_pem" {
   type      = string
   default   = ""
@@ -177,10 +172,55 @@ variable "ssl_key_pem" {
   sensitive = true
 }
 
+variable "ssl_hostname" {
+  type = string
+}
+
+variable "lb_certificate_ocid" {
+  type = string
+}
+
 variable "client_cookie_secret" {
   description = "Streamlit signed-cookie key supplied explicitly by OpenTofu so the value remains stable across deployment renders."
   type        = string
   sensitive   = true
+}
+
+variable "oidc_issuer" {
+  type = string
+}
+
+variable "oidc_discovery_url" {
+  type = string
+}
+
+variable "oidc_audience" {
+  type = string
+}
+
+variable "oidc_required_scopes" {
+  type = set(string)
+}
+
+variable "oidc_client_id" {
+  type = string
+}
+
+variable "oidc_client_secret" {
+  type      = string
+  sensitive = true
+}
+
+variable "oidc_redirect_uri" {
+  type = string
+}
+
+variable "oidc_admin_subject" {
+  type = string
+}
+
+variable "oidc_public_server_url" {
+  type = string
 }
 
 variable "object_storage_bucket" {

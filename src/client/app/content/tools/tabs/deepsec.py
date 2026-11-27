@@ -17,7 +17,7 @@ from streamlit import session_state as state
 
 from client.app.core import helpers
 from client.app.core.api import api_delete, api_get, api_post
-from client.app.core.auth import is_authenticated, locked_notice
+from client.app.core.auth import is_admin, locked_notice
 
 LOGGER = logging.getLogger("client.content.tools.tabs.deepsec")
 
@@ -939,7 +939,7 @@ def display_deepsec() -> None:
             st.caption(f"Database version: {status['version']}")
         return
 
-    authenticated = is_authenticated()
+    authenticated = is_admin()
     if not authenticated:
         locked_notice()
 

@@ -284,6 +284,17 @@ async def test_create_end_user_omits_schema_clause_when_absent():
     assert "SCHEMA" not in calls[0]
 
 
+@pytest.mark.anyio
+async def test_create_end_user_does_not_log_password(caplog):
+    conn, _calls = _conn_ddl_capture()
+    caplog.set_level("DEBUG", logger="server.deepsec.database")
+
+    await deepsec_db.create_end_user(conn, "emma", "raw-secret-password")
+
+    assert "raw-secret-password" not in caplog.text
+    assert "CREATE END USER <redacted>" in caplog.text
+
+
 # ---------------------------------------------------------------------------
 # Data role grants (role -> end user membership)
 # ---------------------------------------------------------------------------

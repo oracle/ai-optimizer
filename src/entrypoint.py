@@ -7,6 +7,7 @@ Container / CLI entrypoint — configures the environment and launches the serve
 """
 # spell-checker: ignore streamlit sslcertfile sslkeyfile
 
+import json
 import os
 import re
 import shutil
@@ -82,7 +83,7 @@ def start_server(script_dir: Path) -> None:
         os.environ.get("AIO_SERVER_PORT", "8000"),
     ]
 
-    if os.environ.get("AIO_SERVER_SSL", "false").lower() == "true":
+    if os.environ.get("AIO_SERVER_SSL", "true").lower() == "true":
         cert, key = ensure_ssl_cert(script_dir, "AIO_SERVER_SSL_CERT_FILE", "AIO_SERVER_SSL_KEY_FILE")
         args.extend(["--ssl-certfile", str(cert), "--ssl-keyfile", str(key)])
 
@@ -90,17 +91,10 @@ def start_server(script_dir: Path) -> None:
 
 
 def start_client(script_dir: Path) -> None:
-    """Launch streamlit for the client UI, with optional TLS."""
+    """Launch the Streamlit client, with optional TLS."""
     print("Starting Optimizer Client")
-    args = [
-        "streamlit",
-        "run",
-        str(script_dir / "client" / "app" / "main.py"),
-        "--server.port",
-        os.environ.get("AIO_CLIENT_PORT", "8501"),
-        "--server.address",
-        os.environ.get("AIO_CLIENT_ADDRESS", "localhost"),
-    ]
+    prepare_streamlit_authentication()
+    args = [sys.executable, "-m", "client.app.web"]
 
     # server.cookieSecret is marked sensitive=True in Streamlit and is read
     # through its env var. Promote AIO_CLIENT_COOKIE_SECRET into
@@ -111,11 +105,61 @@ def start_client(script_dir: Path) -> None:
     if cookie_secret:
         os.environ["STREAMLIT_SERVER_COOKIE_SECRET"] = cookie_secret
 
-    if os.environ.get("AIO_CLIENT_SSL", "false").lower() == "true":
+    if os.environ.get("AIO_CLIENT_SSL", "true").lower() == "true":
         cert, key = ensure_ssl_cert(script_dir, "AIO_CLIENT_SSL_CERT_FILE", "AIO_CLIENT_SSL_KEY_FILE")
-        args.extend(["--server.sslCertFile", str(cert), "--server.sslKeyFile", str(key)])
+        os.environ["AIO_CLIENT_SSL_CERT_FILE"] = str(cert)
+        os.environ["AIO_CLIENT_SSL_KEY_FILE"] = str(key)
 
-    os.execvp("streamlit", args)
+    os.execvp(sys.executable, args)
+
+
+def prepare_streamlit_authentication() -> None:
+    """Write Streamlit's OIDC configuration from the client environment."""
+    names = {
+        "issuer": "AIO_OIDC_ISSUER",
+        "discovery_url": "AIO_OIDC_DISCOVERY_URL",
+        "client_id": "AIO_OIDC_CLIENT_ID",
+        "client_secret": "AIO_OIDC_CLIENT_SECRET",
+        "redirect_uri": "AIO_OIDC_REDIRECT_URI",
+        "cookie_secret": "AIO_CLIENT_COOKIE_SECRET",
+    }
+    values = {name: os.environ.get(environment_name, "") for name, environment_name in names.items()}
+    if not any(values[name] for name in ("issuer", "discovery_url", "client_id", "client_secret", "redirect_uri")):
+        return
+    required_names = ("issuer", "client_id", "client_secret", "redirect_uri", "cookie_secret")
+    missing = [names[name] for name in required_names if not values[name]]
+    if missing:
+        raise ValueError(f"OIDC client configuration is incomplete; missing {', '.join(missing)}")
+    discovery_url = values["discovery_url"] or f"{values['issuer'].rstrip('/')}/.well-known/openid-configuration"
+    try:
+        required_scopes = json.loads(os.environ.get("AIO_OIDC_REQUIRED_SCOPES", "[]"))
+    except json.JSONDecodeError as exc:
+        raise ValueError("AIO_OIDC_REQUIRED_SCOPES must be a JSON array") from exc
+    if not isinstance(required_scopes, list) or not all(isinstance(scope, str) for scope in required_scopes):
+        raise ValueError("AIO_OIDC_REQUIRED_SCOPES must be a JSON array of strings")
+    scopes = " ".join(dict.fromkeys(["openid", "profile", "email", *required_scopes]))
+    content = "\n".join(
+        (
+            "[auth]",
+            f"redirect_uri = {json.dumps(values['redirect_uri'])}",
+            f"cookie_secret = {json.dumps(values['cookie_secret'])}",
+            'expose_tokens = "access"',
+            f"client_id = {json.dumps(values['client_id'])}",
+            f"client_secret = {json.dumps(values['client_secret'])}",
+            f"server_metadata_url = {json.dumps(discovery_url)}",
+            f'client_kwargs = {{ scope = {json.dumps(scopes)}, prompt = "login" }}',
+            "",
+        )
+    )
+    secrets_file = Path.home() / ".streamlit" / "secrets.toml"
+    secrets_file.parent.mkdir(parents=True, exist_ok=True)
+    secrets_file.write_text(content, encoding="utf-8")
+    secrets_file.chmod(0o600)
+
+
+def setup_authentication() -> None:
+    """Run the idempotent authentication authority setup command."""
+    os.execvp(sys.executable, [sys.executable, "-m", "server.app.auth.setup"])
 
 
 def main() -> None:
@@ -132,8 +176,10 @@ def main() -> None:
         start_server(script_dir)
     elif component == "client":
         start_client(script_dir)
+    elif component == "auth-setup":
+        setup_authentication()
     else:
-        print("Usage: entrypoint.py [client|server]", file=sys.stderr)
+        print("Usage: entrypoint.py [client|server|auth-setup]", file=sys.stderr)
         sys.exit(1)
 
 

@@ -37,27 +37,13 @@ def _loads(payload: str) -> Dict[str, Any]:
     return json.loads(payload)
 
 
-def test_internal_mcp_url_uses_http_loopback_for_wildcard_bind():
+def test_internal_mcp_url_uses_https_loopback_for_wildcard_bind():
     """Wildcard bind addresses should become dialable loopback targets."""
     assert (
         chat_endpoint._internal_mcp_url(
             server_address="0.0.0.0",
             server_port=8000,
             server_url_prefix="",
-            server_ssl=False,
-        )
-        == "http://127.0.0.1:8000/mcp/"
-    )
-
-
-def test_internal_mcp_url_uses_https_when_server_ssl_enabled():
-    """Server-side MCP calls must match the uvicorn TLS mode."""
-    assert (
-        chat_endpoint._internal_mcp_url(
-            server_address="0.0.0.0",
-            server_port=8000,
-            server_url_prefix="",
-            server_ssl=True,
         )
         == "https://127.0.0.1:8000/mcp/"
     )
@@ -70,7 +56,6 @@ def test_internal_mcp_url_preserves_url_prefix():
             server_address="localhost",
             server_port=9443,
             server_url_prefix="optimizer/",
-            server_ssl=True,
         )
         == "https://localhost:9443/optimizer/mcp/"
     )

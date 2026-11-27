@@ -11,12 +11,24 @@
     "global": {
       "type": "object",
       "properties": {
-        "api": {
+        "authentication": {
           "type": "object",
           "properties": {
-            "apiKey": { "type": "string" },
-            "secretName": { "type": "string" },
-            "secretKey": { "type": "string" }
+            "sessionAbsoluteSeconds": { "type": "integer", "minimum": 300 },
+            "sessionIdleSeconds": { "type": "integer", "minimum": 60 },
+            "sessionMaxPerUser": { "type": "integer", "minimum": 1, "maximum": 100 },
+            "accountStatusCacheSeconds": { "type": "integer", "minimum": 0, "maximum": 300 },
+            "oidc": {
+              "type": "object",
+              "properties": {
+                "issuer": { "type": "string" },
+                "discoveryUrl": { "type": "string" },
+                "audience": { "type": "string" },
+                "requiredScopes": { "type": "array", "items": { "type": "string" } },
+                "adminSubject": { "type": "string" },
+                "publicServerUrl": { "type": "string" }
+              }
+            }
           }
         },
         "baseUrlPath": {
@@ -53,7 +65,7 @@
           "$ref": "#/definitions/imageWithOptionalTag"
         },
         "service": { "$ref": "#/definitions/service" },
-        "ssl": { "$ref": "#/definitions/ssl" },
+        "ssl": { "$ref": "#/definitions/tlsFiles" },
         "gateway": { "$ref": "#/definitions/gateway" },
         "ingress": { "$ref": "#/definitions/ingress" },
         "livenessProbe": { "$ref": "#/definitions/probe" },
@@ -224,6 +236,15 @@
       "type": "object",
       "properties": {
         "enabled": { "type": "boolean" },
+        "oidc": {
+          "type": "object",
+          "properties": {
+            "clientId": { "type": "string" },
+            "clientSecretName": { "type": "string" },
+            "clientSecretKey": { "type": "string" },
+            "redirectUri": { "type": "string" }
+          }
+        },
         "replicaCount": { "type": "integer", "minimum": 0 },
         "autoscaling": { "$ref": "#/definitions/autoscaling" },
         "imagePullSecrets": { "type": "array" },
@@ -231,16 +252,12 @@
           "$ref": "#/definitions/imageWithOptionalTag"
         },
         "service": { "$ref": "#/definitions/clientService" },
-        "ssl": { "$ref": "#/definitions/ssl" },
+        "ssl": { "$ref": "#/definitions/tlsFiles" },
         "gateway": { "$ref": "#/definitions/gateway" },
         "ingress": { "$ref": "#/definitions/ingress" },
         "cookieSecret": { "type": "string" },
         "cookieSecretName": { "type": "string" },
         "cookieSecretKey": { "type": "string" },
-        "password": { "type": "string" },
-        "passwordSecretName": { "type": "string" },
-        "passwordSecretKey": { "type": "string" },
-        "passwordAutoGenerate": { "type": "boolean" },
         "envSecret": { "$ref": "#/definitions/envSecret" },
         "livenessProbe": { "$ref": "#/definitions/probe" },
         "readinessProbe": { "$ref": "#/definitions/probe" },
@@ -479,7 +496,7 @@
         }
       ]
     },
-    "ssl": {
+    "tlsFiles": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -501,6 +518,7 @@
       "properties": {
         "enabled": { "type": "boolean" },
         "className": { "type": "string" },
+        "host": { "type": "string" },
         "tls": { "type": "array" }
       }
     },

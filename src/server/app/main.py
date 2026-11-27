@@ -19,9 +19,14 @@ import server.app.core.environ  # noqa: F401, E402  # side-effect: loads .env
 from _version import __version__
 from server.app.api.mcp.router import router as mcp_router
 from server.app.api.v1.router import router as v1_router
+from server.app.auth.dependencies import set_authority_state
+from server.app.auth.local import initialize_database_authenticator
+from server.app.auth.oidc import initialize_oidc_authenticator
+from server.app.auth.repository import AuthAuthorityNotInitialized, verify_authority
+from server.app.auth.service import AuthAuthorityUnavailable, authenticator_ready
 from server.app.core.etc import apply_overlay, load_config_file
-from server.app.core.mcp import MCPApiKeyMiddleware, MCPOriginMiddleware, mcp
-from server.app.core.settings import _client_store, require_core_database_config, settings
+from server.app.core.mcp import MCPOriginMiddleware, mcp
+from server.app.core.settings import _client_store, require_core_database_config, settings, validate_auth_configuration
 from server.app.database.config import CoreDatabaseUnavailable, close_pool
 from server.app.database.registry import init_core_database
 from server.app.database.settings import (
@@ -46,6 +51,8 @@ from server.app.oci.registry import load_oci_profiles
 from server.app.otel import init_telemetry, instrument_fastapi
 
 init_telemetry()
+
+_AUTHORITY_RETRY_INTERVAL_SECONDS = 5
 
 #############################################################################
 # APP FACTORY
@@ -76,19 +83,56 @@ async def _apply_configured_overlay(protected: set[str]) -> None:
             reconcile_prompt_customizations(source.prompt_configs)
 
 
+async def _initialize_auth_authority() -> None:
+    validate_auth_configuration()
+    await verify_authority()
+    if settings.auth_mode == "oidc":
+        await initialize_oidc_authenticator()
+    else:
+        initialize_database_authenticator()
+    if not authenticator_ready():
+        raise AuthAuthorityUnavailable("Authentication for the configured mode is not initialized")
+
+
+async def _retry_auth_authority_initialization() -> None:
+    while True:
+        await asyncio.sleep(_AUTHORITY_RETRY_INTERVAL_SECONDS)
+        try:
+            await _initialize_auth_authority()
+        except AuthAuthorityNotInitialized as exc:
+            set_authority_state(False, str(exc))
+        except Exception as exc:
+            set_authority_state(False, str(exc))
+            return
+        else:
+            set_authority_state(True)
+            return
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     """FastAPI Lifespan"""
     # --- Phase 1: Bootstrap (.env already loaded at import time) ---
     protected: set[str] = set(settings.model_fields_set)
-    if settings.api_key_generated:
-        protected.discard("api_key")
-
     # --- Phase 2: Init required CORE database ---
     core_db = require_core_database_config()
     await init_core_database(core_db)
-
     background_tasks: list[asyncio.Task] = []
+    try:
+        await _initialize_auth_authority()
+    except AuthAuthorityNotInitialized as exc:
+        set_authority_state(False, str(exc))
+        background_tasks.append(
+            asyncio.create_task(
+                _retry_auth_authority_initialization(),
+                name="auth-authority-initialization-retry",
+            )
+        )
+    except Exception as exc:
+        set_authority_state(False, str(exc))
+    else:
+        set_authority_state(True)
+
     try:
         # --- Phase 3: Build FACTORY baseline ---
         await load_default_models()
@@ -122,16 +166,18 @@ async def lifespan(_app: FastAPI):
 
         # --- Phase 7: Embed-job heartbeat + reaper ---
         embed_job_manager = get_embed_job_manager()
-        background_tasks = [
-            asyncio.create_task(
-                run_heartbeat_loop(embed_job_manager),
-                name="embed-jobs-heartbeat",
-            ),
-            asyncio.create_task(
-                run_reaper_loop(embed_job_manager),
-                name="embed-jobs-reaper",
-            ),
-        ]
+        background_tasks.extend(
+            [
+                asyncio.create_task(
+                    run_heartbeat_loop(embed_job_manager),
+                    name="embed-jobs-heartbeat",
+                ),
+                asyncio.create_task(
+                    run_reaper_loop(embed_job_manager),
+                    name="embed-jobs-reaper",
+                ),
+            ]
+        )
         yield
     finally:
         for task in background_tasks:
@@ -147,15 +193,12 @@ URL_PREFIX = settings.server_url_prefix.strip("/")
 API_PREFIX = "/v1"
 MCP_PREFIX = "/mcp"
 
-mcp_app = mcp.http_app(
-    path="/",
-    middleware=[Middleware(MCPApiKeyMiddleware)],
-)
+mcp_app = mcp.http_app(path="/")
 
 app = FastAPI(
     title="Oracle AI Optimizer and Toolkit",
     version=__version__,
-    # Docs routes are served by the v1 router behind verify_api_key; disable
+    # Docs routes are served by the authenticated v1 router; disable
     # the built-in unauthenticated ones FastAPI would otherwise register.
     docs_url=None,
     openapi_url=None,

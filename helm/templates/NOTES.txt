@@ -15,17 +15,24 @@ ACCESSING THE APPLICATION
 Streamlit Client (Web UI):
 {{- if .Values.client.ingress.enabled }}
   The client UI is available via Ingress.
-  {{- if and .Values.client.ingress.tls (gt (len .Values.client.ingress.tls) 0) (index .Values.client.ingress.tls 0).hosts }}
-  Access at: https://{{ first (index .Values.client.ingress.tls 0).hosts }}
+  {{- if .Values.client.ingress.host }}
+  Access at: https://{{ .Values.client.ingress.host }}{{ include "ai-optimizer.getPath" . }}
+  {{- else if gt (len (.Values.client.ingress.tls | default list)) 0 }}
+    {{- $hosts := (index .Values.client.ingress.tls 0).hosts | default list }}
+    {{- if gt (len $hosts) 0 }}
+  Access at: https://{{ first $hosts }}{{ include "ai-optimizer.getPath" . }}
+    {{- else }}
+  Access at: https://<your-ingress-host>{{ include "ai-optimizer.getPath" . }}
+    {{- end }}
   {{- else }}
-  Access at: http://<your-ingress-host>{{ include "ai-optimizer.getPath" . }}
+  Access at: https://<your-ingress-host>{{ include "ai-optimizer.getPath" . }}
   {{- end }}
 {{- else }}
   Port-forward to access locally:
     kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "ai-optimizer.fullname" . }}-client-http 8501:{{ .Values.client.service.port }}
 
   Then open in your browser:
-    http://localhost:8501
+    {{ if .Values.client.ssl.enabled }}https{{ else }}http{{ end }}://localhost:8501
 {{- end }}
 
 {{- else }}
@@ -35,17 +42,24 @@ Streamlit Client (Web UI):
 Server API:
 {{- if .Values.server.ingress.enabled }}
   The server API is available via Ingress.
-  {{- if and .Values.server.ingress.tls (gt (len .Values.server.ingress.tls) 0) (index .Values.server.ingress.tls 0).hosts }}
-  Access at: https://{{ first (index .Values.server.ingress.tls 0).hosts }}{{ include "ai-optimizer.getPath" . }}v1
+  {{- if .Values.server.ingress.host }}
+  Access at: https://{{ .Values.server.ingress.host }}{{ include "ai-optimizer.getPath" . }}v1
+  {{- else if gt (len (.Values.server.ingress.tls | default list)) 0 }}
+    {{- $hosts := (index .Values.server.ingress.tls 0).hosts | default list }}
+    {{- if gt (len $hosts) 0 }}
+  Access at: https://{{ first $hosts }}{{ include "ai-optimizer.getPath" . }}v1
+    {{- else }}
+  Access at: https://<your-ingress-host>{{ include "ai-optimizer.getPath" . }}v1
+    {{- end }}
   {{- else }}
-  Access at: http://<your-ingress-host>{{ include "ai-optimizer.getPath" . }}v1
+  Access at: https://<your-ingress-host>{{ include "ai-optimizer.getPath" . }}v1
   {{- end }}
 {{- else }}
   Port-forward to access locally:
     kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "ai-optimizer.server.serviceName" . }} {{ .Values.server.service.port }}:{{ .Values.server.service.port }}
 
   Then access the API at:
-    http://localhost:{{ .Values.server.service.port }}{{ include "ai-optimizer.getPath" . }}v1
+    {{ if .Values.server.ssl.enabled }}https{{ else }}http{{ end }}://localhost:{{ .Values.server.service.port }}{{ include "ai-optimizer.getPath" . }}v1
 {{- end }}
 
 ================================================================================
@@ -180,8 +194,7 @@ workloads in the cluster.
 CONFIGURATION
 ================================================================================
 
-API Key Secret:
-  kubectl get secret -n {{ .Release.Namespace }} {{ include "ai-optimizer.apiSecretName" . }}
+Authentication authority: {{ if eq (include "ai-optimizer.authentication.isOidc" . | trim) "true" }}OIDC{{ else }}Oracle Database{{ end }}
 
 {{- if .Values.server.database }}
 Database Credentials:

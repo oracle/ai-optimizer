@@ -242,7 +242,7 @@ class TestPendingDbSelect:
             patch(f"{MODULE}.st", mock_st),
             patch(f"{MODULE}.state", state),
             patch(f"{MODULE}.helpers") as hlp,
-            patch(f"{MODULE}.is_authenticated", return_value=True),
+            patch(f"{MODULE}.is_admin", return_value=True),
         ):
             hlp.selectbox_index.return_value = 0
             _render_databases({}, [], None)
@@ -270,7 +270,7 @@ class TestPendingDbSelect:
             patch(f"{MODULE}.st", mock_st),
             patch(f"{MODULE}.state", state),
             patch(f"{MODULE}.helpers") as hlp,
-            patch(f"{MODULE}.is_authenticated", return_value=True),
+            patch(f"{MODULE}.is_admin", return_value=True),
         ):
             hlp.selectbox_index.return_value = 1
             _render_databases({"CORE": {"alias": "CORE"}}, ["CORE"], "CORE")
@@ -314,7 +314,7 @@ class TestPendingDbSelect:
             patch(f"{MODULE}.state", state),
             patch(f"{MODULE}.helpers") as hlp,
             patch(f"{MODULE}._fetch_database", return_value=fetched),
-            patch(f"{MODULE}.is_authenticated", return_value=False),
+            patch(f"{MODULE}.is_admin", return_value=False),
         ):
             hlp.selectbox_index.return_value = 0
             _render_databases({"MYDB": fetched}, ["MYDB"], "MYDB")
@@ -755,7 +755,7 @@ class TestSyncClientSetting:
         """sync_client_setting writes to session state and calls api_put."""
         from client.app.core.helpers import sync_client_setting
 
-        state = make_state(["CORE"], "CORE", extra={"optimizer_client": "test-client"})
+        state = make_state(["CORE"], "CORE")
         server_response = {"database": {"alias": "NEW", "extra": "from_server"}, "oci": {}}
         mock_put = MagicMock(return_value=server_response)
 
@@ -766,9 +766,7 @@ class TestSyncClientSetting:
             sync_client_setting("database", "alias", "NEW")
 
         assert state["settings"]["client_settings"] == server_response
-        mock_put.assert_called_once_with(
-            "settings", json={"database": {"alias": "NEW"}}, params={"client": "test-client"}
-        )
+        mock_put.assert_called_once_with("settings", json={"database": {"alias": "NEW"}})
 
     def test_api_error_still_updates_state(self, make_state):
         """HTTPStatusError from api_put is swallowed; state is still updated."""

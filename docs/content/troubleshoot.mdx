@@ -82,7 +82,7 @@ An MCP client receives `403 Forbidden` when connecting to the AI Optimizer Serve
 **_Solution_**:
 Check the response body:
 
-- `{"detail":"Forbidden"}` indicates a missing or incorrect `X-API-Key`. Generate the configuration for the selected client again and re-import it. For a standalone deployment, confirm that the configuration uses the same value as `AIO_API_KEY`.
+- `{"detail":"Authentication required"}` indicates a missing or rejected bearer token.
 - `Forbidden Origin` indicates that the request includes an `Origin` header. Connect with a native or server-side MCP client. Browser JavaScript uses the REST API. See [External MCP Clients](./guides/mcp-clients).
 
 ### Connection Is Refused

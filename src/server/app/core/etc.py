@@ -123,8 +123,6 @@ def apply_overlay(
         elif field_name not in protected:
             value = getattr(source, field_name)
             setattr(settings, field_name, value)
-            if field_name == "api_key":
-                object.__setattr__(settings, "_api_key_generated", False)
 
     return protected | source.model_fields_set
 

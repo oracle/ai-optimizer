@@ -4,10 +4,6 @@
 # Production baseline using an external Autonomous Database. Create the named
 # Kubernetes Secrets before installing and replace the OCI values for your
 # environment.
-global:
-  api:
-    secretName: ai-optimizer-api
-
 server:
   database:
     type: ADB-S

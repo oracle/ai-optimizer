@@ -115,12 +115,22 @@ module "kubernetes" {
   optimizer_version          = var.optimizer_version
   optimizer_branch           = local.optimizer_branch
   app_version                = local.app_version
-  ssl_enabled                = local.ssl_enabled
   ssl_cert_pem               = local.ssl_cert_pem
   ssl_key_pem                = local.ssl_key_pem
+  ssl_hostname               = var.ssl_hostname
+  lb_certificate_ocid        = oci_certificates_management_certificate.lb_cert.id
   namespace                  = local.object_storage_namespace
   object_storage_bucket      = local.object_storage_bucket
   client_cookie_secret       = random_password.client_cookie.result
+  oidc_issuer                = local.oidc_issuer
+  oidc_discovery_url         = local.oidc_discovery_url
+  oidc_audience              = local.oidc_audience
+  oidc_required_scopes       = local.oidc_required_scopes
+  oidc_client_id             = local.oidc_client_id
+  oidc_client_secret         = local.oidc_client_secret
+  oidc_redirect_uri          = local.oidc_redirect_uri
+  oidc_admin_subject         = local.oidc_admin_subject
+  oidc_public_server_url     = local.oidc_public_server_url
   providers = {
     oci.home_region = oci.home_region
   }

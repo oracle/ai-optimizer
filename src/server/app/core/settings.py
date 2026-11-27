@@ -8,17 +8,16 @@ Application settings loaded from environment variables and .env file.
 
 import asyncio
 import os
-import secrets
 import threading
+import warnings
 from collections import OrderedDict
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from server.app.core.paths import PROJECT_ROOT
 from server.app.core.schemas import ClientSettings
-from server.app.core.secrets import SecretField
 from server.app.database.schemas import DatabaseConfig
 from server.app.mcp.prompts.schemas import PromptConfig
 from server.app.models.schemas import ModelConfig
@@ -45,7 +44,6 @@ class SettingsBase(BaseModel):
 
     server_address: str = "0.0.0.0"
     server_port: int = 8000
-    server_ssl: bool = False
     server_ssl_cert_file: str = ""
     server_ssl_key_file: str = ""
     log_level: str = "INFO"
@@ -55,7 +53,6 @@ class SettingsBase(BaseModel):
     prompt_configs: list[PromptConfig] = []
     client_settings: ClientSettings = ClientSettings()
     nl2sql_available: bool = False
-    api_key: SecretField = Field(default=None, exclude=True)
 
 
 class Settings(SettingsBase, BaseSettings):
@@ -75,6 +72,20 @@ class Settings(SettingsBase, BaseSettings):
     db_wallet_password: Optional[SecretStr] = Field(default=None, exclude=True)
     db_wallet_location: Optional[str] = Field(default=None, exclude=True)
     db_pool_size: int = Field(default=5, ge=1, exclude=True)
+
+    auth_session_absolute_seconds: int = Field(default=28_800, ge=300, exclude=True)
+    auth_session_idle_seconds: int = Field(default=1_800, ge=60, exclude=True)
+    auth_session_max_per_user: int = Field(default=10, ge=1, le=100, exclude=True)
+    auth_account_status_cache_seconds: int = Field(default=30, ge=0, le=300, exclude=True)
+    oidc_issuer: Optional[str] = Field(default=None, exclude=True)
+    oidc_discovery_url: Optional[str] = Field(default=None, exclude=True)
+    oidc_audience: Optional[str] = Field(default=None, exclude=True)
+    oidc_required_scopes: list[str] = Field(default_factory=list, exclude=True)
+    oidc_admin_subject: Optional[str] = Field(default=None, exclude=True)
+    oidc_public_server_url: Optional[str] = Field(default=None, exclude=True)
+
+    api_key: Optional[SecretStr] = Field(default=None, exclude=True)
+    admin_password: Optional[SecretStr] = Field(default=None, exclude=True)
 
     max_clients: int = Field(default=64, ge=1, exclude=True)
     mcp_cache_ttl_seconds: int = Field(default=5, ge=0, exclude=True)
@@ -110,18 +121,41 @@ class Settings(SettingsBase, BaseSettings):
         return self
 
     @model_validator(mode="after")
-    def _generate_api_key_if_missing(self) -> "Settings":
-        if self.api_key is None:
-            object.__setattr__(self, "_api_key_generated", True)
-            self.api_key = SecretStr(secrets.token_urlsafe(32))
-        else:
-            object.__setattr__(self, "_api_key_generated", False)
+    def _warn_removed_authentication_settings(self) -> "Settings":
+        removed = []
+        if self.api_key is not None:
+            removed.append("AIO_API_KEY")
+        if self.admin_password is not None:
+            removed.append("AIO_ADMIN_PASSWORD")
+        if removed:
+            warnings.warn(
+                f"Deprecated authentication settings are ignored and unused: {', '.join(removed)}. "
+                "Remove them from the environment.",
+                UserWarning,
+                stacklevel=2,
+            )
         return self
 
     @property
-    def api_key_generated(self) -> bool:
-        """True when api_key was auto-generated (AIO_API_KEY not set)."""
-        return getattr(self, "_api_key_generated", False)
+    def auth_mode(self) -> Literal["local_users", "oidc"]:
+        """Derive the credential authority from OIDC configuration."""
+        oidc_values = (
+            self.oidc_issuer,
+            self.oidc_discovery_url,
+            self.oidc_audience,
+            self.oidc_required_scopes,
+            self.oidc_admin_subject,
+            self.oidc_public_server_url,
+        )
+        return "oidc" if any(oidc_values) else "local_users"
+
+    @property
+    def effective_oidc_discovery_url(self) -> str:
+        """Return the effective provider metadata endpoint."""
+        if self.oidc_discovery_url:
+            return self.oidc_discovery_url
+        issuer = (self.oidc_issuer or "").rstrip("/")
+        return f"{issuer}/.well-known/openid-configuration" if issuer else ""
 
 
 def _make_core_database_config(app_settings: Settings) -> DatabaseConfig:
@@ -138,8 +172,7 @@ def _make_core_database_config(app_settings: Settings) -> DatabaseConfig:
 settings = Settings()
 
 
-def require_core_database_config(app_settings: Settings = settings) -> DatabaseConfig:
-    """Return the deployment-owned CORE config or raise a sanitized error."""
+def _validate_core_database_settings(app_settings: Settings) -> None:
     missing_checks = (
         ("AIO_DB_USERNAME", not app_settings.db_username),
         (
@@ -152,10 +185,56 @@ def require_core_database_config(app_settings: Settings = settings) -> DatabaseC
     if missing:
         raise CoreDatabaseConfigurationError(f"CORE database configuration is incomplete; missing {', '.join(missing)}")
 
+
+def require_core_database_config(app_settings: Settings = settings) -> DatabaseConfig:
+    """Return the deployment-owned CORE config or raise a sanitized error."""
+    _validate_core_database_settings(app_settings)
     core = _make_core_database_config(app_settings)
     non_core = [config for config in app_settings.database_configs if config.alias.upper() != "CORE"]
     app_settings.database_configs = [core, *non_core]
     return core
+
+
+def validate_auth_authority_configuration(app_settings: Settings = settings) -> None:
+    """Validate settings required to persist the authentication authority."""
+    _validate_core_database_settings(app_settings)
+    if app_settings.auth_mode == "local_users":
+        return
+    issuer = app_settings.oidc_issuer
+    required_fields = {
+        "AIO_OIDC_ISSUER": issuer,
+        "AIO_OIDC_ADMIN_SUBJECT": app_settings.oidc_admin_subject,
+    }
+    missing = [name for name, value in required_fields.items() if not value]
+    if missing:
+        raise CoreDatabaseConfigurationError(f"OIDC configuration is incomplete; missing {', '.join(missing)}")
+    if app_settings.env not in {"dev", "test"} and issuer and not issuer.startswith("https://"):
+        raise CoreDatabaseConfigurationError("AIO_OIDC_ISSUER must use HTTPS")
+
+
+def validate_auth_configuration(app_settings: Settings = settings) -> None:
+    """Validate the selected authentication runtime without exposing secrets."""
+    validate_auth_authority_configuration(app_settings)
+    if app_settings.auth_session_idle_seconds > app_settings.auth_session_absolute_seconds:
+        raise CoreDatabaseConfigurationError(
+            "AIO_AUTH_SESSION_IDLE_SECONDS must not exceed AIO_AUTH_SESSION_ABSOLUTE_SECONDS"
+        )
+    oidc_required_fields = {
+        "AIO_OIDC_AUDIENCE": app_settings.oidc_audience,
+        "AIO_OIDC_REQUIRED_SCOPES": app_settings.oidc_required_scopes,
+        "AIO_OIDC_PUBLIC_SERVER_URL": app_settings.oidc_public_server_url,
+    }
+    if app_settings.auth_mode == "local_users":
+        return
+
+    oidc_missing = [name for name, value in oidc_required_fields.items() if not value]
+    if oidc_missing:
+        raise CoreDatabaseConfigurationError(f"OIDC configuration is incomplete; missing {', '.join(oidc_missing)}")
+    if app_settings.env not in {"dev", "test"}:
+        if app_settings.oidc_discovery_url and not app_settings.oidc_discovery_url.startswith("https://"):
+            raise CoreDatabaseConfigurationError("AIO_OIDC_DISCOVERY_URL must use HTTPS")
+        if app_settings.oidc_public_server_url and not app_settings.oidc_public_server_url.startswith("https://"):
+            raise CoreDatabaseConfigurationError("AIO_OIDC_PUBLIC_SERVER_URL must use HTTPS")
 
 
 # ---------------------------------------------------------------------------

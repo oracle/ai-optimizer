@@ -130,6 +130,14 @@ jobs:
           GRANT DB_DEVELOPER_ROLE TO SMOKE;
           ALTER USER SMOKE DEFAULT ROLE ALL;
           ALTER USER SMOKE QUOTA UNLIMITED ON USERS;
+          GRANT CREATE DATA ROLE TO SMOKE;
+          GRANT CREATE END USER TO SMOKE;
+          GRANT SELECT ON DBA_DATA_ROLES TO SMOKE;
+          GRANT SELECT ON DBA_END_USERS TO SMOKE;
+          GRANT GRANT ANY DATA ROLE TO SMOKE;
+          CREATE ROLE AIO_DDS_ROLE;
+          GRANT CREATE SESSION TO AIO_DDS_ROLE;
+          GRANT AIO_DDS_ROLE TO SMOKE WITH ADMIN OPTION;
           EXIT;
           SQL
           }
@@ -141,7 +149,7 @@ jobs:
               client) PORT=8501; PROBE=/_stcore/health ;;
               server)
                 PORT=8000
-                PROBE=/v1/liveness
+                PROBE=/v1/readiness
                 start_database
                 ;;
               *) fail "unknown component: $COMPONENT" ;;
@@ -155,11 +163,18 @@ jobs:
                 -e "AIO_DB_PASSWORD=$SMOKE_DB_PASSWORD"
                 -e AIO_DB_DSN=core-db:1521/FREEPDB1
               )
+              SETUP_NAME="$NAME-auth-setup"
+              if ! docker run --name "$SETUP_NAME" \
+                --network "$DB_NETWORK" \
+                "${DATABASE_ENV[@]}" \
+                "$IMAGE" auth-setup; then
+                docker logs "$SETUP_NAME" 2>&1 || true
+                fail "authentication setup failed"
+              fi
             fi
             docker run -d --name "$NAME" \
               --network "$DB_NETWORK" \
               -p "127.0.0.1::$PORT" \
-              -e AIO_API_KEY=test-key-for-ci \
               "${DATABASE_ENV[@]}" \
               "$IMAGE" "$COMPONENT"
             URL="http://$(docker port "$NAME" "$PORT/tcp")$PROBE"
@@ -197,6 +212,7 @@ jobs:
             docker rm "$NAME" 2>/dev/null || true
           done
           docker rm --force "test-${{ matrix.build.name }}-oracle" 2>/dev/null || true
+          docker rm --force "test-${{ matrix.build.name }}-server-auth-setup" 2>/dev/null || true
           docker network rm "test-${{ matrix.build.name }}-network" 2>/dev/null || true
 
   # Summary job

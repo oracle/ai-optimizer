@@ -21,7 +21,7 @@ from streamlit import session_state as state
 
 from client.app.core import helpers
 from client.app.core.api import api_post, get_server_settings
-from client.app.core.auth import is_authenticated, locked_notice
+from client.app.core.auth import is_admin, locked_notice
 from runtime_config_fields import RUNTIME_FIELD_SUFFIXES
 
 LOGGER = logging.getLogger("client.content.config.tabs.settings")
@@ -38,7 +38,7 @@ def _fetch_settings() -> dict:
     back to ``state.settings`` if the API call fails.
     """
     include = state.get("runtime_sensitive_settings", False)
-    result = get_server_settings(client=state.optimizer_client, include_sensitive=include)
+    result = get_server_settings(include_sensitive=include)
     return result if result is not None else state.settings
 
 
@@ -455,7 +455,7 @@ def _render_source_code_templates_section() -> None:
     # Session-cached so reruns don't re-fetch; invalidated on
     # ``helpers.refresh_settings``.
     if "_template_export" not in state:
-        state["_template_export"] = get_server_settings(client=state.optimizer_client, include_sensitive=True)
+        state["_template_export"] = get_server_settings(include_sensitive=True)
     fresh = state.get("_template_export") or state.settings
 
     # Swap for the duration of the render; restored in ``finally``.
@@ -484,7 +484,7 @@ def display_settings():
     locked_notice()
     st.header("Optimizer Settings", divider="red")
 
-    if not is_authenticated():
+    if not is_admin():
         return
 
     if "runtime_settings_upload_toggle" not in state:

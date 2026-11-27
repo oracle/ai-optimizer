@@ -73,11 +73,11 @@ locals {
     },
     "Workers from Load Balancer (Health Checks)." : {
       protocol = 6, port = 10256,
-      source   = data.oci_core_subnet.public.cidr_block, source_type = "CIDR_BLOCK"
+      source   = var.lb_nsg_id, source_type = "NETWORK_SECURITY_GROUP"
     },
     "Workers from Load Balancer." : {
       protocol = 6, port_min = 30000, port_max = 32767,
-      source   = data.oci_core_subnet.public.cidr_block, source_type = "CIDR_BLOCK"
+      source   = var.lb_nsg_id, source_type = "NETWORK_SECURITY_GROUP"
     },
     "Workers from Control Plane." : {
       protocol = 6, port = -1,

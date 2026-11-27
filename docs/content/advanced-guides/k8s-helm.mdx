@@ -94,14 +94,12 @@ podman push ${REGISTRY}/ai-optimizer-client:${APP_VERSION}
 podman push ${REGISTRY}/ai-optimizer-server:${APP_VERSION}
 ```
 
-### Create Kubernetes Secrets
+### Create the Kubernetes Namespace
 
-Create a namespace and the API key used by the Client and Server:
+Create the deployment namespace:
 
 ```bash
 kubectl create namespace ai-optimizer
-kubectl -n ai-optimizer create secret generic optimizer-api-key \
-  --from-literal=apiKey="$(openssl rand -base64 32)"
 ```
 
 The chart generates the Client cookie-signing Secret on first install and reuses it during live Helm upgrades. For offline `helm template` or client-side GitOps rendering, create an external Secret to keep the value stable across deployments:
@@ -134,10 +132,6 @@ Then create `deploy/values.yaml` with the following starter configuration.
 Replace `<registry-host>/<registry-namespace>` with the `${REGISTRY}` value used to tag and push the images, and replace `<version>` with the `${APP_VERSION}` value used to build them.
 
 ```yaml
-global:
-  api:
-    secretName: optimizer-api-key
-
 server:
   image:
     repository: <registry-host>/<registry-namespace>/ai-optimizer-server
@@ -148,6 +142,8 @@ client:
     repository: <registry-host>/<registry-namespace>/ai-optimizer-client
     tag: "<version>"
 ```
+
+With Oracle database authentication, the `server.database.authn` user is the AI Optimizer Admin. The Admin can manage additional platform users when the database account has the required end-user administration privileges.
 
 Add `client.cookieSecretName: optimizer-cookie-key` only when using the external Secret workflow described above.
 
@@ -419,18 +415,30 @@ With the Client enabled, access it locally:
 kubectl -n ai-optimizer port-forward svc/ai-optimizer-client-http 8501:8501
 ```
 
-Open `http://localhost:8501` in a browser.
+Open `https://localhost:8501` in a browser.
 
 ### HTTPS and Public Access
 
-For public Kubernetes access, terminate TLS at an ingress or gateway. The <GitHubSourceLink path="helm#example-6-ingress-with-tls" type="tree">Helm chart ingress TLS example</GitHubSourceLink> shows how to create a Kubernetes TLS Secret and reference it from the Server and Client ingress values.
+For public Kubernetes access, terminate TLS at an ingress or gateway. The pods and their health probes use HTTPS by default. The <GitHubSourceLink path="helm#example-6-ingress-with-tls" type="tree">Helm chart ingress TLS example</GitHubSourceLink> shows how to create a Kubernetes TLS Secret and reference it from the Server and Client ingress values.
 
-For direct access to a Client pod, set `client.ssl.enabled` to `true`; this also configures the Client health probes for HTTPS. To use a certificate stored in a Secret, mount it and supply its paths:
+To terminate TLS at the load balancer or ingress and use HTTP on its trusted private backend network, disable pod TLS:
+
+```yaml
+server:
+  ssl:
+    enabled: false
+client:
+  ssl:
+    enabled: false
+```
+
+The chart then configures the Services, health probes, and ingress backends for HTTP. The OCI IaC deployment uses this mode and restricts worker ingress to its load-balancer network security group.
+
+To use a certificate stored in a Secret for the Client pod, mount it and supply its paths:
 
 ```yaml
 client:
   ssl:
-    enabled: true
     certFile: /app/tls/tls.crt
     keyFile: /app/tls/tls.key
   volumes:
@@ -496,4 +504,4 @@ helm upgrade --install ai-optimizer ai-optimizer/ai-optimizer \
 
 ### Access the Client
 
-After the installation completes, open `http://localhost:8501` in a browser.
+After the installation completes, open `https://localhost:8501` in a browser.

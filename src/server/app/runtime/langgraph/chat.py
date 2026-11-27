@@ -84,8 +84,8 @@ class ChatOrchestrator:
     def __init__(
         self,
         server_url: str,
-        api_key: Union[str, Callable[[], str]],
         resolve_client: Callable[[str], Any],
+        api_key: Union[str, Callable[[], str], None] = None,
     ) -> None:
         self._server_url = server_url
         self._api_key = api_key
@@ -97,8 +97,14 @@ class ChatOrchestrator:
 
     @property
     def api_key(self) -> str:
-        """Return the current API key, invoking the callable if needed."""
-        return self._api_key() if callable(self._api_key) else self._api_key
+        """Return the configured credential used by direct runtime callers."""
+        value = self._api_key() if callable(self._api_key) else self._api_key
+        if value is None:
+            raise RuntimeError("A request credential is required")
+        return value
+
+    def _request_key(self, bearer: str | None) -> str:
+        return bearer if bearer is not None else self.api_key
 
     @staticmethod
     def _validate_llm(cs: Any) -> None:
@@ -143,7 +149,7 @@ class ChatOrchestrator:
         return out
 
     def _build_nl2sql_database_connector(
-        self, connection_name: str, model: str, thread_id: str
+        self, connection_name: str, model: str, thread_id: str, api_key: str
     ) -> Optional[Callable[[], Awaitable[None]]]:
         """Create a per-session connector for the configured SQLcl database."""
         if not connection_name:
@@ -152,7 +158,7 @@ class ChatOrchestrator:
         async def _connect() -> None:
             await connect_sqlcl_database(
                 self._server_url,
-                self.api_key,
+                api_key,
                 connection_name,
                 model,
                 thread_id=thread_id,
@@ -179,10 +185,11 @@ class ChatOrchestrator:
         self,
         prompt_name: str,
         validate: Callable[[str], bool],
+        api_key: str | None = None,
     ) -> str:
         """Fetch *prompt_name* from MCP; fall back to the factory entry
         (mcp/prompts/defaults.py) if fetch fails or *validate* rejects."""
-        text = await fetch_prompt_with_fallback(self._server_url, self.api_key, prompt_name)
+        text = await fetch_prompt_with_fallback(self._server_url, self._request_key(api_key), prompt_name)
         if not validate(text):
             LOGGER.warning("Prompt %r failed structural validation; using factory default", prompt_name)
             return require_factory_text(prompt_name)
@@ -190,17 +197,19 @@ class ChatOrchestrator:
 
     # -- session factory ---------------------------------------------------
 
-    async def _build_flow_session(self, cs: ClientSettings) -> GraphFlowSession:
+    async def _build_flow_session(self, cs: ClientSettings, api_key: str | None = None) -> GraphFlowSession:
         """Build a vecsearch flow session from client settings."""
-        graph = await build_vecsearch_graph(cs, self._server_url, self.api_key)
+        graph = await build_vecsearch_graph(cs, self._server_url, self._request_key(api_key))
         return GraphFlowSession(graph, cs)
 
-    async def _build_agent_session(self, cs: ClientSettings) -> AgentGraphSession:
+    async def _build_agent_session(self, cs: ClientSettings, api_key: str | None = None) -> AgentGraphSession:
         """Build an LLM-only agent session from client settings."""
-        graph = await build_llm_only_graph(cs, self._server_url, self.api_key, checkpointer=MemorySaver())
+        graph = await build_llm_only_graph(cs, self._server_url, self._request_key(api_key), checkpointer=MemorySaver())
         return AgentGraphSession(graph)
 
-    async def _build_nl2sql_agent_session(self, cs: ClientSettings, client: str = "") -> NL2SQLGraphSession:
+    async def _build_nl2sql_agent_session(
+        self, cs: ClientSettings, client: str = "", api_key: str | None = None
+    ) -> NL2SQLGraphSession:
         """Build an NL2SQL agent session from client settings."""
         # Resolve the effective tool alias with the real client id so a Deep Data Security
         # 'connect as' override routes NL2SQL to the end-user connection (and raises
@@ -210,8 +219,9 @@ class ChatOrchestrator:
         assert ll_model.provider is not None
         assert ll_model.id is not None
         model = f"{ll_model.provider}/{ll_model.id}"
-        connect_database = self._build_nl2sql_database_connector(connection_name, model, client)
-        graph = await build_nl2sql_graph(cs, self._server_url, self.api_key, checkpointer=MemorySaver())
+        request_key = self._request_key(api_key)
+        connect_database = self._build_nl2sql_database_connector(connection_name, model, client, request_key)
+        graph = await build_nl2sql_graph(cs, self._server_url, request_key, checkpointer=MemorySaver())
         return NL2SQLGraphSession(
             graph,
             cs,
@@ -220,9 +230,12 @@ class ChatOrchestrator:
             connect_database=connect_database,
         )
 
-    async def _build_combined_session(self, cs: ClientSettings, client: str = "") -> CombinedSession:
+    async def _build_combined_session(
+        self, cs: ClientSettings, client: str = "", api_key: str | None = None
+    ) -> CombinedSession:
         """Build a combined vecsearch + NL2SQL session from client settings."""
-        graph = await build_vecsearch_graph(cs, self._server_url, self.api_key)
+        request_key = self._request_key(api_key)
+        graph = await build_vecsearch_graph(cs, self._server_url, request_key)
         vs_session = GraphFlowSession(graph, cs)
 
         connection_name = resolve_effective_tool_alias(client) if client else cs.database.alias
@@ -230,8 +243,8 @@ class ChatOrchestrator:
         assert ll_model.provider is not None
         assert ll_model.id is not None
         model = f"{ll_model.provider}/{ll_model.id}"
-        connect_database = self._build_nl2sql_database_connector(connection_name, model, client)
-        nl2sql_graph = await build_nl2sql_graph(cs, self._server_url, self.api_key, checkpointer=MemorySaver())
+        connect_database = self._build_nl2sql_database_connector(connection_name, model, client, request_key)
+        nl2sql_graph = await build_nl2sql_graph(cs, self._server_url, request_key, checkpointer=MemorySaver())
         nl2sql_session = NL2SQLGraphSession(
             nl2sql_graph,
             cs,
@@ -255,9 +268,9 @@ class ChatOrchestrator:
                 model_kwargs.update(build_oci_litellm_params(oci_profile))
 
         system_prompt, classifier_prompt, synthesis_template = await asyncio.gather(
-            fetch_prompt_for_route(Route.COMBINED, self._server_url, self.api_key),
-            self._fetch_validated_prompt(CLASSIFIER_PROMPT_NAME, validate_classifier_prompt),
-            self._fetch_validated_prompt(SYNTHESIS_PROMPT_NAME, validate_synthesis_template),
+            fetch_prompt_for_route(Route.COMBINED, self._server_url, request_key),
+            self._fetch_validated_prompt(CLASSIFIER_PROMPT_NAME, validate_classifier_prompt, request_key),
+            self._fetch_validated_prompt(SYNTHESIS_PROMPT_NAME, validate_synthesis_template, request_key),
         )
 
         return CombinedSession(
@@ -277,19 +290,20 @@ class ChatOrchestrator:
         cs: ClientSettings,
         route: Route,
         client: str = "",
+        api_key: str | None = None,
     ) -> SessionType:
         """Dispatch to the appropriate session builder for the given route."""
         if route == Route.LLM_ONLY:
-            return await self._build_agent_session(cs)
+            return await self._build_agent_session(cs, api_key)
         if route == Route.NL2SQL:
-            return await self._build_nl2sql_agent_session(cs, client=client)
+            return await self._build_nl2sql_agent_session(cs, client=client, api_key=api_key)
         if route == Route.COMBINED:
-            return await self._build_combined_session(cs, client=client)
-        return await self._build_flow_session(cs)
+            return await self._build_combined_session(cs, client=client, api_key=api_key)
+        return await self._build_flow_session(cs, api_key)
 
     # -- session cache -----------------------------------------------------
 
-    async def _get_or_create_session(self, client: str) -> tuple[SessionType, Route]:
+    async def _get_or_create_session(self, client: str, bearer: str | None = None) -> tuple[SessionType, Route]:
         """Return a cached session or build a new one for the client.
 
         Sessions carry no conversation state — the orchestrator-owned
@@ -302,6 +316,9 @@ class ChatOrchestrator:
         key = (client, route)
         cs_dict = cs.model_dump()
         identity = self._build_identity(cs_dict)
+
+        if bearer is not None:
+            return await self._build_session(cs, route, client=client, api_key=bearer), route
 
         cached = self._session_cache.get(key)
         if cached is not None and cached[2] == identity:
@@ -375,9 +392,10 @@ class ChatOrchestrator:
         self,
         question: str,
         client: str,
+        bearer: str | None = None,
     ) -> Dict[str, Any]:
         """Execute a non-streaming chat and return result with metadata."""
-        session, route = await self._get_or_create_session(client)
+        session, route = await self._get_or_create_session(client, bearer)
 
         cs = self._resolve_client(client)
         if isinstance(session, CombinedSession):
@@ -580,9 +598,10 @@ class ChatOrchestrator:
         self,
         question: str,
         client: str,
+        bearer: str | None = None,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Execute a streaming chat, yielding event dicts as they arrive."""
-        session, route = await self._get_or_create_session(client)
+        session, route = await self._get_or_create_session(client, bearer)
         queue: asyncio.Queue = asyncio.Queue()
         collected: list[str] = []
         token_usage: Optional[TokenUsage] = None

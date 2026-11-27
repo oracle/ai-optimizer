@@ -24,8 +24,10 @@ CHART_DIR = REPO_ROOT / "helm"
 ROOT_MAIN_PATH = REPO_ROOT / "opentofu" / "main.tf"
 ROOT_PROVIDER_PATH = REPO_ROOT / "opentofu" / "provider.tf"
 ROOT_VARIABLES_PATH = REPO_ROOT / "opentofu" / "variables.tf"
+ROOT_OIDC_PATH = REPO_ROOT / "opentofu" / "iam_oidc.tf"
 K8S_VARIABLES_PATH = REPO_ROOT / "opentofu" / "modules" / "kubernetes" / "variables.tf"
 VM_VARIABLES_PATH = REPO_ROOT / "opentofu" / "modules" / "vm" / "variables.tf"
+VM_DATABASE_TEMPLATE_PATH = REPO_ROOT / "opentofu" / "modules" / "vm" / "templates" / "cloudinit-database.tpl"
 BYO_URL = "iad.ocir.io/byo-namespace"
 COOKIE_SECRET = "cccccccccccccccccccccccccccccccc"
 
@@ -48,7 +50,12 @@ _INTERNAL_HOST_RE = re.compile(
 )
 
 
-def _render(tmp_path: Path, is_obs: bool, byo_url: str) -> str:
+def _render(
+    tmp_path: Path,
+    is_obs: bool,
+    byo_url: str,
+    ssl_hostname: str = "optimizer.example.test",
+) -> str:
     """Render ai-optimizer-values.yaml the way cfgmgt_optimizer.tf does:
     is_observability_enabled forwards directly; byo_ocir_url is
     forwarded as ocir_url."""
@@ -72,8 +79,16 @@ def _render(tmp_path: Path, is_obs: bool, byo_url: str) -> str:
                 node_pool_gpu_deploy     = false
                 install_ollama           = false
                 app_version              = "0.0.0"
-                ssl_enabled              = false
                 client_cookie_secret     = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                oidc_issuer              = "https://identity.example.test"
+                oidc_discovery_url       = "https://domain.example.test/.well-known/openid-configuration"
+                oidc_audience            = "optimizer-api"
+                oidc_required_scopes     = jsonencode(["optimizer.read"])
+                oidc_client_id           = "optimizer-client"
+                oidc_redirect_uri        = "https://optimizer.example.test/oauth2callback"
+                oidc_admin_subject       = "admin-subject"
+                oidc_public_server_url   = "https://optimizer.example.test"
+                ssl_hostname             = "{ssl_hostname}"
                 is_observability_enabled = local.is_observability_enabled
                 ocir_url                 = local.byo_ocir_url
                 object_storage_bucket    = ""
@@ -151,6 +166,42 @@ def test_byo_type_variable_validation_supports_opentofu_1_5():
     assert "var.byo_odb_port >= 1 && var.byo_odb_port <= 65535" in variables
 
 
+def test_root_iac_provisions_and_forwards_oci_iam_oidc():
+    oidc = ROOT_OIDC_PATH.read_text()
+    variables = ROOT_VARIABLES_PATH.read_text()
+    data = (REPO_ROOT / "opentofu" / "data.tf").read_text()
+    kubernetes = (REPO_ROOT / "opentofu" / "module_kubernetes.tf").read_text()
+    vm = (REPO_ROOT / "opentofu" / "module_vm.tf").read_text()
+
+    assert 'resource "oci_identity_domains_app" "optimizer"' in oidc
+    assert 'resource "oci_identity_domains_grant" "optimizer_admin"' in oidc
+    assert "name           = local.optimizer_identity_domain_name" in data
+    assert 'type           = local.optimizer_identity_domain_name == null ? "DEFAULT" : null' in data
+    assert 'reverse(split("/", local.optimizer_oci_username))' in oidc
+    assert 'grant_mechanism = "ADMINISTRATOR_TO_USER"' in oidc
+    assert "allow_access_control = true" in oidc
+    assert "is_oauth_client      = true" in oidc
+    assert "is_oauth_resource    = true" in oidc
+    assert "sensitive(oci_identity_domains_app.optimizer[0].client_secret)" in oidc
+
+    for name in (
+        "oidc_issuer",
+        "oidc_discovery_url",
+        "oidc_audience",
+        "oidc_required_scopes",
+        "oidc_client_id",
+        "oidc_client_secret",
+        "oidc_redirect_uri",
+        "oidc_admin_subject",
+        "oidc_public_server_url",
+    ):
+        assert f'variable "{name}"' not in variables
+        assert f"{name}" in kubernetes
+        assert f"local.{name}" in kubernetes
+        assert f"{name}" in vm
+        assert f"local.{name}" in vm
+
+
 @pytest.mark.parametrize("path", [K8S_VARIABLES_PATH, VM_VARIABLES_PATH])
 def test_deployment_modules_reject_incomplete_db_conn(path: Path):
     """Both deployment modules validate the final generated connection."""
@@ -159,6 +210,13 @@ def test_deployment_modules_reject_incomplete_db_conn(path: Path):
     for field in ("username", "password", "service"):
         assert f"trimspace(var.db_conn.{field})" in variables
     assert "db_conn must provide a non-empty username, password, and service" in variables
+
+
+def test_vm_database_provisioning_grants_local_member_administration():
+    template = VM_DATABASE_TEMPLATE_PATH.read_text()
+
+    for privilege in ("CREATE END USER", "ALTER END USER", "DROP END USER"):
+        assert f'GRANT {privilege} TO "$AIO_DB_USERNAME"' in template
 
 
 @pytest.fixture(scope="module")
@@ -242,6 +300,21 @@ def test_render_uses_current_chart_value_names_and_pinned_tags(tmp_path):
     assert "privAuthN:" not in rendered
     assert 'tag: "latest"' not in rendered
     assert rendered.count('tag: "0.0.0"') == 2
+    assert rendered.count('oci-native-ingress.oraclecloud.com/backend-tls-enabled: "false"') == 2
+    assert rendered.count("oci-native-ingress.oraclecloud.com/healthcheck-protocol: HTTP") == 2
+
+
+def test_self_signed_render_uses_tls_secret_without_hostname(tmp_path):
+    rendered = _render(
+        tmp_path,
+        is_obs=False,
+        byo_url="",
+        ssl_hostname="",
+    )
+    assert rendered.count("secretName: ai-optimizer-tls") == 2
+    assert "oci-native-ingress.oraclecloud.com/certificate-ocid:" not in rendered
+    assert 'host: ""' not in rendered
+    assert '- ""' not in rendered
 
 
 def test_byo_render_passes_helm_validation(byo_helm_render):

@@ -155,7 +155,7 @@ async def _stream_chat(messages: list[dict], metadata: dict):
     event (if present) so callers can display it after streaming finishes.
     """
     url = f"{_base_url()}/chat/streams"
-    headers = {**_headers(), "client": state.optimizer_client}
+    headers = _headers()
     body = {"messages": messages}
 
     async with httpx.AsyncClient(timeout=120, verify=verify_for_url(url)) as client:  # noqa: SIM117

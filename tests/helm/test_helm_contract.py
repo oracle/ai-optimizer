@@ -27,6 +27,7 @@ _DEFAULT_DATABASE_ARGS = (
     "--set",
     "server.database.authn.secretName=test-database-credentials",
 )
+_DEFAULT_AUTH_ARGS = ()
 
 
 def _default_database_args(args: tuple[str, ...]) -> tuple[str, ...]:
@@ -42,8 +43,7 @@ def _render(*extra_sets: str) -> subprocess.CompletedProcess:
         "template",
         "test",
         str(CHART_DIR),
-        "--set",
-        "global.api.apiKey=dummy-api-key",
+        *_DEFAULT_AUTH_ARGS,
         *_default_database_args(extra_sets),
     ]
     for s in extra_sets:
@@ -58,8 +58,7 @@ def _render_raw(*extra_args: str) -> subprocess.CompletedProcess:
         "template",
         "test",
         str(CHART_DIR),
-        "--set",
-        "global.api.apiKey=dummy-api-key",
+        *_DEFAULT_AUTH_ARGS,
         *_default_database_args(extra_args),
         *extra_args,
     ]
@@ -77,13 +76,334 @@ def _render_with_notes(*extra_sets: str, env: dict | None = None) -> subprocess.
         str(CHART_DIR),
         "--namespace",
         "test-ns",
-        "--set",
-        "global.api.apiKey=dummy-api-key",
+        *_DEFAULT_AUTH_ARGS,
         *_default_database_args(extra_sets),
     ]
     for s in extra_sets:
         cmd.extend(["--set", s])
     return subprocess.run(cmd, capture_output=True, text=True, env=env, check=False)
+
+
+def test_authentication_does_not_require_oidc_discovery_url():
+    result = _render(
+        "global.authentication.oidc.issuer=https://identity.example.test",
+        "global.authentication.oidc.audience=optimizer-api",
+        "global.authentication.oidc.requiredScopes[0]=optimizer.invoke",
+        "client.oidc.clientId=optimizer-client",
+        "client.oidc.clientSecretName=oidc-secret",
+        "client.oidc.redirectUri=https://optimizer.example.test/oauth2callback",
+        "global.authentication.oidc.adminSubject=admin-subject",
+        "global.authentication.oidc.publicServerUrl=https://optimizer.example.test",
+    )
+    assert result.returncode == 0, result.stderr
+    assert "AIO_OIDC_DISCOVERY_URL" not in result.stdout
+
+
+def test_authentication_rejects_non_https_oidc_authority():
+    result = _render(
+        "global.authentication.oidc.issuer=http://identity.example.test",
+        "global.authentication.oidc.discoveryUrl=https://domain.example.test/.well-known/openid-configuration",
+        "global.authentication.oidc.audience=optimizer-api",
+        "global.authentication.oidc.requiredScopes[0]=optimizer.invoke",
+        "client.oidc.clientId=optimizer-client",
+        "client.oidc.clientSecretName=oidc-secret",
+        "client.oidc.redirectUri=https://optimizer.example.test/oauth2callback",
+        "global.authentication.oidc.adminSubject=admin-subject",
+        "global.authentication.oidc.publicServerUrl=https://optimizer.example.test",
+    )
+    assert result.returncode != 0
+    assert "global.authentication.oidc.issuer must use HTTPS" in result.stderr
+
+
+def test_client_rejects_partial_tls_certificate_configuration():
+    result = _render("client.ssl.certFile=/tls/cert.pem")
+    assert result.returncode != 0
+    assert "client.ssl.certFile and client.ssl.keyFile must be supplied together" in result.stderr
+
+
+def test_server_rejects_partial_tls_certificate_configuration():
+    result = _render("server.ssl.certFile=/tls/cert.pem")
+    assert result.returncode != 0
+    assert "server.ssl.certFile and server.ssl.keyFile must be supplied together" in result.stderr
+
+
+def test_server_ingress_requires_tls():
+    result = _render("server.ingress.enabled=true")
+    assert result.returncode != 0
+    assert "server.ingress.tls is required" in result.stderr
+
+
+def test_client_ingress_requires_tls():
+    result = _render("client.ingress.enabled=true")
+    assert result.returncode != 0
+    assert "client.ingress.tls is required" in result.stderr
+
+
+def test_client_workload_uses_https_by_default():
+    result = _render()
+    assert result.returncode == 0, result.stderr
+    docs = _docs(result.stdout)
+    deployment = next(
+        doc
+        for doc in docs
+        if doc.get("kind") == "Deployment"
+        and doc.get("metadata", {}).get("labels", {}).get("app.kubernetes.io/component") == "client"
+    )
+    container = deployment["spec"]["template"]["spec"]["containers"][0]
+    assert container["livenessProbe"]["httpGet"]["scheme"] == "HTTPS"
+    assert container["readinessProbe"]["httpGet"]["scheme"] == "HTTPS"
+    service = next(
+        doc
+        for doc in docs
+        if doc.get("kind") == "Service"
+        and doc.get("metadata", {}).get("labels", {}).get("app.kubernetes.io/component") == "client"
+    )
+    assert service["spec"]["ports"][0]["appProtocol"] == "https"
+
+
+def test_server_workload_uses_https_by_default():
+    result = _render()
+    assert result.returncode == 0, result.stderr
+    docs = _docs(result.stdout)
+    deployment = next(
+        doc
+        for doc in docs
+        if doc.get("kind") == "Deployment"
+        and doc.get("metadata", {}).get("labels", {}).get("app.kubernetes.io/component") == "server"
+    )
+    container = deployment["spec"]["template"]["spec"]["containers"][0]
+    assert container["livenessProbe"]["httpGet"]["scheme"] == "HTTPS"
+    assert container["readinessProbe"]["httpGet"]["scheme"] == "HTTPS"
+    service = next(
+        doc
+        for doc in docs
+        if doc.get("kind") == "Service"
+        and doc.get("metadata", {}).get("labels", {}).get("app.kubernetes.io/component") == "server"
+    )
+    assert service["spec"]["ports"][0]["appProtocol"] == "https"
+
+
+def test_workloads_use_http_when_pod_tls_is_disabled():
+    result = _render("server.ssl.enabled=false", "client.ssl.enabled=false")
+    assert result.returncode == 0, result.stderr
+    docs = _docs(result.stdout)
+    deployments = [doc for doc in docs if doc.get("kind") == "Deployment"]
+    services = [
+        doc
+        for doc in docs
+        if doc.get("kind") == "Service"
+        and doc.get("metadata", {}).get("labels", {}).get("app.kubernetes.io/component") in {"server", "client"}
+    ]
+    for deployment in deployments:
+        component = deployment.get("metadata", {}).get("labels", {}).get("app.kubernetes.io/component")
+        if component in {"server", "client"}:
+            container = deployment["spec"]["template"]["spec"]["containers"][0]
+            assert container["livenessProbe"]["httpGet"]["scheme"] == "HTTP"
+            assert container["readinessProbe"]["httpGet"]["scheme"] == "HTTP"
+    assert services
+    assert all(service["spec"]["ports"][0]["appProtocol"] == "http" for service in services)
+
+
+def test_client_nginx_ingress_uses_https_backend_when_enabled():
+    result = _render(
+        "client.ingress.enabled=true",
+        "client.ingress.className=nginx",
+        "client.ssl.enabled=true",
+        "client.ingress.tls[0].secretName=client-tls",
+    )
+    assert result.returncode == 0, result.stderr
+    ingress = next(doc for doc in _docs(result.stdout) if doc.get("kind") == "Ingress")
+    assert ingress["metadata"]["annotations"]["nginx.ingress.kubernetes.io/backend-protocol"] == "HTTPS"
+
+
+def test_server_nginx_ingress_uses_https_backend_when_enabled():
+    result = _render(
+        "server.ingress.enabled=true",
+        "server.ingress.className=nginx",
+        "server.ssl.enabled=true",
+        "server.ingress.tls[0].secretName=server-tls",
+    )
+    assert result.returncode == 0, result.stderr
+    ingress = next(doc for doc in _docs(result.stdout) if doc.get("kind") == "Ingress")
+    assert ingress["metadata"]["annotations"]["nginx.ingress.kubernetes.io/backend-protocol"] == "HTTPS"
+
+
+def test_client_gateway_exposes_only_https():
+    result = _render(
+        "client.gateway.enabled=true",
+        "client.gateway.tls.mode=Terminate",
+        "client.gateway.tls.certificateRefs[0].name=client-tls",
+    )
+    assert result.returncode == 0, result.stderr
+    gateway = next(doc for doc in _docs(result.stdout) if doc.get("kind") == "Gateway")
+    assert gateway["spec"]["listeners"] == [
+        {
+            "name": "https",
+            "port": 443,
+            "protocol": "HTTPS",
+            "tls": {"mode": "Terminate", "certificateRefs": [{"name": "client-tls"}]},
+        }
+    ]
+
+
+def test_server_gateway_exposes_only_https():
+    result = _render(
+        "server.gateway.enabled=true",
+        "server.gateway.tls.mode=Terminate",
+        "server.gateway.tls.certificateRefs[0].name=server-tls",
+    )
+    assert result.returncode == 0, result.stderr
+    gateway = next(doc for doc in _docs(result.stdout) if doc.get("kind") == "Gateway")
+    assert gateway["spec"]["listeners"] == [
+        {
+            "name": "https",
+            "port": 8443,
+            "protocol": "HTTPS",
+            "tls": {"mode": "Terminate", "certificateRefs": [{"name": "server-tls"}]},
+        }
+    ]
+
+
+def test_oidc_client_secret_is_not_sent_to_authentication_setup():
+    result = _render(
+        "global.authentication.oidc.issuer=https://identity.example.test",
+        "global.authentication.oidc.discoveryUrl=https://domain.example.test/.well-known/openid-configuration",
+        "global.authentication.oidc.audience=optimizer-api",
+        "global.authentication.oidc.requiredScopes[0]=optimizer.invoke",
+        "client.oidc.clientId=optimizer-client",
+        "client.oidc.clientSecretName=oidc-secret",
+        "client.oidc.redirectUri=https://optimizer.example.test/oauth2callback",
+        "global.authentication.oidc.adminSubject=admin-subject",
+        "global.authentication.oidc.publicServerUrl=https://optimizer.example.test",
+    )
+    assert result.returncode == 0, result.stderr
+    docs = _docs(result.stdout)
+    auth_job = next(
+        doc
+        for doc in docs
+        if doc.get("kind") == "Job"
+        and doc.get("metadata", {}).get("labels", {}).get("app.kubernetes.io/component") == "auth-setup"
+    )
+    server = next(
+        doc
+        for doc in docs
+        if doc.get("kind") == "Deployment"
+        and doc.get("metadata", {}).get("labels", {}).get("app.kubernetes.io/component") == "server"
+    )
+    client = next(
+        doc
+        for doc in docs
+        if doc.get("kind") == "Deployment"
+        and doc.get("metadata", {}).get("labels", {}).get("app.kubernetes.io/component") == "client"
+    )
+    auth_env = {item["name"] for item in auth_job["spec"]["template"]["spec"]["containers"][0]["env"]}
+    server_env = {item["name"] for item in server["spec"]["template"]["spec"]["containers"][0]["env"]}
+    client_env = {item["name"] for item in client["spec"]["template"]["spec"]["containers"][0]["env"]}
+    assert "AIO_OIDC_CLIENT_SECRET" not in auth_env
+    assert "AIO_OIDC_CLIENT_SECRET" not in server_env
+    assert "AIO_OIDC_CLIENT_SECRET" in client_env
+
+
+def test_server_only_oidc_does_not_require_web_client_credentials():
+    result = _render(
+        "client.enabled=false",
+        "global.authentication.oidc.issuer=https://identity.example.test",
+        "global.authentication.oidc.discoveryUrl=https://domain.example.test/.well-known/openid-configuration",
+        "global.authentication.oidc.audience=optimizer-api",
+        "global.authentication.oidc.requiredScopes[0]=optimizer.invoke",
+        "global.authentication.oidc.adminSubject=admin-subject",
+        "global.authentication.oidc.publicServerUrl=https://optimizer.example.test",
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_web_client_registration_does_not_select_server_oidc():
+    result = _render(
+        "client.oidc.clientId=optimizer-client",
+        "client.oidc.clientSecretName=oidc-secret",
+        "client.oidc.redirectUri=https://optimizer.example.test/oauth2callback",
+    )
+    assert result.returncode == 0, result.stderr
+    server = next(
+        doc
+        for doc in _docs(result.stdout)
+        if doc.get("kind") == "Deployment"
+        and doc.get("metadata", {}).get("labels", {}).get("app.kubernetes.io/component") == "server"
+    )
+    server_env = {item["name"] for item in server["spec"]["template"]["spec"]["containers"][0]["env"]}
+    assert "AIO_OIDC_ISSUER" not in server_env
+
+
+def test_authentication_setup_runs_after_database_initialization():
+    result = _render(
+        "client.cookieSecret=cccccccccccccccccccccccccccccccc",
+        "server.database.type=SIDB-FREE",
+        "server.database.image.repository=database/free",
+        "server.database.image.tag=1.0.0",
+    )
+    assert result.returncode == 0, f"render failed: {result.stderr[:500]}"
+    jobs = {
+        doc["metadata"]["labels"]["app.kubernetes.io/component"]: doc
+        for doc in _docs(result.stdout)
+        if doc.get("kind") == "Job"
+        and doc.get("metadata", {}).get("labels", {}).get("app.kubernetes.io/component") in {"database", "auth-setup"}
+    }
+
+    assert set(jobs) == {"database", "auth-setup"}
+    assert all("helm.sh/hook" not in job["metadata"].get("annotations", {}) for job in jobs.values())
+    auth_container = jobs["auth-setup"]["spec"]["template"]["spec"]["containers"][0]
+    assert auth_container["args"] == ["--wait-seconds", "900"]
+    auth_env = auth_container["env"]
+    auth_env_by_name = {item["name"]: item for item in auth_env}
+    assert auth_env_by_name["AIO_AUTH_SETUP_PRIV_USERNAME"]["valueFrom"]["secretKeyRef"]
+    assert auth_env_by_name["AIO_AUTH_SETUP_PRIV_PASSWORD"]["valueFrom"]["secretKeyRef"]
+
+    database_script = next(
+        doc for doc in _docs(result.stdout) if doc.get("kind") == "ConfigMap" and "db-init" in doc["metadata"]["name"]
+    )["data"]["init.sh"]
+    assert 'GRANT CREATE END USER TO "$AIO_DB_USERNAME"' not in database_script
+    assert 'GRANT ALTER END USER TO "$AIO_DB_USERNAME"' not in database_script
+    assert 'GRANT DROP END USER TO "$AIO_DB_USERNAME"' not in database_script
+
+
+def test_external_database_authentication_setup_has_zero_touch_privileged_fallback():
+    result = _render()
+    assert result.returncode == 0, result.stderr
+    docs = _docs(result.stdout)
+    assert not any(
+        doc.get("kind") == "Secret" and doc.get("metadata", {}).get("name", "").endswith("db-priv-authn")
+        for doc in docs
+    )
+    auth_job = next(
+        doc
+        for doc in docs
+        if doc.get("kind") == "Job"
+        and doc.get("metadata", {}).get("labels", {}).get("app.kubernetes.io/component") == "auth-setup"
+    )
+    env = {item["name"]: item for item in auth_job["spec"]["template"]["spec"]["containers"][0]["env"]}
+    assert env["AIO_AUTH_SETUP_PRIV_USERNAME"]["valueFrom"]["secretKeyRef"]["optional"] is True
+    assert env["AIO_AUTH_SETUP_PRIV_PASSWORD"]["valueFrom"]["secretKeyRef"]["optional"] is True
+
+
+def test_authentication_session_limits_render_to_server_environment():
+    result = _render(
+        "global.authentication.sessionAbsoluteSeconds=3600",
+        "global.authentication.sessionIdleSeconds=600",
+        "global.authentication.sessionMaxPerUser=3",
+        "global.authentication.accountStatusCacheSeconds=0",
+    )
+    assert result.returncode == 0, result.stderr
+    env_secret = next(
+        doc
+        for doc in _docs(result.stdout)
+        if doc.get("kind") == "Secret"
+        and doc.get("metadata", {}).get("labels", {}).get("app.kubernetes.io/component") == "server"
+    )
+    content = next(iter(env_secret["stringData"].values()))
+    assert "AIO_AUTH_SESSION_ABSOLUTE_SECONDS=3600" in content
+    assert "AIO_AUTH_SESSION_IDLE_SECONDS=600" in content
+    assert "AIO_AUTH_SESSION_MAX_PER_USER=3" in content
+    assert "AIO_AUTH_ACCOUNT_STATUS_CACHE_SECONDS=0" in content
 
 
 def _render_database_contract(*extra_args: str) -> subprocess.CompletedProcess:
@@ -94,8 +414,7 @@ def _render_database_contract(*extra_args: str) -> subprocess.CompletedProcess:
             "template",
             "test",
             str(CHART_DIR),
-            "--set",
-            "global.api.apiKey=dummy-api-key",
+            *_DEFAULT_AUTH_ARGS,
             "--set",
             "client.cookieSecret=cccccccccccccccccccccccccccccccc",
             *extra_args,
@@ -454,7 +773,7 @@ class TestClientEnvSecretContract:
     points at a pre-existing operator-owned Secret. AIO_SERVER_URL and
     AIO_SERVER_PORT are derived from the in-cluster Service and have no
     sensible operator override, so they must travel via direct pod env —
-    otherwise the client falls back to http://localhost:8000 (the Pydantic
+    otherwise the client falls back to https://localhost:8000 (the Pydantic
     defaults in src/client/app/core/settings.py) and cannot reach the
     in-cluster server.
     """
@@ -475,10 +794,10 @@ class TestClientEnvSecretContract:
         assert url_entry is not None, (
             "AIO_SERVER_URL must be set as direct pod env so external-Secret "
             "operators reach the in-cluster server; otherwise the client "
-            "Pydantic default (http://localhost) wins"
+            "Pydantic default (https://localhost) wins"
         )
         assert port_entry is not None, "AIO_SERVER_PORT must be set as direct pod env for the same reason"
-        assert url_entry["value"].startswith("http://test-ai-optimizer-server-http"), (
+        assert url_entry["value"].startswith("https://test-ai-optimizer-server-https"), (
             f"AIO_SERVER_URL should resolve to the in-cluster server Service; got {url_entry['value']!r}"
         )
         assert port_entry["value"] == "8000", f"AIO_SERVER_PORT should default to 8000; got {port_entry['value']!r}"
@@ -951,10 +1270,7 @@ class TestNotesUninstallDeletesOnlyChartManagedSecrets:
     contract enforced in auth-secret.yaml / priv-secret.yaml.
     """
 
-    _COMMON = (
-        "global.api.apiKey=dummy-api-key",
-        "client.cookieSecret=cccccccccccccccccccccccccccccccc",
-    )
+    _COMMON = ("client.cookieSecret=cccccccccccccccccccccccccccccccc",)
 
     def _notes(self, *extra_sets: str) -> str:
         result = _render_with_notes(*self._COMMON, *extra_sets)
@@ -1908,7 +2224,6 @@ class TestSigNozCleanupHookRbacContract:
     """
 
     _BASE = (
-        "global.api.apiKey=dummy-api-key",
         "client.cookieSecret=cccccccccccccccccccccccccccccccc",
         "signoz.enabled=true",
     )

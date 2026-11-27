@@ -35,7 +35,8 @@ resource "tls_cert_request" "server" {
     common_name  = "AI Optimizer"
     organization = "Oracle"
   }
-  ip_addresses = [oci_load_balancer_load_balancer.lb.ip_address_details[0].ip_address]
+  dns_names    = var.ssl_hostname == "" ? [] : [lower(var.ssl_hostname)]
+  ip_addresses = var.ssl_hostname == "" ? [oci_core_public_ip.lb.ip_address] : []
 }
 
 resource "tls_locally_signed_cert" "server" {
@@ -45,4 +46,28 @@ resource "tls_locally_signed_cert" "server" {
   ca_cert_pem           = tls_self_signed_cert.ca[0].cert_pem
   validity_period_hours = 8760
   allowed_uses          = ["digital_signature", "key_encipherment", "server_auth"]
+}
+
+resource "oci_certificates_management_certificate" "lb_cert" {
+  provider              = oci-patched
+  compartment_id        = local.compartment_ocid
+  deletion_pending_days = 1
+
+  name = format(
+    "%s-lb-cert-%s",
+    local.label_prefix,
+    substr(sha256(oci_core_public_ip.lb.id), 0, 12),
+  )
+
+  certificate_config {
+    config_type     = "IMPORTED"
+    certificate_pem = local.ssl_cert_pem
+    private_key_pem = local.ssl_key_pem
+    cert_chain_pem  = local.ssl_ca_cert_pem
+
+    version_name = format(
+      "v-%s",
+      substr(sha256(nonsensitive(local.ssl_cert_pem)), 0, 16),
+    )
+  }
 }

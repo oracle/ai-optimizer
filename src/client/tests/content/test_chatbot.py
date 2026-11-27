@@ -312,7 +312,7 @@ class TestStreamChat:
         with (
             patch(f"{MODULE}.state", state),
             patch(f"{MODULE}._base_url", return_value="http://test/v1"),
-            patch(f"{MODULE}._headers", return_value={"X-API-Key": "k"}),
+            patch(f"{MODULE}._headers", return_value={"Authorization": "Bearer k"}),
             patch(f"{MODULE}.httpx.AsyncClient", return_value=client_ctx),
         ):
             from client.app.content.chatbot import _stream_chat
@@ -332,7 +332,7 @@ class TestStreamChat:
         with (
             patch(f"{MODULE}.state", state),
             patch(f"{MODULE}._base_url", return_value="https://127.0.0.1:8000/v1"),
-            patch(f"{MODULE}._headers", return_value={"X-API-Key": "k"}),
+            patch(f"{MODULE}._headers", return_value={"Authorization": "Bearer k"}),
             patch(f"{MODULE}.httpx.AsyncClient", return_value=client_ctx) as mock_client,
         ):
             from client.app.content.chatbot import _stream_chat

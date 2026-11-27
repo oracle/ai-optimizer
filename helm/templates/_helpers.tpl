@@ -167,30 +167,84 @@ wait_until() {
 
 
 {{/* ******************************************
-Validate that either global.api.apiKey or global.api.secretName is provided.
+Validate the immutable authentication authority contract.
 *********************************************** */}}
-{{- define "ai-optimizer.apiKeyOrSecretName.required" -}}
-  {{- $apiKey := .Values.global.api.apiKey | trim | default "" -}}
-  {{- $secretName := .Values.global.api.secretName | trim | default "" -}}
-
-  {{- if and (eq $apiKey "") (eq $secretName "") -}}
-    {{- fail "You must specify either global.api.apiKey or global.api.secretName" -}}
-  {{- end -}}
-
-  {{- if and (ne $apiKey "") (ne $secretName "") -}}
-    {{- fail "You cannot specify both global.api.apiKey and global.api.secretName; please choose one" -}}
+{{- define "ai-optimizer.authentication.isOidc" -}}
+{{- $auth := .Values.global.authentication | default dict -}}
+{{- $oidc := $auth.oidc | default dict -}}
+{{- $configured := false -}}
+{{- range $field := list "issuer" "discoveryUrl" "audience" "adminSubject" "publicServerUrl" -}}
+  {{- if ne (index $oidc $field | default "" | trim) "" -}}
+    {{- $configured = true -}}
   {{- end -}}
 {{- end -}}
-
-{{/* ******************************************
-Define the API Key Secret with Defaults
-*********************************************** */}}
-{{- define "ai-optimizer.apiSecretName" -}}
-{{- .Values.global.api.secretName | default (printf "%s-api-key" (include "ai-optimizer.fullname" .)) -}}
+{{- if gt (len ($oidc.requiredScopes | default list)) 0 -}}
+  {{- $configured = true -}}
+{{- end -}}
+{{- if $configured -}}true{{- else -}}false{{- end -}}
 {{- end }}
 
-{{- define "ai-optimizer.apiSecretKey" -}}
-{{- .Values.global.api.secretKey | default "apiKey" -}}
+{{- define "ai-optimizer.authentication.validate" -}}
+{{- $auth := .Values.global.authentication | default dict -}}
+{{- $isOidc := eq (include "ai-optimizer.authentication.isOidc" . | trim) "true" -}}
+{{- $serverCert := .Values.server.ssl.certFile | default "" | trim -}}
+{{- $serverKey := .Values.server.ssl.keyFile | default "" | trim -}}
+{{- if ne (ne $serverCert "") (ne $serverKey "") -}}
+  {{- fail "server.ssl.certFile and server.ssl.keyFile must be supplied together" -}}
+{{- end -}}
+{{- $serverIngressAnnotations := .Values.server.ingress.annotations | default dict -}}
+{{- $serverCertificateOCID := get $serverIngressAnnotations "oci-native-ingress.oraclecloud.com/certificate-ocid" | default "" | trim -}}
+{{- $serverUsesOCICertificate := and (eq .Values.server.ingress.className "native-ic") (ne $serverCertificateOCID "") -}}
+{{- if and .Values.server.ingress.enabled (eq (len (.Values.server.ingress.tls | default list)) 0) (not $serverUsesOCICertificate) -}}
+  {{- fail "server.ingress.tls is required when the API Server ingress is enabled unless the OCI Native Ingress certificate-ocid annotation is set" -}}
+{{- end -}}
+{{- if and .Values.server.gateway.enabled (not .Values.server.gateway.tls) -}}
+  {{- fail "server.gateway.tls is required when the API Server gateway is enabled" -}}
+{{- end -}}
+{{- $clientCert := .Values.client.ssl.certFile | default "" | trim -}}
+{{- $clientKey := .Values.client.ssl.keyFile | default "" | trim -}}
+{{- if ne (ne $clientCert "") (ne $clientKey "") -}}
+  {{- fail "client.ssl.certFile and client.ssl.keyFile must be supplied together" -}}
+{{- end -}}
+{{- $clientIngressAnnotations := .Values.client.ingress.annotations | default dict -}}
+{{- $clientCertificateOCID := get $clientIngressAnnotations "oci-native-ingress.oraclecloud.com/certificate-ocid" | default "" | trim -}}
+{{- $clientUsesOCICertificate := and (eq .Values.client.ingress.className "native-ic") (ne $clientCertificateOCID "") -}}
+{{- if and .Values.client.enabled .Values.client.ingress.enabled (eq (len (.Values.client.ingress.tls | default list)) 0) (not $clientUsesOCICertificate) -}}
+  {{- fail "client.ingress.tls is required when the Streamlit client ingress is enabled unless the OCI Native Ingress certificate-ocid annotation is set" -}}
+{{- end -}}
+{{- if and .Values.client.enabled .Values.client.gateway.enabled (not .Values.client.gateway.tls) -}}
+  {{- fail "client.gateway.tls is required when the Streamlit client gateway is enabled" -}}
+{{- end -}}
+{{- if $isOidc -}}
+  {{- $oidc := $auth.oidc | default dict -}}
+  {{- range $field := list "issuer" "audience" "adminSubject" "publicServerUrl" -}}
+    {{- if eq (index $oidc $field | default "" | trim) "" -}}
+      {{- fail (printf "global.authentication.oidc.%s is required when OIDC is configured" $field) -}}
+    {{- end -}}
+  {{- end -}}
+  {{- if eq (len ($oidc.requiredScopes | default list)) 0 -}}
+    {{- fail "global.authentication.oidc.requiredScopes must contain at least one scope when OIDC is configured" -}}
+  {{- end -}}
+  {{- if .Values.client.enabled -}}
+    {{- $clientOidc := .Values.client.oidc | default dict -}}
+    {{- range $field := list "clientId" "clientSecretName" "redirectUri" -}}
+      {{- if eq (index $clientOidc $field | default "" | trim) "" -}}
+        {{- fail (printf "client.oidc.%s is required when the Streamlit client uses OIDC" $field) -}}
+      {{- end -}}
+    {{- end -}}
+  {{- end -}}
+  {{- range $field := list "issuer" "publicServerUrl" -}}
+    {{- if not (hasPrefix "https://" (index $oidc $field | trim)) -}}
+      {{- fail (printf "global.authentication.oidc.%s must use HTTPS" $field) -}}
+    {{- end -}}
+  {{- end -}}
+  {{- if and (ne ($oidc.discoveryUrl | default "" | trim) "") (not (hasPrefix "https://" ($oidc.discoveryUrl | trim))) -}}
+    {{- fail "global.authentication.oidc.discoveryUrl must use HTTPS" -}}
+  {{- end -}}
+  {{- if and .Values.client.enabled (not (hasPrefix "https://" (.Values.client.oidc.redirectUri | trim))) -}}
+    {{- fail "client.oidc.redirectUri must use HTTPS" -}}
+  {{- end -}}
+{{- end -}}
 {{- end }}
 
 
@@ -224,49 +278,6 @@ letting a whitespace cookieSecret clobber an operator-owned external Secret.
 {{- end }}
 
 {{/* ******************************************
-Validate the three mutually-exclusive client password paths. At most one of
-client.password, client.passwordSecretName, or client.passwordAutoGenerate
-may be active. Combinations are ambiguous (which Secret does the deployment
-bind, who owns the lifecycle); fail loudly rather than apply silent precedence.
-*********************************************** */}}
-{{- define "ai-optimizer.client.passwordBothSet.fail" -}}
-  {{- $inline := .Values.client.password | trim | default "" -}}
-  {{- $byo := .Values.client.passwordSecretName | trim | default "" -}}
-  {{- $auto := .Values.client.passwordAutoGenerate -}}
-  {{- $count := 0 -}}
-  {{- if ne $inline "" -}}{{- $count = add $count 1 -}}{{- end -}}
-  {{- if ne $byo "" -}}{{- $count = add $count 1 -}}{{- end -}}
-  {{- if $auto -}}{{- $count = add $count 1 -}}{{- end -}}
-  {{- if gt $count 1 -}}
-    {{- fail "client.password, client.passwordSecretName, and client.passwordAutoGenerate are mutually exclusive; set at most one" -}}
-  {{- end -}}
-{{- end -}}
-
-{{/* ******************************************
-Returns "true" when the additional client UI access check is active. Off
-unless one of client.password, client.passwordSecretName, or
-client.passwordAutoGenerate is set. When off, AIO_CLIENT_PASSWORD is not
-rendered into the client pod env.
-*********************************************** */}}
-{{- define "ai-optimizer.client.passwordGate.enabled" -}}
-{{- if or (.Values.client.password | trim) (.Values.client.passwordSecretName | trim) .Values.client.passwordAutoGenerate -}}true{{- end -}}
-{{- end -}}
-
-{{/* ******************************************
-Define the Client Password Secret name/key with defaults. Same trimming
-rationale as the cookie helpers: whitespace-only values are treated as unset.
-*********************************************** */}}
-{{- define "ai-optimizer.client.passwordSecretName" -}}
-{{- $explicit := .Values.client.passwordSecretName | trim -}}
-{{- if $explicit -}}{{ $explicit }}{{- else -}}{{ printf "%s-client-password" (include "ai-optimizer.fullname" .) }}{{- end -}}
-{{- end }}
-
-{{- define "ai-optimizer.client.passwordSecretKey" -}}
-{{- $explicit := .Values.client.passwordSecretKey | trim -}}
-{{- if $explicit -}}{{ $explicit }}{{- else -}}password{{- end -}}
-{{- end }}
-
-{{/* ******************************************
 Checksum used to roll the Client when its cookie-signing Secret changes.
 *********************************************** */}}
 {{- define "ai-optimizer.client.cookieSecretChecksum" -}}
@@ -285,43 +296,6 @@ Checksum used to roll the Client when its cookie-signing Secret changes.
   {{- else -}}
 {{- printf "generated:%s:%s" $name $key | sha256sum -}}
   {{- end -}}
-{{- end -}}
-{{- end -}}
-
-
-{{/* ******************************************
-Checksum used to roll the client Deployment when the shared password Secret
-changes. Mirrors client.cookieSecretChecksum:
-
-  * Inline path (client.password set): hash the rendered password-secret.yaml.
-    The cookie checksum already hashes the same file, so when BOTH cookie and
-    password are inline a value change on either rotates the pod — accepted
-    over-rotation; under-rotation is the bug we are preventing.
-
-  * Lookup path (client.passwordSecretName set OR passwordAutoGenerate true):
-    `lookup` the Secret at the resolved name and hash its current data. BYO
-    is operator-owned; auto-generate is the default-name Secret created by
-    password-secret.yaml. Both bind the same Secret in the Deployment. During
-    `helm template` / `--dry-run` / first install, `lookup` returns empty; we
-    fall back to a name-keyed sentinel so the annotation stays stable and
-    distinct per configuration.
-
-  * Gate disabled (none set): constant sentinel.
-*********************************************** */}}
-{{- define "ai-optimizer.client.passwordSecretChecksum" -}}
-{{- if .Values.client.password | trim -}}
-{{- include (print $.Template.BasePath "/client/password-secret.yaml") . | sha256sum -}}
-{{- else if or (.Values.client.passwordSecretName | trim) .Values.client.passwordAutoGenerate -}}
-  {{- $name := include "ai-optimizer.client.passwordSecretName" . -}}
-  {{- $key := include "ai-optimizer.client.passwordSecretKey" . -}}
-  {{- $found := lookup "v1" "Secret" .Release.Namespace $name -}}
-  {{- if and $found $found.data (hasKey $found.data $key) -}}
-{{- printf "live:%s:%s" $name (index $found.data $key) | sha256sum -}}
-  {{- else -}}
-{{- printf "unresolved:%s:%s" $name $key | sha256sum -}}
-  {{- end -}}
-{{- else -}}
-{{- printf "gate-disabled" | sha256sum -}}
 {{- end -}}
 {{- end -}}
 
@@ -351,11 +325,11 @@ Always returns a path with leading and trailing slashes for proper concatenation
 Define the serviceName and serviceUrl of the API Server for Client Access.
 *********************************************** */}}
 {{- define "ai-optimizer.server.serviceName" -}}
-{{ include "ai-optimizer.fullname" . }}-server-http
+{{ include "ai-optimizer.fullname" . }}-server-{{ if .Values.server.ssl.enabled }}https{{ else }}http{{ end }}
 {{- end -}}
 
 {{- define "ai-optimizer.server.serviceUrl" -}}
-http://{{ include "ai-optimizer.server.serviceName" . }}.{{ .Release.Namespace }}.svc
+{{ if .Values.server.ssl.enabled }}https{{ else }}http{{ end }}://{{ include "ai-optimizer.server.serviceName" . }}.{{ .Release.Namespace }}.svc
 {{- end -}}
 
 
@@ -449,12 +423,29 @@ Secret-mounted file rather than as pod env entries. Operator-supplied
 `server.envSecret.content` overrides chart defaults via mergeOverwrite.
 *********************************************** */}}
 {{- define "ai-optimizer.server.envContent" -}}
+{{- include "ai-optimizer.authentication.validate" . -}}
 {{- $out := dict -}}
-{{- $_ := set $out "AIO_SERVER_URL_PREFIX" (include "ai-optimizer.getPath" . | trimSuffix "/") -}}
+{{- $auth := .Values.global.authentication -}}
+{{- $_ := set $out "AIO_AUTH_SESSION_ABSOLUTE_SECONDS" ($auth.sessionAbsoluteSeconds | default 28800 | toString) -}}
+{{- $_ = set $out "AIO_AUTH_SESSION_IDLE_SECONDS" ($auth.sessionIdleSeconds | default 1800 | toString) -}}
+{{- $_ = set $out "AIO_AUTH_SESSION_MAX_PER_USER" ($auth.sessionMaxPerUser | default 10 | toString) -}}
+{{- $_ = set $out "AIO_AUTH_ACCOUNT_STATUS_CACHE_SECONDS" ($auth.accountStatusCacheSeconds | toString) -}}
+{{- if eq (include "ai-optimizer.authentication.isOidc" . | trim) "true" -}}
+{{- $oidc := $auth.oidc -}}
+{{- $_ = set $out "AIO_OIDC_ISSUER" $oidc.issuer -}}
+{{- if ne ($oidc.discoveryUrl | default "" | trim) "" -}}
+{{- $_ = set $out "AIO_OIDC_DISCOVERY_URL" $oidc.discoveryUrl -}}
+{{- end -}}
+{{- $_ = set $out "AIO_OIDC_AUDIENCE" $oidc.audience -}}
+{{- $_ = set $out "AIO_OIDC_REQUIRED_SCOPES" ($oidc.requiredScopes | toJson) -}}
+{{- $_ = set $out "AIO_OIDC_ADMIN_SUBJECT" $oidc.adminSubject -}}
+{{- $_ = set $out "AIO_OIDC_PUBLIC_SERVER_URL" $oidc.publicServerUrl -}}
+{{- end -}}
+{{- $_ = set $out "AIO_SERVER_URL_PREFIX" (include "ai-optimizer.getPath" . | trimSuffix "/") -}}
 {{- $_ = set $out "AIO_MAX_CLIENTS" (.Values.server.maxClients | toString) -}}
 {{- with .Values.server.ssl -}}
+{{- $_ = set $out "AIO_SERVER_SSL" (.enabled | toString) -}}
 {{- if .enabled -}}
-{{- $_ = set $out "AIO_SERVER_SSL" "true" -}}
 {{- if .certFile -}}{{- $_ = set $out "AIO_SERVER_SSL_CERT_FILE" .certFile -}}{{- end -}}
 {{- if .keyFile -}}{{- $_ = set $out "AIO_SERVER_SSL_KEY_FILE" .keyFile -}}{{- end -}}
 {{- end -}}
@@ -487,8 +478,8 @@ Same contract as server.envContent.
 {{- $_ := set $out "AIO_SERVER_URL" (include "ai-optimizer.server.serviceUrl" .) -}}
 {{- $_ = set $out "AIO_SERVER_PORT" (.Values.server.service.port | default 8000 | toString) -}}
 {{- with .Values.client.ssl -}}
+{{- $_ = set $out "AIO_CLIENT_SSL" (.enabled | toString) -}}
 {{- if .enabled -}}
-{{- $_ = set $out "AIO_CLIENT_SSL" "true" -}}
 {{- if .certFile -}}{{- $_ = set $out "AIO_CLIENT_SSL_CERT_FILE" .certFile -}}{{- end -}}
 {{- if .keyFile -}}{{- $_ = set $out "AIO_CLIENT_SSL_KEY_FILE" .keyFile -}}{{- end -}}
 {{- end -}}
@@ -1219,7 +1210,7 @@ SigNoz subchart version exactly.
 
 
 {{- /* Resolved name of the Secret holding the SigNoz admin credentials.
-       Mirrors `global.apiSecretName` / `client.cookieSecretName`: callers
+       Mirrors the client cookie Secret helper: callers
        use this rather than re-applying `default "signoz-authn"` everywhere
        (chart's authn-secret.yaml + the setup Job's volume mount). */ -}}
 {{- define "ai-optimizer.signoz.authnSecretName" -}}

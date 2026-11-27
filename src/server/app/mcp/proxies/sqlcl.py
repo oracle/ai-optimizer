@@ -19,6 +19,7 @@ from fastmcp import Client
 from fastmcp.client.transports import StdioTransport
 from fastmcp.prompts import Prompt
 from fastmcp.resources import Resource, ResourceTemplate
+from fastmcp.server.auth import require_roles
 from fastmcp.server.providers import Provider
 from fastmcp.server.providers.proxy import ProxyClient, ProxyProvider
 from fastmcp.tools import Tool
@@ -46,6 +47,7 @@ _TYPE_COERCIONS: dict[str, tuple[type, type]] = {
 }
 
 _BOOL_STRINGS = {"true": True, "false": False, "1": True, "0": False}
+_ADMIN_TOOL_AUTH = require_roles("admin", extract=lambda claims: claims.get("roles", ()))
 
 
 def _coerce_schema_defaults(schema: dict) -> None:
@@ -140,6 +142,12 @@ class _SQLclProvider(Provider):
     def _sanitize_tool(tool: Tool | None) -> Tool | None:
         if tool is not None and tool.parameters:
             _coerce_schema_defaults(tool.parameters)
+        if (
+            tool is not None
+            and tool.name != "connect"
+            and not (tool.annotations and tool.annotations.read_only_hint is True)
+        ):
+            tool.auth = _ADMIN_TOOL_AUTH
         return tool
 
     async def _list_tools(self) -> Sequence[Tool]:

@@ -83,6 +83,7 @@ def _write_startup_scripts(temp_dir: Path) -> None:
     GRANT CREATE DATA ROLE TO "{TEST_DB_CONFIG["db_username"]}";
     GRANT DROP DATA ROLE TO "{TEST_DB_CONFIG["db_username"]}";
     GRANT CREATE END USER TO "{TEST_DB_CONFIG["db_username"]}";
+    GRANT ALTER END USER TO "{TEST_DB_CONFIG["db_username"]}";
     GRANT DROP END USER TO "{TEST_DB_CONFIG["db_username"]}";
     GRANT CREATE DATA GRANT TO "{TEST_DB_CONFIG["db_username"]}";
     GRANT ADMINISTER ANY DATA GRANT TO "{TEST_DB_CONFIG["db_username"]}";
@@ -103,12 +104,25 @@ def _write_startup_scripts(temp_dir: Path) -> None:
 
 
 def _wait_for_ready(container, timeout: int = 300) -> None:
+    import oracledb
+
     start = time.time()
+    last_error = None
     while time.time() - start < timeout:
         logs = container.logs(tail=200).decode("utf-8", errors="ignore")
         if READY_LOG_MARKER in logs:
-            return
+            try:
+                with oracledb.connect(
+                    user=TEST_DB_CONFIG["db_username"],
+                    password=TEST_DB_CONFIG["db_password"],
+                    dsn=TEST_DB_CONFIG["db_dsn"],
+                ):
+                    return
+            except oracledb.Error as exc:
+                last_error = exc
         time.sleep(5)
+    if last_error is not None:
+        raise TimeoutError(f"Oracle test user could not log in: {last_error}")
     raise TimeoutError("Oracle container did not become ready in time")
 
 

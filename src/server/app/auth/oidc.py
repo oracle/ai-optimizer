@@ -1,0 +1,150 @@
+"""OIDC access-token validation and principal provisioning."""
+
+import asyncio
+import logging
+
+import httpx
+import jwt
+from jwt import PyJWKClient
+from jwt.exceptions import InvalidTokenError, PyJWKClientConnectionError, PyJWKClientError
+
+from server.app.auth import repository
+from server.app.auth.models import Principal, RequestCredential
+from server.app.auth.service import AuthAuthorityUnavailable, AuthenticationError, register_authenticator
+from server.app.core.settings import settings
+
+_ALGORITHMS = ("RS256", "RS384", "RS512", "PS256", "PS384", "PS512", "ES256", "ES384", "ES512", "EdDSA")
+_DISCOVERY_TIMEOUT_SECONDS = 10.0
+_JWKS_CACHE_SECONDS = 300
+LOGGER = logging.getLogger(__name__)
+
+
+def _required_string(claims: dict, name: str) -> str:
+    value = claims.get(name)
+    if not isinstance(value, str) or not value:
+        raise AuthenticationError("Invalid bearer credential")
+    return value
+
+
+def _optional_string(claims: dict, name: str) -> str | None:
+    value = claims.get(name)
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise AuthenticationError("Invalid bearer credential")
+    return value or None
+
+
+def _claim_scopes(claims: dict) -> frozenset[str]:
+    value = claims.get("scope", claims.get("scp", ""))
+    if isinstance(value, str):
+        return frozenset(value.split())
+    if isinstance(value, list) and all(isinstance(item, str) for item in value):
+        return frozenset(value)
+    raise AuthenticationError("Invalid bearer credential")
+
+
+def _scope_is_granted(required_scope: str, granted_scopes: frozenset[str]) -> bool:
+    if required_scope in granted_scopes:
+        return True
+    # OCI returns the scope name; the authorization request uses its audience-qualified URI.
+    audience = settings.oidc_audience or ""
+    if not audience or not required_scope.startswith(audience):
+        return False
+    scope_name = required_scope[len(audience) :].lstrip("/")
+    return bool(scope_name) and scope_name in granted_scopes
+
+
+class OIDCAuthenticator:
+    """Validate signed access tokens from one configured issuer."""
+
+    def __init__(self, jwks_uri: str) -> None:
+        self._jwk_client = PyJWKClient(
+            jwks_uri,
+            cache_keys=False,
+            lifespan=_JWKS_CACHE_SECONDS,
+            timeout=_DISCOVERY_TIMEOUT_SECONDS,
+        )
+
+    async def authenticate(self, credential: RequestCredential) -> Principal:
+        try:
+            signing_key = await asyncio.to_thread(self._jwk_client.get_signing_key_from_jwt, credential.value)
+            claims = jwt.decode(
+                credential.value,
+                signing_key.key,
+                algorithms=_ALGORITHMS,
+                audience=settings.oidc_audience,
+                issuer=settings.oidc_issuer,
+                options={"require": ["exp", "iat", "iss", "sub"]},
+            )
+        except PyJWKClientConnectionError:
+            raise AuthAuthorityUnavailable("OIDC signing-key authority is unavailable") from None
+        except (InvalidTokenError, PyJWKClientError, ValueError, TypeError) as exc:
+            LOGGER.info("OIDC access token rejected: %s", type(exc).__name__)
+            raise AuthenticationError("Invalid bearer credential") from None
+
+        subject = _required_string(claims, "sub")
+        scopes = _claim_scopes(claims)
+        missing_scopes = {
+            required_scope
+            for required_scope in settings.oidc_required_scopes
+            if not _scope_is_granted(required_scope, scopes)
+        }
+        if missing_scopes:
+            LOGGER.info(
+                "OIDC access token rejected: required scope missing; token scopes=%s",
+                " ".join(sorted(scopes)),
+            )
+            raise AuthenticationError("Invalid bearer credential")
+        email = _optional_string(claims, "email")
+        username = _optional_string(claims, "preferred_username") or email or subject
+
+        try:
+            user = await repository.resolve_oidc_user(
+                issuer=settings.oidc_issuer or "",
+                subject=subject,
+                username=username,
+                display_name=_optional_string(claims, "name"),
+                email=email,
+            )
+        except Exception as exc:
+            raise AuthAuthorityUnavailable("OIDC user authority is unavailable") from exc
+        if user.status != "active":
+            LOGGER.info("OIDC access token rejected: user inactive")
+            raise AuthenticationError("Invalid bearer credential")
+        return Principal(
+            user_id=user.user_id,
+            subject=subject,
+            username=user.username,
+            display_name=user.display_name,
+            email=user.email,
+            auth_source="oidc",
+            roles=frozenset({user.role}),
+            scopes=scopes,
+        )
+
+
+async def discover_oidc_jwks_uri() -> str:
+    """Validate provider metadata and return its signing-key endpoint."""
+    issuer = settings.oidc_issuer or ""
+    discovery_url = settings.effective_oidc_discovery_url
+    try:
+        async with httpx.AsyncClient(timeout=_DISCOVERY_TIMEOUT_SECONDS) as client:
+            response = await client.get(discovery_url)
+            response.raise_for_status()
+            metadata = response.json()
+    except (httpx.HTTPError, ValueError):
+        raise AuthAuthorityUnavailable("OIDC discovery authority is unavailable") from None
+    if metadata.get("issuer") != issuer:
+        raise AuthAuthorityUnavailable("OIDC discovery issuer does not match configuration")
+    jwks_uri = metadata.get("jwks_uri")
+    if not isinstance(jwks_uri, str) or not jwks_uri.startswith("https://"):
+        if settings.env not in {"dev", "test"} or not isinstance(jwks_uri, str):
+            raise AuthAuthorityUnavailable("OIDC discovery metadata has no trusted signing-key endpoint")
+    return jwks_uri
+
+
+async def initialize_oidc_authenticator() -> None:
+    """Discover the configured issuer and install its token verifier."""
+    jwks_uri = await discover_oidc_jwks_uri()
+    register_authenticator("oidc", OIDCAuthenticator(jwks_uri))

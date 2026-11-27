@@ -6,26 +6,47 @@ MCP server definition and transport middleware.
 """
 # spell-checker: ignore asgi fastmcp
 
-import hmac
-import json
-
 from fastmcp import FastMCP
 from fastmcp import settings as fastmcp_settings
+from fastmcp.server.auth import AccessToken, TokenVerifier
 from starlette.datastructures import Headers
 from starlette.responses import PlainTextResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from server.app.core.secrets import reveal
+from server.app.auth.dependencies import AUTHORITY_STATE
+from server.app.auth.models import RequestCredential
+from server.app.auth.service import AuthAuthorityUnavailable, AuthenticationError, authenticate_credential
 from server.app.core.settings import settings
 from server.app.mcp.transforms import DeterministicCatalogTransform
 
 fastmcp_settings.mcp_camelcase_compat = False
 
 
+class _ProjectTokenVerifier(TokenVerifier):
+    """Apply the project authentication authority to native MCP requests."""
+
+    async def verify_token(self, token: str) -> AccessToken | None:
+        if not AUTHORITY_STATE.ready:
+            return None
+        try:
+            principal = await authenticate_credential(RequestCredential(kind="bearer", value=token))
+        except (AuthenticationError, AuthAuthorityUnavailable):
+            return None
+        return AccessToken(
+            token=token,
+            client_id=str(principal.user_id),
+            scopes=sorted(principal.scopes),
+            subject=principal.subject,
+            resource=settings.oidc_public_server_url,
+            claims={"roles": sorted(principal.roles), "username": principal.username},
+        )
+
+
 def _create_mcp_server(cache_ttl_seconds: int) -> FastMCP:
     """Create the shared MCP server with its catalog and cache policy."""
     return FastMCP(
         "Oracle AI Optimizer",
+        auth=_ProjectTokenVerifier(),
         transforms=[DeterministicCatalogTransform()],
         cache_ttl=cache_ttl_seconds or None,
         cache_scope="private" if cache_ttl_seconds else None,
@@ -51,39 +72,6 @@ class MCPOriginMiddleware:
         if scope["type"] == "http" and request_path == self.path and Headers(scope=scope).get("origin") is not None:
             response = PlainTextResponse("Forbidden Origin", status_code=403)
             await response(scope, receive, send)
-            return
-
-        await self.app(scope, receive, send)
-
-
-class MCPApiKeyMiddleware:
-    """ASGI middleware that enforces X-API-Key authentication on MCP routes."""
-
-    def __init__(self, app: ASGIApp) -> None:
-        self.app = app
-
-    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] != "http":
-            await self.app(scope, receive, send)
-            return
-
-        headers = dict(scope.get("headers", []))
-        api_key = headers.get(b"x-api-key", b"").decode("utf-8", errors="ignore")
-        configured_key = reveal(settings.api_key)
-
-        if not configured_key or not api_key or not hmac.compare_digest(api_key, configured_key):
-            body = json.dumps({"detail": "Forbidden"}).encode("utf-8")
-            await send(
-                {
-                    "type": "http.response.start",
-                    "status": 403,
-                    "headers": [
-                        (b"content-type", b"application/json"),
-                        (b"content-length", str(len(body)).encode()),
-                    ],
-                }
-            )
-            await send({"type": "http.response.body", "body": body})
             return
 
         await self.app(scope, receive, send)

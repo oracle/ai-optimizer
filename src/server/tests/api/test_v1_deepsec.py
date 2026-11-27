@@ -10,8 +10,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import oracledb
 import pytest
+from fastapi import HTTPException
 from pydantic import SecretStr
 
+from server.app.api.v1.endpoints import deepsec
 from server.app.database.schemas import DatabaseConfig
 from server.app.deepsec.database import DeepSecError
 from server.tests.api.conftest import _create_mock_pool
@@ -58,17 +60,17 @@ def mock_db():
 @pytest.mark.unit
 @pytest.mark.anyio
 async def test_status_requires_auth(app_client):
-    """GET /status rejects requests without an API key."""
+    """GET /status challenges requests without a bearer credential."""
     resp = await app_client.get("/v1/deepsec/status")
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 @pytest.mark.unit
 @pytest.mark.anyio
 async def test_create_data_role_requires_auth(app_client):
-    """POST /data-roles rejects requests without an API key."""
+    """POST /data-roles challenges requests without a bearer credential."""
     resp = await app_client.post("/v1/deepsec/data-roles", json={"name": "r"})
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 # ---------------------------------------------------------------------------
@@ -115,6 +117,7 @@ async def test_create_end_user_uses_db_password(app_client, auth_headers, mock_d
     db_config.password = "DBPASS"
     with (
         patch(f"{MODULE}.get_client_db_config", return_value=db_config),
+        patch(f"{MODULE}._reject_authentication_member_change", AsyncMock()),
         patch(f"{MODULE}.deepsec_db.create_end_user", AsyncMock()) as mock_create,
     ):
         resp = await app_client.post("/v1/deepsec/end-users", json={"name": "EU"}, headers=auth_headers)
@@ -133,6 +136,7 @@ async def test_create_end_user_forwards_schema(app_client, auth_headers, mock_db
     db_config.password = "DBPASS"
     with (
         patch(f"{MODULE}.get_client_db_config", return_value=db_config),
+        patch(f"{MODULE}._reject_authentication_member_change", AsyncMock()),
         patch(f"{MODULE}.deepsec_db.create_end_user", AsyncMock()) as mock_create,
     ):
         resp = await app_client.post(
@@ -149,9 +153,28 @@ async def test_create_end_user_requires_db_password(app_client, auth_headers, mo
     """Reject creation when the database user's password is unavailable."""
     db_config = MagicMock()
     db_config.password = None
-    with patch(f"{MODULE}.get_client_db_config", return_value=db_config):
+    with (
+        patch(f"{MODULE}.get_client_db_config", return_value=db_config),
+        patch(f"{MODULE}._reject_authentication_member_change", AsyncMock()),
+    ):
         resp = await app_client.post("/v1/deepsec/end-users", json={"name": "EU"}, headers=auth_headers)
     assert resp.status_code == 400
+
+
+@pytest.mark.unit
+@pytest.mark.anyio
+async def test_authentication_member_protection_uses_database_identity(monkeypatch):
+    conn = AsyncMock()
+    pool = _create_mock_pool(conn)
+    monkeypatch.setattr(deepsec, "get_client_pool", lambda _client: pool)
+    monkeypatch.setattr(deepsec, "authority_identity", AsyncMock(return_value=("APPDB:APP_PDB", "APP_SCHEMA")))
+    monkeypatch.setattr(deepsec, "connection_database_identity", AsyncMock(return_value="APPDB:APP_PDB"))
+    monkeypatch.setattr(deepsec, "get_user_by_database_username", AsyncMock(return_value=object()))
+
+    with pytest.raises(HTTPException) as exc_info:
+        await deepsec._reject_authentication_member_change("alternate-dsn", "APP_MEMBER")
+
+    assert exc_info.value.status_code == 409
 
 
 @pytest.mark.unit
@@ -225,9 +248,9 @@ async def test_revoke_data_role(app_client, auth_headers, mock_db):
 @pytest.mark.unit
 @pytest.mark.anyio
 async def test_grant_data_role_requires_auth(app_client):
-    """POST /data-role-grants rejects requests without an API key."""
+    """POST /data-role-grants challenges requests without a bearer credential."""
     resp = await app_client.post("/v1/deepsec/data-role-grants", json={"grantee": "x", "roles": ["r"]})
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 # ---------------------------------------------------------------------------
@@ -379,6 +402,7 @@ async def test_drop_end_user_clears_connect_as_for_current_base_only(app_client,
     client_cs = MagicMock(database=MagicMock(alias="CORE"))
     with (
         patch(f"{MODULE}.resolve_client", return_value=client_cs),
+        patch(f"{MODULE}._reject_authentication_member_change", AsyncMock()),
         patch(f"{MODULE}.deepsec_db.drop_end_user", AsyncMock()),
         patch(f"{MODULE}.clear_dds_for", AsyncMock(return_value={"core::scout1"})) as mock_clear,
         patch(f"{MODULE}.refresh_sqlcl_proxy", AsyncMock()) as mock_refresh,

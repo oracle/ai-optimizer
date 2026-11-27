@@ -7,16 +7,26 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: ${label}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ai-optimizer-tls
+  namespace: ${label}
+type: kubernetes.io/tls
+data:
+  tls.crt: ${ssl_cert_b64}
+  tls.key: ${ssl_key_b64}
 %{ if deploy_optimizer ~}
 ---
 apiVersion: v1
 kind: Secret
 metadata:
-  name: ai-optimizer-api-key-${label}
+  name: ai-optimizer-oidc-${label}
   namespace: ${label}
 type: Opaque
 stringData:
-  apiKey: "${optimizer_api_key}"
+  clientSecret: "${oidc_client_secret}"
 ---
 # Secret containing non-privileged DB User details.
 # Used for Optimizer application connectivity to database.

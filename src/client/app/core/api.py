@@ -9,7 +9,6 @@ import contextlib
 import json
 import logging
 import os
-import secrets
 import subprocess
 import sys
 import time
@@ -21,9 +20,7 @@ from urllib.parse import urlparse, urlunparse
 
 import httpx
 import streamlit as st
-from pydantic import SecretStr
 
-from client.app.core.secrets import reveal
 from client.app.core.settings import settings
 from net_addressing import connect_host, netloc, resolve_or_generate_cert, should_inject_server_port, verify_for_url
 
@@ -101,9 +98,7 @@ def _spawn_server(port: str, env: dict, log_path: Path) -> tuple[subprocess.Pope
         port,
     ]
 
-    if settings.server_ssl:
-        # Resolve from settings (which already capture .env and os.environ); the
-        # resolver auto-generates a self-signed pair only when neither is set.
+    if getattr(settings, "server_ssl", True):
         cert, key = resolve_or_generate_cert(settings.server_ssl_cert_file, settings.server_ssl_key_file, _SRC_DIR)
         args.extend(["--ssl-certfile", str(cert), "--ssl-keyfile", str(key)])
 
@@ -114,6 +109,21 @@ def _spawn_server(port: str, env: dict, log_path: Path) -> tuple[subprocess.Pope
         stderr=log_fh,
     )
     return proc, log_fh
+
+
+def _prepare_authentication(env: dict[str, str]) -> bool:
+    setup = subprocess.run(
+        [sys.executable, "-m", "server.app.auth.setup"],
+        cwd=_SRC_DIR,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if setup.returncode != 0:
+        LOGGER.error("Authentication setup failed: %s", setup.stderr.strip())
+        return False
+    return True
 
 
 def _wait_for_server_ready(proc: subprocess.Popen, timeout: float = _SERVER_READY_TIMEOUT_SECONDS) -> bool:
@@ -156,16 +166,10 @@ def start_server(core_environment: Mapping[str, str] | None = None) -> bool:
     existing_pypath = os.environ.get("PYTHONPATH", "")
     pypath = f"{src_dir}{os.pathsep}{existing_pypath}" if existing_pypath else src_dir
     env = {**os.environ, "PYTHONPATH": pypath, **(core_environment or {})}
-
-    # When no API key is configured, generate one so both client and server
-    # share the same key.  Without this the server would auto-generate its
-    # own key and the client would send an empty one → 403.
-    if not settings.api_key:
-        shared_key = secrets.token_urlsafe(32)
-        env["AIO_API_KEY"] = shared_key
-        os.environ["AIO_API_KEY"] = shared_key
-        settings.api_key = SecretStr(shared_key)
-        LOGGER.info("Generated shared AIO API key for all-in-one mode.")
+    for name in ("AIO_API_KEY", "AIO_ADMIN_PASSWORD"):
+        env.pop(name, None)
+    if core_environment is not None and not _prepare_authentication(env):
+        return False
 
     log_path = Path(src_dir) / f"apiserver_{port}.log"
     proc, log_fh = _spawn_server(port, env, log_path)
@@ -206,7 +210,7 @@ def _local_server_base_url(api_prefix: str = "/v1") -> str:
 
 def _local_server_origin_url() -> str:
     """Return the origin URL for the locally spawned API server."""
-    scheme = "https" if settings.server_ssl else "http"
+    scheme = "https" if getattr(settings, "server_ssl", True) else "http"
     host = connect_host(settings.server_address)
     return f"{scheme}://{netloc(host, settings.server_port)}"
 
@@ -249,7 +253,28 @@ def _base_url(api_prefix: str = "/v1") -> str:
 
 
 def _headers() -> dict:
-    return {"X-API-Key": reveal(settings.api_key) or ""}
+    token = st.session_state.get("auth_token")
+    return {"Authorization": f"Bearer {token}"} if token else {}
+
+
+def _request_headers(extra_headers: dict | None = None) -> dict:
+    return {
+        **_headers(),
+        **{key: value for key, value in (extra_headers or {}).items() if key.casefold() != "client"},
+    }
+
+
+def get_auth_config() -> dict | None:
+    """Fetch the public authentication flow configuration."""
+    base = _base_url()
+    try:
+        with httpx.Client(timeout=5, verify=verify_for_url(base)) as client:
+            response = client.get(f"{base}/auth/config")
+            response.raise_for_status()
+            return response.json()
+    except httpx.HTTPError as exc:
+        LOGGER.warning("Failed to fetch authentication configuration from %s: %s", base, exc)
+        return None
 
 
 def api_get(
@@ -260,7 +285,7 @@ def api_get(
     extra_headers: dict | None = None,
 ) -> Any:
     """GET request to the API server. Returns parsed JSON."""
-    headers = {**_headers(), **(extra_headers or {})}
+    headers = _request_headers(extra_headers)
     base = _base_url(api_prefix)
     url = f"{base}/{path.lstrip('/')}"
     with (
@@ -288,7 +313,7 @@ def api_post(
     When *files* or *data* are provided the request is sent as
     ``multipart/form-data`` instead of JSON.
     """
-    headers = {**_headers(), **(extra_headers or {})}
+    headers = _request_headers(extra_headers)
     url = f"{_base_url(api_prefix)}/{path.lstrip('/')}"
     with (
         _translate_transport_errors(url),
@@ -341,7 +366,7 @@ def api_put(
     extra_headers: dict | None = None,
 ) -> dict:
     """PUT request to the API server. Returns parsed JSON."""
-    headers = {**_headers(), **(extra_headers or {})}
+    headers = _request_headers(extra_headers)
     url = f"{_base_url(api_prefix)}/{path.lstrip('/')}"
     with (
         _translate_transport_errors(url),
@@ -363,7 +388,7 @@ def api_patch(
     extra_headers: dict | None = None,
 ) -> Any:
     """PATCH request to the API server. Returns parsed JSON (or None for 204)."""
-    headers = {**_headers(), **(extra_headers or {})}
+    headers = _request_headers(extra_headers)
     url = f"{_base_url(api_prefix)}/{path.lstrip('/')}"
     with (
         _translate_transport_errors(url),
@@ -384,7 +409,7 @@ def api_delete(
     extra_headers: dict | None = None,
 ) -> None:
     """DELETE request to the API server. Expects 204 No Content."""
-    headers = {**_headers(), **(extra_headers or {})}
+    headers = _request_headers(extra_headers)
     url = f"{_base_url(api_prefix)}/{path.lstrip('/')}"
     with (
         _translate_transport_errors(url),
@@ -396,7 +421,7 @@ def api_delete(
             st.toast(toast, icon="✅")
 
 
-def get_server_settings(client: str, include_sensitive: bool = False) -> dict | None:
+def get_server_settings(include_sensitive: bool = False) -> dict | None:
     """Fetch server settings (including database and OCI configs) from /settings.
 
     Returns ``None`` on any HTTP error so callers can decide how to recover
@@ -407,14 +432,13 @@ def get_server_settings(client: str, include_sensitive: bool = False) -> dict | 
     standard settings endpoint.
     """
     if include_sensitive:
-        return export_server_settings(client)
+        return export_server_settings()
 
     base = _base_url()
     headers = _headers()
-    params = {"client": client}
     try:
         with httpx.Client(headers=headers, timeout=5, verify=verify_for_url(base)) as client_settings:
-            resp = client_settings.get(f"{base}/settings", params=params)
+            resp = client_settings.get(f"{base}/settings")
             resp.raise_for_status()
             return resp.json()
     except httpx.HTTPError as exc:
@@ -422,14 +446,13 @@ def get_server_settings(client: str, include_sensitive: bool = False) -> dict | 
         return None
 
 
-def export_server_settings(client: str) -> dict | None:
+def export_server_settings() -> dict | None:
     """Fetch the explicit settings export. Returns ``None`` on HTTP error."""
     base = _base_url()
     headers = {**_headers(), "X-Confirm-Export": "true"}
-    params = {"client": client}
     try:
         with httpx.Client(headers=headers, timeout=5, verify=verify_for_url(base)) as client_settings:
-            resp = client_settings.post(f"{base}/settings/export", params=params)
+            resp = client_settings.post(f"{base}/settings/export")
             resp.raise_for_status()
             return resp.json()
     except httpx.HTTPError as exc:

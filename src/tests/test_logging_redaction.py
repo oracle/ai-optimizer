@@ -146,6 +146,23 @@ class TestKeyValueRedaction:
         filt.filter(record)
         assert "sk-abc" not in record.getMessage()
 
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "AIO_AUTH_SETUP_PRIV_PASSWORD",
+            "AIO_OIDC_CLIENT_SECRET",
+        ],
+    )
+    def test_authentication_secret_env_vars_are_redacted(self, filt, name):
+        record = _make_record(f"{name}=authentication-secret")
+        filt.filter(record)
+        assert "authentication-secret" not in record.getMessage()
+
+    def test_bearer_authorization_header_is_redacted(self, filt):
+        record = _make_record("Authorization: Bearer sensitive-token")
+        filt.filter(record)
+        assert "sensitive-token" not in record.getMessage()
+
     def test_args_redacted_after_format(self, filt):
         record = _make_record("user=%s pwd=%s", ("alice", "shh"))
         filt.filter(record)
@@ -289,10 +306,11 @@ class TestFilterAttributes:
         assert filt.key_source == "schemas"
         assert filt.key_count >= len(_STATIC_SENSITIVE_KEYS)
 
-    def test_static_fallback(self, monkeypatch):
+    @pytest.mark.parametrize("error_type", [ImportError, ValueError])
+    def test_static_fallback(self, monkeypatch, error_type):
         # Schema modules may already be cached in ``sys.modules`` from earlier
         # tests in the same session, so monkeypatching just the import won't
-        # trigger ImportError.  Pop the cached modules first, then patch
+        # trigger the fallback. Pop the cached modules first, then patch
         # ``builtins.__import__`` to fail on the relevant prefixes.
         for mod in (
             "server.app.database.schemas",
@@ -304,7 +322,7 @@ class TestFilterAttributes:
 
         def fake_import(name, *a, **kw):
             if name.startswith("server.app."):
-                raise ImportError(f"simulated: {name}")
+                raise error_type(f"simulated: {name}")
             return real_import(name, *a, **kw)
 
         monkeypatch.setattr(builtins, "__import__", fake_import)

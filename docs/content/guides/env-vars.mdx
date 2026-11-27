@@ -103,9 +103,20 @@ Values supplied through `AIO_*` variables are reapplied at startup. Interface ch
 
 ### Authentication
 
-| Variable      | Description                                                                                                                                                                                      | Default       |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------- |
-| `AIO_API_KEY` | API key for authenticating requests to the [**AI Optimizer Server**](../server/intro.mdx). In an all-in-one deployment, the Client generates and displays a shared key when this variable is unset. Set it explicitly for a standalone Server. | _(generated)_ |
+AI Optimizer Server uses Oracle database authentication when its OIDC resource-server variables are unset. Setting any Server OIDC variable selects OIDC and requires the complete Server configuration below. OAuth client registrations belong to individual clients.
+
+| Variable | Description | Default |
+| --- | --- | --- |
+| `AIO_AUTH_SESSION_ABSOLUTE_SECONDS` | Maximum database-account bearer-session lifetime. | `28800` |
+| `AIO_AUTH_SESSION_IDLE_SECONDS` | Maximum session inactivity before rejection. | `1800` |
+| `AIO_AUTH_SESSION_MAX_PER_USER` | Maximum active sessions retained for one user. | `10` |
+| `AIO_AUTH_ACCOUNT_STATUS_CACHE_SECONDS` | Maximum delay for observing an out-of-band database account-state change. | `30` |
+| `AIO_OIDC_ISSUER` | Exact issuer accepted for OIDC access tokens. | _(none)_ |
+| `AIO_OIDC_DISCOVERY_URL` | Optional OpenID Provider configuration endpoint override. Defaults to the issuer plus `/.well-known/openid-configuration`. | Derived from `AIO_OIDC_ISSUER` |
+| `AIO_OIDC_AUDIENCE` | Audience required in access tokens issued for AI Optimizer Server. | _(none)_ |
+| `AIO_OIDC_REQUIRED_SCOPES` | JSON array of scopes required in access tokens. | _(none)_ |
+| `AIO_OIDC_ADMIN_SUBJECT` | Exact OIDC subject mapped to the reserved Admin user. | _(none)_ |
+| `AIO_OIDC_PUBLIC_SERVER_URL` | Public HTTPS URL of the OIDC-protected AI Optimizer resource server. | _(none)_ |
 
 ### Client
 
@@ -113,22 +124,22 @@ Values supplied through `AIO_*` variables are reapplied at startup. Interface ch
 | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
 | `AIO_CLIENT_ADDRESS`       | Client listen address                                                                                                                                                                                          | `localhost` |
 | `AIO_CLIENT_PORT`          | Client listen port                                                                                                                                                                                             | `8501`      |
+| `AIO_OIDC_CLIENT_ID`       | OIDC client identifier used by the optional Streamlit client.                                                                                                                                                  | _(none)_    |
+| `AIO_OIDC_CLIENT_SECRET`   | OIDC client secret used by the optional Streamlit client.                                                                                                                                                      | _(none)_    |
+| `AIO_OIDC_REDIRECT_URI`    | Public Streamlit callback URL ending in `/oauth2callback`.                                                                                                                                                      | _(none)_    |
 | `AIO_CLIENT_COOKIE_SECRET` | Signing key for Streamlit's signed cookies. Multi-replica deployments must provide the same value to every replica.                                                                                             | _(none)_    |
-| `AIO_CLIENT_PASSWORD`      | Shared password gating configuration and shared-state controls in the web client. Configure [**AI Optimizer Server**](../server/intro.mdx) authentication separately. See [Access Control](./access-control). | _(none)_    |
-| `AIO_CLIENT_SSL`           | Enables TLS for the Client                                                                                                                                                                                     | `false`     |
-| `AIO_CLIENT_SSL_CERT_FILE` | Path to a TLS certificate in PEM format                                                                                                                                                                        | _(none)_    |
-| `AIO_CLIENT_SSL_KEY_FILE`  | Path to a TLS private key in PEM format                                                                                                                                                                        | _(none)_    |
+| `AIO_CLIENT_SSL_CERT_FILE` | Path to the Client TLS certificate in PEM format. When both Client certificate paths are unset, a self-signed localhost certificate is generated.                                                              | _(none)_    |
+| `AIO_CLIENT_SSL_KEY_FILE`  | Path to the Client TLS private key in PEM format. Supply this with `AIO_CLIENT_SSL_CERT_FILE`.                                                                                                                  | _(none)_    |
 
 ### Server
 
 | Variable                   | Description                                                                                                                                                                            | Default            |
 | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ |
-| `AIO_SERVER_URL`           | URL the client uses to reach the [**AI Optimizer Server**](../server/intro.mdx). Set it when the client connects to a separately deployed, remote, or reverse-proxied instance.        | `http://localhost` |
+| `AIO_SERVER_URL`           | HTTPS URL the client uses to reach the [**AI Optimizer Server**](../server/intro.mdx).                                                                                                  | `https://localhost` |
 | `AIO_SERVER_URL_PREFIX`    | URL path prefix for the [**AI Optimizer Server**](../server/intro.mdx), such as `/optimizer`                                                                                           | _(none)_           |
 | `AIO_SERVER_ADDRESS`       | [**AI Optimizer Server**](../server/intro.mdx) bind address. A standalone instance uses `0.0.0.0`; client autostart uses `127.0.0.1`. Clients should connect through `AIO_SERVER_URL`. | component-specific |
 | `AIO_SERVER_PORT`          | [**AI Optimizer Server**](../server/intro.mdx) listen port                                                                                                                             | `8000`             |
-| `AIO_SERVER_SSL`           | Enables TLS for the [**AI Optimizer Server**](../server/intro.mdx)                                                                                                                     | `false`            |
-| `AIO_SERVER_SSL_CERT_FILE` | Path to a TLS certificate in PEM format. Set only `AIO_SERVER_SSL` to generate a self-signed certificate.                                                                                      | _(none)_           |
+| `AIO_SERVER_SSL_CERT_FILE` | Path to the Server TLS certificate in PEM format. When both Server certificate paths are unset, a self-signed localhost certificate is generated.                                     | _(none)_           |
 | `AIO_SERVER_SSL_KEY_FILE`  | Path to the TLS private key in PEM format                                                                                                                                              | _(none)_           |
 | `AIO_SERVER_READY_TIMEOUT` | Seconds the client waits for the [**AI Optimizer Server**](../server/intro.mdx) to become ready at startup                                                                             | `180`              |
 | `AIO_MAX_CLIENTS`          | Maximum number of distinct client sessions cached in memory                                                                                                                            | `64`               |

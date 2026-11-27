@@ -12,7 +12,7 @@ import streamlit as st
 from streamlit import session_state as state
 
 from client.app.core.api import api_get
-from client.app.core.auth import is_authenticated, locked_notice
+from client.app.core.auth import is_admin, locked_notice
 
 LOGGER = logging.getLogger("client.content.config.tabs.mcp")
 
@@ -199,7 +199,7 @@ def display_mcp() -> None:
                     The {mcp_status["name"]} Server is running.
                     **Server Version**: {mcp_status["version"]}
                     """)
-        if is_authenticated():
+        if is_admin():
             with st.expander("Client Configuration"):
                 selected_client = st.selectbox(
                     "MCP Client",

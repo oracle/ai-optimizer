@@ -24,23 +24,10 @@ class TestClientSettingsFields:
         # Disable .env file loading by providing _env_file=None
         return ClientSettings(_env_file=None, **kwargs)  # type: ignore[call-arg]
 
-    def test_api_key_none_by_default(self, monkeypatch):
-        """Default api_key is None when env var is absent."""
-        monkeypatch.delenv("AIO_API_KEY", raising=False)
-        s = self._make()
-        assert s.api_key is None
-
-    def test_api_key_accepts_string(self):
-        """Explicit string api_key is preserved (wrapped as SecretStr)."""
-        from client.app.core.secrets import reveal
-
-        s = self._make(api_key="my-secret")
-        assert reveal(s.api_key) == "my-secret"
-
     def test_server_url_default(self):
-        """Default server_url is http://localhost."""
+        """Default server_url is https://localhost."""
         s = self._make()
-        assert s.server_url == "http://localhost"
+        assert s.server_url == "https://localhost"
 
     def test_server_url_explicit(self):
         """Explicit server_url overrides the default."""
@@ -67,15 +54,9 @@ class TestClientSettingsFields:
         s = self._make(server_port=9000)
         assert s.server_port == 9000
 
-    def test_server_ssl_default(self):
-        """Default server_ssl is false."""
-        s = self._make()
-        assert s.server_ssl is False
-
-    def test_server_ssl_explicit(self):
-        """Explicit server_ssl overrides the default."""
-        s = self._make(server_ssl=True)
-        assert s.server_ssl is True
+    def test_server_url_accepts_http_for_private_backend(self):
+        s = self._make(server_url="http://server.namespace.svc")
+        assert s.server_url == "http://server.namespace.svc"
 
     def test_server_url_prefix_default(self):
         """Default server_url_prefix is empty string."""
@@ -96,27 +77,6 @@ class TestClientSettingsFields:
         """Default client_url_prefix is empty string."""
         s = self._make()
         assert s.client_url_prefix == ""
-
-    def test_client_password_none_by_default(self, monkeypatch):
-        """Default client_password is None when env var is absent."""
-        monkeypatch.delenv("AIO_CLIENT_PASSWORD", raising=False)
-        s = self._make()
-        assert s.client_password is None
-
-    def test_client_password_accepts_string(self):
-        """Explicit string client_password is preserved (wrapped as SecretStr)."""
-        from client.app.core.secrets import reveal
-
-        s = self._make(client_password="shared-pass")
-        assert reveal(s.client_password) == "shared-pass"
-
-    def test_client_password_loaded_from_env(self, monkeypatch):
-        """AIO_CLIENT_PASSWORD env var populates client_password as SecretStr."""
-        from client.app.core.secrets import reveal
-
-        monkeypatch.setenv("AIO_CLIENT_PASSWORD", "env-pass")
-        s = self._make()
-        assert reveal(s.client_password) == "env-pass"
 
     def test_oci_source_bucket_compartment_id_none_by_default(self, monkeypatch):
         """Default oci_source_bucket_compartment_id is None when env var is absent."""

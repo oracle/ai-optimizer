@@ -3,6 +3,7 @@
 # spell-checker: ignore nindent tolerations ollama pplx
 {{- include "ai-optimizer.server.database.required" . }}
 {{- include "ai-optimizer.server.otel.validate" . }}
+{{- include "ai-optimizer.authentication.validate" . }}
 
 apiVersion: apps/v1
 kind: Deployment
@@ -50,11 +51,6 @@ spec:
           env:
             - name: AIO_ENV
               value: {{ .Values.global.env | quote }}
-            - name: AIO_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "ai-optimizer.apiSecretName" . }}
-                  key: {{ include "ai-optimizer.apiSecretKey" . }}
             {{- if and .Values.server.database .Values.server.database.type }}
             {{- include "ai-optimizer.server.database.authn" . | nindent 12 }}
               {{- if eq (include "ai-optimizer.server.database.isADBS" .) "true" }}
@@ -231,9 +227,7 @@ spec:
             httpGet:
               path: /v1/liveness
               port: server-port
-              {{- if .Values.server.ssl.enabled }}
-              scheme: HTTPS
-              {{- end }}
+              scheme: {{ if .Values.server.ssl.enabled }}HTTPS{{ else }}HTTP{{ end }}
             {{- with omit .Values.server.livenessProbe "enabled" }}
               {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -243,9 +237,7 @@ spec:
             httpGet:
               path: /v1/readiness
               port: server-port
-              {{- if .Values.server.ssl.enabled }}
-              scheme: HTTPS
-              {{- end }}
+              scheme: {{ if .Values.server.ssl.enabled }}HTTPS{{ else }}HTTP{{ end }}
             {{- with omit .Values.server.readinessProbe "enabled" }}
               {{- toYaml . | nindent 12 }}
             {{- end }}

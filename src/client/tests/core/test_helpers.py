@@ -161,7 +161,7 @@ class TestRefreshSettings:
             from client.app.core.helpers import refresh_settings
 
             refresh_settings()
-        mock_get.assert_called_once_with(client="test-client")
+        mock_get.assert_called_once_with()
         assert state["settings"] == server_data
         assert "mcp_configs" not in state
         assert "runtime_foo" not in state

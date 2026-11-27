@@ -80,14 +80,14 @@ class TestBuildNl2sqlAgentspec:
         assert isinstance(toolbox.client_transport, StreamableHTTPTransport)
         assert toolbox.client_transport.url == MOCK_SERVER_URL + "/"
 
-    def test_toolbox_transport_api_key(self):
-        """Verify the MCPToolBox transport has the API key in sensitive_headers."""
+    def test_toolbox_transport_bearer(self):
+        """Verify the MCPToolBox transport has the bearer credential."""
         agent = build_nl2sql_agentspec(SAMPLE_CLIENT_SETTINGS_OBJ, MOCK_SERVER_URL, MOCK_API_KEY, MOCK_SYSTEM_PROMPT)
         toolbox = agent.toolboxes[0]
         assert isinstance(toolbox, MCPToolBox)
         transport = toolbox.client_transport
         assert isinstance(transport, StreamableHTTPTransport)
-        assert transport.sensitive_headers == {"X-API-Key": MOCK_API_KEY}
+        assert transport.sensitive_headers == {"Authorization": f"Bearer {MOCK_API_KEY}"}
 
     def test_llm_config_is_litellm(self):
         """Verify the agent's LLM config is a LiteLlmConfig with correct model."""

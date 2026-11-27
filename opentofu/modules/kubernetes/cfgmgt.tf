@@ -18,15 +18,14 @@ locals {
     db_username              = var.db_conn.username
     db_password              = var.db_conn.password
     db_service               = var.db_conn.service
-    optimizer_api_key        = random_string.optimizer_api_key.result
+    oidc_client_secret       = var.oidc_client_secret
     deploy_buildkit          = var.byo_ocir_url == ""
     deploy_optimizer         = var.deploy_optimizer
     optimizer_version        = var.optimizer_version
     optimizer_branch         = var.optimizer_branch
     app_version              = var.app_version
-    ssl_enabled              = var.ssl_enabled
-    ssl_cert_b64             = var.ssl_enabled ? base64encode(var.ssl_cert_pem) : ""
-    ssl_key_b64              = var.ssl_enabled ? base64encode(var.ssl_key_pem) : ""
+    ssl_cert_b64             = base64encode(var.ssl_cert_pem)
+    ssl_key_b64              = base64encode(var.ssl_key_pem)
     is_observability_enabled = var.is_observability_enabled
     signoz_authn             = random_string.signoz_authn.result
   })

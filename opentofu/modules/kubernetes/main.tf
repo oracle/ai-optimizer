@@ -2,15 +2,6 @@
 # Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl.
 # spell-checker: disable
 
-resource "random_string" "optimizer_api_key" {
-  length           = 32
-  special          = true
-  upper            = true
-  lower            = true
-  numeric          = true
-  override_special = "!@#$%^&*()-_=+[]{}|:,.<>?"
-}
-
 resource "random_string" "signoz_authn" {
   length           = 32
   min_special      = 1

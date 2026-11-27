@@ -22,6 +22,10 @@ depends on an async fixture is not handled by anyio (nor, in strict mode, by
 pytest-asyncio). Such tests must be written as ``async def``.
 """
 
+import os
+
+os.environ.setdefault("AIO_ENV", "pytest")
+
 import pytest
 
 pytest_plugins = ("tests.oracle",)

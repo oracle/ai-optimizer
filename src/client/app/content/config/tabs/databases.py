@@ -12,7 +12,7 @@ from streamlit import session_state as state
 
 from client.app.core import helpers
 from client.app.core.api import APIError, api_delete, api_get, api_post, api_put
-from client.app.core.auth import is_authenticated, locked_notice, redacted_password_input
+from client.app.core.auth import is_admin, locked_notice, redacted_password_input
 from client.app.core.embed_status import render_active_embed_jobs
 
 LOGGER = logging.getLogger("client.content.config.tabs.databases")
@@ -123,7 +123,7 @@ def _remove_database(selected: str) -> None:
 def _render_databases(database_lookup: dict, database_aliases: list, current_alias: str | None) -> tuple[str, bool]:
     """Render the database configuration form and return (selected_alias, is_new)."""
     st.subheader("Configuration", divider="red")
-    authenticated = is_authenticated()
+    authenticated = is_admin()
 
     # Selector: existing aliases + "Add New..."
     options = database_aliases + [ADD_NEW]
@@ -256,7 +256,7 @@ def _render_databases(database_lookup: dict, database_aliases: list, current_ali
 
 def _render_vector_stores(database_lookup: dict, selected: str) -> None:
     """Render the vector stores table for the selected database."""
-    authenticated = is_authenticated()
+    authenticated = is_admin()
     vector_stores = database_lookup[selected].get("vector_stores") or []
     if vector_stores:
         st.subheader("Vector Storage", divider="red")

@@ -52,7 +52,6 @@ def _fetch_active_jobs() -> list[dict] | None:
         jobs = api_get(
             "embed/jobs",
             params={"active_only": "true"},
-            extra_headers={"client": state.optimizer_client},
             timeout=_LIST_TIMEOUT,
         )
     except httpx.HTTPError as ex:
@@ -169,4 +168,16 @@ def render_active_embed_jobs(*, refresh_on_idle: bool = False, hide_when_idle: b
     ``hide_when_idle``: render nothing when no jobs are active —
     for in-workflow placements like the embedding tab.
     """
+    if state.get(_SEEN_JOBS_KEY):
+        _embed_jobs_fragment(refresh_on_idle=refresh_on_idle, hide_when_idle=hide_when_idle)
+        return
+
+    active = _fetch_active_jobs()
+    if active is None:
+        return
+    if not active:
+        _render_jobs_panel(active, hide_when_idle=hide_when_idle)
+        return
+
+    state[_SEEN_JOBS_KEY] = {job["job_id"] for job in active if job.get("job_id")}
     _embed_jobs_fragment(refresh_on_idle=refresh_on_idle, hide_when_idle=hide_when_idle)

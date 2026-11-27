@@ -55,7 +55,7 @@ def refresh_settings(clear_runtime: bool = True) -> bool:
     this return value; existing call sites that do not care simply
     discard it.
     """
-    settings = get_server_settings(client=state.optimizer_client)
+    settings = get_server_settings()
     if settings is None:
         return False
     state.settings = settings
@@ -95,7 +95,6 @@ def sync_client_setting(key: str, field: str, value: str) -> None:
         result = api_put(
             "settings",
             json={key: {field: value}},
-            params={"client": state.optimizer_client},
         )
         state["settings"]["client_settings"] = result
     except httpx.HTTPStatusError:
@@ -181,7 +180,6 @@ def update_client_settings(payload: dict) -> dict | None:
         result = api_put(
             "settings",
             json=payload,
-            params={"client": state.optimizer_client},
         )
         state["settings"]["client_settings"] = result
         return result

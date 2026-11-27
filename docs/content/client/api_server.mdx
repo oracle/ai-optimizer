@@ -18,7 +18,7 @@ When several people use one server, [separate client sessions](../server/multi-u
 
 When the API Server starts, it creates a `server` client from the configured client settings if one does not already exist. The `server` client is the default for external chat calls that do not specify a client. To copy the current web client's settings to the `server` client for use by external applications, click **Copy Client Settings**.
 
-The **API Server Key** field shows the key external clients use to authenticate with the API Server. In All-in-One deployments, the **AI Optimizer** client creates and shares this key with the API Server when one has not been configured. When running the API Server as a standalone process, configure `AIO_API_KEY` explicitly and distribute it through your normal secret-management process.
+External clients authenticate with an Oracle database or OIDC bearer token.
 
 For API request details, see [AI Optimizer Server](../server/intro).
 

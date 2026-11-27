@@ -16,9 +16,9 @@ pytestmark = pytest.mark.anyio
 
 @pytest.mark.unit
 async def test_list_resources_no_auth(app_client):
-    """GET /mcp/resources without auth returns 403."""
+    """GET /mcp/resources challenges requests without a bearer credential."""
     resp = await app_client.get("/mcp/resources")
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 @pytest.mark.unit

@@ -68,7 +68,7 @@ class TestFetchSettings:
             result = _fetch_settings()
 
         assert result == api_data
-        mock_get.assert_called_once_with(client="test-client", include_sensitive=False)
+        mock_get.assert_called_once_with(include_sensitive=False)
 
     def test_falls_back_to_state_when_api_returns_none(self, mock_st):
         """When the API returns None, falls back to state.settings."""
@@ -99,7 +99,7 @@ class TestFetchSettings:
 
             _fetch_settings()
 
-        mock_get.assert_called_once_with(client="test-client", include_sensitive=False)
+        mock_get.assert_called_once_with(include_sensitive=False)
 
     def test_include_sensitive_true_when_set(self, mock_st):
         """When runtime_sensitive_settings is True, include_sensitive=True."""
@@ -114,7 +114,7 @@ class TestFetchSettings:
 
             _fetch_settings()
 
-        mock_get.assert_called_once_with(client="test-client", include_sensitive=True)
+        mock_get.assert_called_once_with(include_sensitive=True)
 
 
 # ---------------------------------------------------------------------------
@@ -1676,7 +1676,7 @@ class TestDisplaySettings:
             patch(f"{MODULE}._render_download_settings_section") as mock_download,
             patch(f"{MODULE}._render_upload_settings_section") as mock_upload,
             patch(f"{MODULE}._render_source_code_templates_section") as mock_src,
-            patch(f"{MODULE}.is_authenticated", return_value=False),
+            patch(f"{MODULE}.is_admin", return_value=False),
             patch(f"{MODULE}.locked_notice") as mock_notice,
         ):
             from client.app.content.config.tabs.settings import display_settings

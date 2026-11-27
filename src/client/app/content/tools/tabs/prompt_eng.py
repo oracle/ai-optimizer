@@ -15,7 +15,7 @@ from streamlit import session_state as state
 
 from client.app.core import helpers
 from client.app.core.api import api_post, api_put
-from client.app.core.auth import is_authenticated, locked_notice
+from client.app.core.auth import is_admin, locked_notice
 
 LOGGER = logging.getLogger("client.content.tools.tabs.prompt_eng")
 
@@ -113,7 +113,7 @@ def display_prompt_eng():
     locked_notice()
     st.header("Prompt Engineering")
     st.write("Review/Edit System Prompts and their Instructions.")
-    authenticated = is_authenticated()
+    authenticated = is_admin()
 
     prompt_lookup = helpers.state_configs_lookup("prompt_configs", "title")
     state.runtime_prompt_titles = list(prompt_lookup.keys())

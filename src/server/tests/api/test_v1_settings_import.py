@@ -49,8 +49,12 @@ def _restore_settings():
 @pytest.fixture
 def mock_persist():
     """Prevent persist_settings from doing real DB I/O."""
-    with patch(f"{SETTINGS_MODULE}.persist_settings", new_callable=AsyncMock) as m:
-        yield m
+    with (
+        patch(f"{SETTINGS_MODULE}.persist_settings", new_callable=AsyncMock) as persist,
+        patch(f"{SETTINGS_MODULE}.persist_settings_with_client", new_callable=AsyncMock) as persist_with_client,
+    ):
+        persist.with_client = persist_with_client
+        yield persist
 
 
 @pytest.fixture
@@ -66,9 +70,9 @@ def mock_register_mcp_prompts():
 
 
 async def test_import_no_auth(app_client):
-    """POST /import without API key returns 403."""
+    """POST /import without a bearer credential returns 401."""
     resp = await app_client.post(ENDPOINT, json={})
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 # ---------------------------------------------------------------------------
@@ -668,7 +672,7 @@ async def test_import_scalar_log_level(app_client, auth_headers, mock_persist):
 
 
 async def test_import_ignores_protected_fields(app_client, auth_headers, mock_persist):
-    """Fields not in SettingsImport schema (env, api_key, etc.) are silently dropped."""
+    """Fields outside SettingsImport are silently dropped."""
     payload = {"env": "production", "api_key": "hacked", "server_port": 9999}
 
     resp = await app_client.post(ENDPOINT, json=payload, headers=auth_headers)
@@ -676,7 +680,6 @@ async def test_import_ignores_protected_fields(app_client, auth_headers, mock_pe
     assert resp.status_code == 200
     # Protected fields should not have changed
     assert settings.env != "production"
-    assert settings.api_key != "hacked"
     assert settings.server_port != 9999
 
 
@@ -697,6 +700,7 @@ async def test_import_persists_once(app_client, auth_headers, mock_persist):
 
     assert resp.status_code == 200
     mock_persist.assert_called_once()
+    mock_persist.with_client.assert_not_awaited()
 
 
 async def test_import_rollback_restores_additional_alias(app_client, auth_headers):
@@ -747,16 +751,37 @@ async def test_import_client_settings_applied(app_client, auth_headers, mock_per
     assert resp.status_code == 200
     data = resp.json()
     assert data["client_settings"] is True
-    assert _client_store["CONFIGURED"].database.alias == "ANALYTICS"
-    assert _client_store["CONFIGURED"].oci.auth_profile == "PROD"
+    workspace = "user:f4304c28-4bf6-5e7d-a284-33cc0a5a6c01"
+    assert _client_store[workspace].database.alias == "ANALYTICS"
+    assert _client_store[workspace].oci.auth_profile == "PROD"
+    mock_persist.assert_not_awaited()
+    mock_persist.with_client.assert_awaited_once_with(
+        workspace,
+        _client_store[workspace],
+        oci_user_touched=None,
+    )
+
+
+async def test_import_client_settings_rollback_on_persist_failure(app_client, auth_headers):
+    workspace = "user:f4304c28-4bf6-5e7d-a284-33cc0a5a6c01"
+    payload = {"client_settings": {"database": {"alias": "ANALYTICS"}}}
+
+    with patch(
+        f"{SETTINGS_MODULE}.persist_settings_with_client",
+        new_callable=AsyncMock,
+        return_value=False,
+    ):
+        resp = await app_client.post(ENDPOINT, json=payload, headers=auth_headers)
+
+    assert resp.status_code == 503
+    assert workspace not in _client_store
 
 
 async def test_import_client_settings_custom_client(app_client, auth_headers, mock_persist):
-    """client_settings with explicit client param targets that client only."""
+    """The removed client selector cannot target another workspace."""
     payload = {"client_settings": {"database": {"alias": "ANALYTICS"}, "oci": {"auth_profile": "PROD"}}}
 
     resp = await app_client.post(f"{ENDPOINT}?client=MY_SESSION", json=payload, headers=auth_headers)
 
-    assert resp.status_code == 200
-    assert _client_store["MY_SESSION"].database.alias == "ANALYTICS"
-    assert "CONFIGURED" not in _client_store
+    assert resp.status_code == 400
+    assert "MY_SESSION" not in _client_store

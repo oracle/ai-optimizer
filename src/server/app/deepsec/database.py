@@ -21,6 +21,7 @@ from typing import Optional
 
 import oracledb
 
+from server.app.database.quoting import quote_identifier, quote_password
 from server.app.database.sql import execute_sql
 
 LOGGER = logging.getLogger("server.deepsec.database")
@@ -72,16 +73,18 @@ def _ident(name: str, upper: bool = True) -> str:
     preserves the given casing — required for catalog-sourced object/column names,
     which are case-sensitive and listed verbatim (e.g. a ``"Sales"`` table).
     """
-    if not _is_valid_identifier(name):
-        raise DeepSecError(f"Invalid identifier: {name!r}")
-    return '"' + (name.upper() if upper else name) + '"'
+    try:
+        return quote_identifier(name, upper=upper)
+    except ValueError as exc:
+        raise DeepSecError(str(exc)) from None
 
 
 def _quoted_password(value: str) -> str:
     """Return a password as a double-quoted (case-sensitive) identifier."""
-    if not value or any(c in value for c in "\x00\n\r"):
-        raise DeepSecError("Invalid password")
-    return '"' + value.replace('"', '""') + '"'
+    try:
+        return quote_password(value)
+    except ValueError as exc:
+        raise DeepSecError(str(exc)) from None
 
 
 def _normalize_privileges(privileges: list[str]) -> list[str]:
@@ -207,14 +210,14 @@ def _require_readable(rows: Optional[list], view: str) -> list:
     return rows
 
 
-async def _exec_ddl(conn: oracledb.AsyncConnection, sql: str) -> None:
+async def _exec_ddl(conn: oracledb.AsyncConnection, sql: str, *, log_statement: bool = True) -> None:
     """Execute a Deep Sec DDL statement, surfacing all database errors.
 
     Unlike ``execute_sql``, this does NOT swallow ORA-00955 (object already
     exists) or ORA-00942 (missing/inaccessible object); a rejected CREATE/DROP
     must never be reported to the caller as success.
     """
-    LOGGER.debug("deepsec ddl: %s", sql)
+    LOGGER.debug("deepsec ddl: %s", sql if log_statement else "CREATE END USER <redacted>")
     async with conn.cursor() as cursor:
         await cursor.execute(sql)
 
@@ -287,7 +290,7 @@ async def create_end_user(
     if schema:
         # SCHEMA associates an existing schema for name resolution (end users own no schema).
         sql += f" SCHEMA {_ident(schema)}"
-    await _exec_ddl(conn, sql)
+    await _exec_ddl(conn, sql, log_statement=False)
     await conn.commit()
 
 

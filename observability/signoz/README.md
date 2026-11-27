@@ -67,10 +67,10 @@ After loading, open each alert in the UI and attach your notification channel (S
 >
 > Workflow:
 >
-> 1. With OTel enabled and SigNoz running, hit a chat endpoint:
+> 1. With OTel enabled and SigNoz running, [obtain a bearer token](../../docs/content/guides/access-control.mdx#obtain-a-bearer-token) and hit a chat endpoint:
 >    ```bash
->    curl -X POST http://localhost:8000/v1/chat/completions \
->      -H "X-API-Key: $AIO_API_KEY" \
+>    curl -k -X POST https://localhost:8000/v1/chat/completions \
+>      -H "Authorization: Bearer $AIO_BEARER_TOKEN" \
 >      -H "Content-Type: application/json" \
 >      -d '{"messages":[{"role":"user","content":"hello"}]}'
 >    ```

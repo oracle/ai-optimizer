@@ -5,7 +5,7 @@ Licensed under the Universal Permissive License v1.0 as shown at http://oss.orac
 Swagger UI gate page and authenticated OpenAPI schema endpoint.
 
 These replace FastAPI's built-in `docs_url` / `openapi_url` routes so the
-OpenAPI schema can only be fetched with a valid X-API-Key, while the Swagger
+OpenAPI schema can only be fetched with a valid bearer token, while the Swagger
 UI HTML shell remains reachable from a normal browser address bar.
 """
 # spell-checker:ignore jsdelivr noauth preauthorize
@@ -45,10 +45,8 @@ async def swagger_ui(request: Request) -> HTMLResponse:
     """Serve a Swagger UI gate page.
 
     The HTML shell is public and contains no schema data. The user enters an
-    API key; the page then fetches `./openapi.json` (resolves correctly under
-    a root_path) with the key, and initializes Swagger UI with the returned
-    spec. `preauthorizeApiKey` is called so "Try it out" requests reuse the
-    same key without a second entry in the built-in Authorize dialog.
+    bearer token; the page then fetches `./openapi.json` with the token and
+    initializes Swagger UI with the returned spec.
     """
     title = html.escape(f"{request.app.title}")
     page = f"""<!DOCTYPE html>
@@ -68,8 +66,8 @@ async def swagger_ui(request: Request) -> HTMLResponse:
 <body>
   <div id="gate">
     <h2>{title}</h2>
-    <p>Enter your API key to load the documentation.</p>
-    <label for="api-key">X-API-Key</label>
+    <p>Enter your access token to load the documentation.</p>
+    <label for="api-key">Bearer token</label>
     <input id="api-key" type="password" autocomplete="off" autofocus>
     <button id="api-key-submit" type="button">Load</button>
     <div id="gate-error" role="alert"></div>
@@ -87,13 +85,13 @@ async def swagger_ui(request: Request) -> HTMLResponse:
         errorBox.textContent = '';
         const key = keyInput.value.trim();
         if (!key) {{
-          errorBox.textContent = 'API key is required.';
+          errorBox.textContent = 'Access token is required.';
           return;
         }}
         try {{
-          const resp = await fetch('./openapi.json', {{ headers: {{ 'X-API-Key': key }} }});
-          if (resp.status === 403) {{
-            errorBox.textContent = 'Invalid API key.';
+          const resp = await fetch('./openapi.json', {{ headers: {{ 'Authorization': 'Bearer ' + key }} }});
+          if (resp.status === 401) {{
+            errorBox.textContent = 'Invalid access token.';
             return;
           }}
           if (!resp.ok) {{
@@ -136,9 +134,12 @@ async def swagger_ui(request: Request) -> HTMLResponse:
             deepLinking: true,
             presets: [SwaggerUIBundle.presets.apis, SwaggerUIBundle.SwaggerUIStandalonePreset],
             plugins: [FileArrayPlugin],
-            layout: 'BaseLayout'
+            layout: 'BaseLayout',
+            requestInterceptor: (request) => {{
+              request.headers.Authorization = 'Bearer ' + key;
+              return request;
+            }}
           }});
-          window.ui.preauthorizeApiKey('APIKeyHeader', key);
         }} catch (err) {{
           errorBox.textContent = 'Failed to load spec: ' + err;
         }}

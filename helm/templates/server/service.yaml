@@ -12,10 +12,11 @@ metadata:
 spec:
   type: {{ .Values.server.service.type }}
   ports:
-    - name: http
+    - name: {{ if .Values.server.ssl.enabled }}https{{ else }}http{{ end }}
       protocol: TCP
       port: {{ .Values.server.service.port | default 8000 }}
       targetPort: 8000
+      appProtocol: {{ if .Values.server.ssl.enabled }}https{{ else }}http{{ end }}
   selector:
     app.kubernetes.io/component: server
     {{- include "ai-optimizer.selectorLabels" . | nindent 4 }}

@@ -33,8 +33,6 @@ def _restore_settings_state() -> Iterator[None]:
     """Snapshot settings and FastMCP provider state around each test."""
     saved_state = {
         "log_level": settings.log_level,
-        "api_key": settings.api_key,
-        "api_key_generated": getattr(settings, "_api_key_generated", False),
         "client_settings": deepcopy(settings.client_settings),
         "database_configs": list(settings.database_configs),
         "model_configs": list(settings.model_configs),
@@ -59,12 +57,8 @@ def _restore_settings_state() -> Iterator[None]:
 
     yield
 
-    for attr, value in (
-        ("log_level", saved_state["log_level"]),
-        ("api_key", saved_state["api_key"]),
-    ):
+    for attr, value in (("log_level", saved_state["log_level"]),):
         setattr(settings, attr, value)
-    object.__setattr__(settings, "_api_key_generated", saved_state["api_key_generated"])
     settings.client_settings = deepcopy(saved_state["client_settings"])
     settings.database_configs = list(saved_state["database_configs"])
     settings.model_configs = list(saved_state["model_configs"])

@@ -1612,7 +1612,7 @@ class TestDisplayOci:
             patch(f"{MODULE}._render_profile_selection") as mock_profile,
             patch(f"{MODULE}._render_oci_configuration_form") as mock_form,
             patch(f"{MODULE}._render_oci_genai_section") as mock_genai,
-            patch(f"{MODULE}.is_authenticated", return_value=False),
+            patch(f"{MODULE}.is_admin", return_value=False),
             patch(f"{MODULE}.locked_notice") as mock_notice,
         ):
             display_oci()

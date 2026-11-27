@@ -216,6 +216,17 @@ class TestMcpTransportConversion:
         assert client.timeout.read == 12.5
         await client.aclose()
 
+    def test_local_https_accepts_generated_certificate(self):
+        source = StreamableHTTPTransport(name="local", url="https://127.0.0.1:8000/mcp/")
+
+        with patch.object(loader_module, "_mcp_httpx2_client_factory") as factory:
+            _agentspec_transport_to_fastmcp(source)
+
+        factory.assert_called_once_with(
+            read_timeout_seconds=source.session_parameters.read_timeout_seconds,
+            verify=False,
+        )
+
     def test_stdio_uses_fastmcp_transport(self):
         source = AgentSpecStdioTransport(
             name="stdio",

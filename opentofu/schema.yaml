@@ -108,6 +108,7 @@ variableGroups:
       - client_allowed_cidrs
       - server_allowed_cidrs
       - ssl_mode
+      - ssl_hostname
       - ssl_certificate
       - ssl_private_key
     visible: true
@@ -426,12 +427,11 @@ variables:
   #########################################################################
   ssl_mode:
     type: enum
-    title: "TLS Termination"
-    description: "HTTP only, auto-generated self-signed certificate, or provide your own certificate."
+    title: "TLS Certificate"
+    description: "Auto-generate a self-signed certificate or provide your own certificate."
     required: true
-    default: "none"
+    default: "self-signed"
     enum:
-      - "none"
       - "self-signed"
       - "provided"
 
@@ -439,6 +439,16 @@ variables:
     type: text
     title: "TLS Certificate (PEM)"
     description: "PEM-encoded certificate for TLS termination."
+    required: true
+    visible:
+      eq:
+        - ssl_mode
+        - "provided"
+
+  ssl_hostname:
+    type: string
+    title: "Public TLS Hostname"
+    description: "Public DNS hostname for the TLS listener. Point this hostname to the load balancer IP address."
     required: true
     visible:
       eq:

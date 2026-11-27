@@ -8,8 +8,7 @@ A bind address (what uvicorn listens on) is not always a usable client target:
 wildcard binds such as ``0.0.0.0`` / ``::`` accept connections but cannot be
 dialed. These helpers translate bind addresses into connectable hosts, build
 IPv6-aware netloc strings, decide when the configured service port belongs in a
-URL, and select TLS verification for loopback self-signed certificates — and
-generate/resolve those self-signed certificates for optional local TLS.
+URL, and select TLS verification for application-managed certificates.
 
 It lives at the top level so both the client and server trees can import it
 (mirrors ``url_safety``); neither tree is guaranteed to be present at runtime.
@@ -71,20 +70,17 @@ def should_inject_server_port(parsed_hostname: str | None, connect_target: str) 
 def verify_for_url(url: str) -> bool:
     """Return whether httpx should verify TLS certificates for *url*.
 
-    The all-in-one local server can run with an auto-generated self-signed
-    certificate. Disable verification only for loopback HTTPS targets; keep
-    normal certificate verification for every external HTTPS endpoint.
+    Application-managed loopback and Kubernetes endpoints use generated
+    certificates. External HTTPS endpoints use normal certificate verification.
     """
     parsed = urlparse(url)
     if parsed.scheme != "https":
         return True
     host = (parsed.hostname or "").strip("[]").casefold()
-    return host not in LOCAL_HOSTS
+    return host not in LOCAL_HOSTS and not host.endswith(K8S_SERVICE_SUFFIXES)
 
 
-# --- Self-signed certificate generation/resolution for optional local TLS ---
-# Both the launcher (``entrypoint``) and the client autostart path either use
-# operator-provided cert/key files or fall back to an auto-generated self-signed pair.
+# --- Self-signed certificate generation/resolution ---
 
 
 def generate_self_signed_cert(cert_path: Path, key_path: Path) -> None:
@@ -118,16 +114,15 @@ def generate_self_signed_cert(cert_path: Path, key_path: Path) -> None:
 
 
 def resolve_or_generate_cert(cert_file: str, key_file: str, script_dir: Path) -> tuple[Path, Path]:
-    """Return ``(cert_path, key_path)``.
+    """Resolve a provided certificate pair or generate a reusable local pair."""
+    if bool(cert_file) != bool(key_file):
+        raise ValueError("TLS certificate and private key paths must be provided together")
 
-    Use *cert_file*/*key_file* when both are provided; otherwise auto-generate a
-    self-signed certificate under ``<script_dir>/../tmp/ssl`` (generated once and
-    reused on subsequent calls).
-    """
     if cert_file and key_file:
         return Path(cert_file), Path(key_file)
 
-    ssl_dir = script_dir.parent / "tmp" / "ssl"
+    local_config_dir = os.environ.get("AIO_LOCAL_CONFIG_DIR", "")
+    ssl_dir = Path(local_config_dir) / "tls" if local_config_dir else script_dir.parent / "tmp" / "ssl"
     ssl_dir.mkdir(parents=True, exist_ok=True)
     cert_path = ssl_dir / "cert.pem"
     key_path = ssl_dir / "key.pem"

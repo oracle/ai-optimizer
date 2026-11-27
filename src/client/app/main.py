@@ -13,8 +13,15 @@ from streamlit import session_state as state
 
 from _version import __version__
 from client.app.content.local_database_setup import display_local_database_setup
-from client.app.core.api import _server_module_available, api_get, get_server_settings, start_server, stop_server
-from client.app.core.auth import auth_sidebar, gate_active, is_authenticated
+from client.app.core.api import (
+    _server_module_available,
+    api_get,
+    get_auth_config,
+    get_server_settings,
+    start_server,
+    stop_server,
+)
+from client.app.core.auth import require_sign_in
 from client.app.core.local_bootstrap import (
     IncompleteLocalCoreEnvironment,
     LocalCoreConfigurationError,
@@ -33,6 +40,16 @@ ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets"
 if "optimizer_client" not in state:
     state.optimizer_client = str(uuid4())
 
+
+def _about_text() -> str:
+    principal = state.get("auth_principal") or {}
+    user = principal.get("display_name") or principal.get("username")
+    details = [f"Version: v{__version__}"]
+    if user:
+        details.append(f"User: {user}")
+    return "\n\n".join(details)
+
+
 st.set_page_config(
     page_title="Oracle AI Optimizer and Toolkit",
     page_icon=str(ASSETS_DIR / "favicon.png"),
@@ -41,7 +58,7 @@ st.set_page_config(
     menu_items={
         "Get Help": "https://oracle.github.io/ai-optimizer/",
         "Report a bug": "https://github.com/oracle/ai-optimizer/issues/new?template=2-bug_report.yml",
-        "About": f"Version: v{__version__}\n\nClient: {state.optimizer_client}",
+        "About": _about_text(),
     },
 )
 st.html(
@@ -109,9 +126,7 @@ def _start_local_server() -> None:
         with st.spinner("Starting server...", show_time=True):
             started = start_server(resolved.config.child_environment())
         if started:
-            state.settings = get_server_settings(client=state.optimizer_client)
-            if state.settings is not None:
-                return
+            return
         state["_local_core_startup_failed"] = True
         _retry_or_edit_local_core(resolved.source)
 
@@ -151,15 +166,26 @@ def _start_local_server() -> None:
 
 _clear_local_core_secrets()
 
-if state.get("settings") is None:
-    st.sidebar.space(size="small")
-    with st.sidebar.spinner("Connecting to server...", show_time=True):
-        state.settings = get_server_settings(client=state.optimizer_client)
-    if state.settings is None and _server_module_available():
+st.sidebar.space(size="small")
+with st.sidebar.spinner("Connecting to server...", show_time=True):
+    auth_config = get_auth_config()
+if auth_config is None:
+    if auth_config is None and _server_module_available():
         _start_local_server()
+        auth_config = get_auth_config()
 
-if state.settings is None:
+if auth_config is None:
     st.error("Unable to connect to the server. Please check that the server is running.")
+    st.stop()
+
+state.auth_mode = auth_config["mode"]
+require_sign_in(auth_config)
+st.set_page_config(menu_items={"About": _about_text()})
+
+if state.get("settings") is None:
+    state.settings = get_server_settings()
+if state.settings is None:
+    st.error("Unable to load server settings.")
     st.stop()
 
 if "optimizer_help" not in state:
@@ -178,12 +204,7 @@ tools = st.Page("content/tools/tools.py", title="Tools", icon="🧰")
 sidebar_navigation[""].append(tools)
 config = st.Page("content/config/config.py", title="Configuration", icon="⚙️")
 sidebar_navigation[""].append(config)
-if gate_active():
-    if is_authenticated():
-        sidebar_navigation[""].append(st.Page("content/signout.py", title="Sign-out", icon="🔓"))
-    else:
-        sidebar_navigation[""].append(st.Page("content/signin.py", title="Sign-in", icon="🔐"))
-auth_sidebar()
+sidebar_navigation[""].append(st.Page("content/signout.py", title="Sign-out", icon="🔓"))
 
 pg_sidebar = st.navigation(sidebar_navigation, position="sidebar", expanded=False)
 pg_sidebar.run()

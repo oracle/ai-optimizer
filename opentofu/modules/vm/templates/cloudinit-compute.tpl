@@ -134,6 +134,15 @@ write_files:
       AIO_DB_USERNAME=AI_OPTIMIZER
       AIO_DB_PASSWORD=${db_password}
       AIO_DB_DSN=${db_service}
+      AIO_OIDC_ISSUER=${oidc_issuer}
+      AIO_OIDC_DISCOVERY_URL=${oidc_discovery_url}
+      AIO_OIDC_AUDIENCE=${oidc_audience}
+      AIO_OIDC_REQUIRED_SCOPES='${oidc_required_scopes}'
+      AIO_OIDC_CLIENT_ID=${oidc_client_id}
+      AIO_OIDC_CLIENT_SECRET=${oidc_client_secret}
+      AIO_OIDC_REDIRECT_URI=${oidc_redirect_uri}
+      AIO_OIDC_ADMIN_SUBJECT=${oidc_admin_subject}
+      AIO_OIDC_PUBLIC_SERVER_URL=${oidc_public_server_url}
       AIO_OCI_CLI_AUTH=instance_principal
       AIO_CLIENT_ADDRESS=0.0.0.0
       AIO_CLIENT_COOKIE_SECRET=${client_cookie_secret}
@@ -155,6 +164,7 @@ runcmd:
   - /tmp/install_packages.sh policycoreutils-python-utils python3-pip jdk-26-headless sqlcl zstd mesa-libGL
   - /tmp/root_setup.sh
   - su - oracleai -c '/tmp/app_setup.sh'
+  - su - oracleai -c 'cd /app && AIO_ENV=vm /app/.venv/bin/python -m server.app.auth.setup'
   - semanage fcontext -a -t bin_t "/app(/.*)?"
   - restorecon -RF /app
   - systemctl daemon-reexec

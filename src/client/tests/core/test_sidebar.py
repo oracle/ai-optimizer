@@ -823,7 +823,7 @@ class TestToolkitSidebar:
             patch(f"{MODULE}.st", mock_st),
             patch(f"{MODULE}.state", state),
             patch(f"{HELPERS}.state", state),
-            patch(f"{MODULE}.is_authenticated", return_value=True, create=True),
+            patch(f"{MODULE}.is_admin", return_value=True, create=True),
             patch(f"{MODULE}.api_get", return_value=[{"name": "SCOUT1"}], create=True) as mock_get,
             patch(
                 f"{MODULE}.api_post",

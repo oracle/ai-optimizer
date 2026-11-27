@@ -31,8 +31,10 @@ _STATIC_SENSITIVE_KEYS: frozenset[str] = frozenset(
         # AIO_DB_PASSWORD would not match if only ``db_password`` were listed
         # — these aliases close that gap.
         "AIO_API_KEY",
+        "AIO_AUTH_SETUP_PRIV_PASSWORD",
         "AIO_DB_PASSWORD",
         "AIO_DB_WALLET_PASSWORD",
+        "AIO_OIDC_CLIENT_SECRET",
         "AIO_OCI_CLI_PASSPHRASE",
         "AIO_OCI_CLI_KEY_CONTENT",
         "DB_PASSWORD",
@@ -49,6 +51,7 @@ _STATIC_SENSITIVE_KEYS: frozenset[str] = frozenset(
         # HTTP auth header.  ``api_key`` would not match ``API-Key`` (hyphen
         # rather than underscore), so the header form is listed separately.
         "X-API-Key",
+        "Authorization",
     }
 )
 
@@ -72,7 +75,8 @@ def _sensitive_keys() -> tuple[frozenset[str], str]:
         from server.app.models.defaults import ENV_OVERRIDES  # noqa: PLC0415
         from server.app.models.schemas import ModelSensitive  # noqa: PLC0415
         from server.app.oci.schemas import OciSensitive  # noqa: PLC0415
-    except ImportError:
+    # Client logging uses the static set when server settings initialization fails.
+    except (ImportError, ValueError):
         return _STATIC_SENSITIVE_KEYS, "static"
 
     keys: set[str] = set()
@@ -92,12 +96,15 @@ def _sensitive_keys() -> tuple[frozenset[str], str]:
     keys.update(
         {
             "AIO_API_KEY",
+            "AIO_AUTH_SETUP_PRIV_PASSWORD",
             "AIO_DB_PASSWORD",
             "AIO_DB_WALLET_PASSWORD",
+            "AIO_OIDC_CLIENT_SECRET",
             "AIO_OCI_CLI_PASSPHRASE",
             "AIO_OCI_CLI_KEY_CONTENT",
             "DB_PASSWORD",
             "X-API-Key",
+            "Authorization",
         }
     )
     # Per-provider env-var aliases derived from the env-override registry.

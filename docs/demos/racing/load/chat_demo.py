@@ -18,7 +18,7 @@ Example:
 
     python chat_demo.py \\
         --api-key "$AIO_API_KEY" \\
-        --base-url http://localhost:8000 \\
+        --base-url https://localhost:8000 \\
         --workers 100 \\
         --database-alias CORE \\
         --vs-alias-template 'RACE_DRIVER_{N:03d}' \\

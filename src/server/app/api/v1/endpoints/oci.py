@@ -7,14 +7,13 @@ Endpoints for retrieving OCI profile configurations.
 # spell-checker: ignore genai
 
 import logging
-from typing import Annotated
 
-from fastapi import APIRouter, Body, Header, HTTPException, Query, Request
+from fastapi import APIRouter, Body, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 
 from server.app.api.v1.endpoints._helpers import _build_updates, _log_sensitive_read
 from server.app.api.v1.persistence import persistence_succeeded
-from server.app.api.v1.schemas.common import ClientId
+from server.app.auth.dependencies import WorkspaceKey
 from server.app.core.client_locks import _client_lock
 from server.app.core.constants import PERSIST_FAIL_DETAIL as _PERSIST_FAIL
 from server.app.core.error_detail import response_error_detail
@@ -235,11 +234,11 @@ async def oci_list_bucket_objects(bucket_name: str, auth_profile: str):
 async def oci_download_objects(
     bucket_name: str,
     auth_profile: str,
+    client: WorkspaceKey,
     request: list[str] = Body(
         ...,
         examples=[["product-catalog.pdf", "release-notes/2026-q2.md"]],
     ),
-    client: Annotated[ClientId, Header()] = "server",
 ):
     """Download objects from a bucket to the client's temp directory.
 

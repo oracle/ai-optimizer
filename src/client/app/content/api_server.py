@@ -10,12 +10,10 @@ import logging
 from urllib.parse import urlparse, urlunparse
 
 import streamlit as st
-from streamlit import session_state as state
 
 from client.app.core.api import _base_url, api_post, get_server_settings
-from client.app.core.auth import is_authenticated, locked_notice, redacted_password_input
+from client.app.core.auth import is_admin, locked_notice
 from client.app.core.helpers import load_chat_history
-from client.app.core.secrets import reveal
 from client.app.core.settings import settings as client_settings
 from net_addressing import LOCAL_HOSTS, WILDCARD_HOSTS, netloc
 
@@ -48,7 +46,7 @@ def _advertised_api_base_url(browser_url: str | None = None) -> str:
 def _copy_to_server() -> None:
     """Copy the current client's settings to the server client."""
     try:
-        api_post(f"settings/server/copy?client={state.optimizer_client}")
+        api_post("settings/server/copy")
     except Exception:
         LOGGER.exception("Failed to copy client settings to server")
         st.error("Failed to copy settings to server.")
@@ -57,19 +55,13 @@ def _copy_to_server() -> None:
 #####################################################
 # MAIN
 #####################################################
-authenticated = is_authenticated()
+authenticated = is_admin()
 
 st.header("API Server")
 st.write("Access the AI Optimizer and Toolkit with your own client.")
 st.text_input(
     "API Server:",
     value=_advertised_api_base_url(),
-    disabled=True,
-)
-redacted_password_input(
-    "API Server Key:",
-    value=reveal(client_settings.api_key) or "",
-    key="api_server_key",
     disabled=True,
 )
 
@@ -82,7 +74,7 @@ st.write("""
         """)
 
 if authenticated:
-    server_settings = get_server_settings(client="server", include_sensitive=False)
+    server_settings = get_server_settings(include_sensitive=False)
     if server_settings:
         st.subheader("Current 'server' settings:")
         st.json(server_settings.get("client_settings", {}), expanded=False)
