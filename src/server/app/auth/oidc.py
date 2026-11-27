@@ -44,6 +44,17 @@ def _claim_scopes(claims: dict) -> frozenset[str]:
     raise AuthenticationError("Invalid bearer credential")
 
 
+def _scope_is_granted(required_scope: str, granted_scopes: frozenset[str]) -> bool:
+    if required_scope in granted_scopes:
+        return True
+    # OCI returns the scope name; the authorization request uses its audience-qualified URI.
+    audience = settings.oidc_audience or ""
+    if not audience or not required_scope.startswith(audience):
+        return False
+    scope_name = required_scope[len(audience) :].lstrip("/")
+    return bool(scope_name) and scope_name in granted_scopes
+
+
 class OIDCAuthenticator:
     """Validate signed access tokens from one configured issuer."""
 
@@ -74,7 +85,11 @@ class OIDCAuthenticator:
 
         subject = _required_string(claims, "sub")
         scopes = _claim_scopes(claims)
-        missing_scopes = set(settings.oidc_required_scopes) - scopes
+        missing_scopes = {
+            required_scope
+            for required_scope in settings.oidc_required_scopes
+            if not _scope_is_granted(required_scope, scopes)
+        }
         if missing_scopes:
             LOGGER.info(
                 "OIDC access token rejected: required scope missing; token scopes=%s",
