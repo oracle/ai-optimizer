@@ -13,7 +13,6 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Generator
 
-import oracledb
 import pytest
 
 TEST_DB_CONFIG = {
@@ -105,6 +104,8 @@ def _write_startup_scripts(temp_dir: Path) -> None:
 
 
 def _wait_for_ready(container, timeout: int = 300) -> None:
+    import oracledb
+
     start = time.time()
     last_error = None
     while time.time() - start < timeout:
