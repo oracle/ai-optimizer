@@ -74,8 +74,12 @@ class OIDCAuthenticator:
 
         subject = _required_string(claims, "sub")
         scopes = _claim_scopes(claims)
-        if not set(settings.oidc_required_scopes).issubset(scopes):
-            LOGGER.info("OIDC access token rejected: required scope missing")
+        missing_scopes = set(settings.oidc_required_scopes) - scopes
+        if missing_scopes:
+            LOGGER.info(
+                "OIDC access token rejected: required scope missing; token scopes=%s",
+                " ".join(sorted(scopes)),
+            )
             raise AuthenticationError("Invalid bearer credential")
         email = _optional_string(claims, "email")
         username = _optional_string(claims, "preferred_username") or email or subject
