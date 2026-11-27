@@ -6,6 +6,21 @@ data "oci_identity_availability_domains" "all" {
   compartment_id = var.tenancy_ocid
 }
 
+data "oci_identity_user" "optimizer_admin" {
+  count    = var.deploy_optimizer ? 1 : 0
+  user_id  = local.user_ocid
+  provider = oci.home_region
+}
+
+data "oci_identity_domains" "optimizer" {
+  count          = var.deploy_optimizer ? 1 : 0
+  compartment_id = var.tenancy_ocid
+  name           = local.optimizer_identity_domain_name
+  state          = "ACTIVE"
+  type           = local.optimizer_identity_domain_name == null ? "DEFAULT" : null
+  provider       = oci.home_region
+}
+
 data "oci_objectstorage_namespace" "ns" {
   count          = (var.infrastructure == "Kubernetes" || var.prov_object_storage) ? 1 : 0
   compartment_id = local.compartment_ocid

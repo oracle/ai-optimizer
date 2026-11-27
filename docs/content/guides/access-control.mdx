@@ -4,8 +4,8 @@ description: Configure database-account or OIDC authentication for AI Optimizer 
 sidebar_position: 10
 ---
 
-{/* Copyright (c) 2024, 2026, Oracle and/or its affiliates.
-Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl. */}
+{/_ Copyright (c) 2024, 2026, Oracle and/or its affiliates.
+Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl. _/}
 
 AI Optimizer supports Oracle database and OIDC authentication. Each deployment has one reserved `Admin` identity.
 
@@ -19,7 +19,11 @@ With the [end-user administration privileges](./database#authentication-member-a
 
 AI Optimizer Server validates bearer tokens from the configured identity provider. The configured Admin subject receives the Admin identity; other accepted subjects receive member identities.
 
+`AIO_OIDC_ISSUER` is the exact token issuer. Discovery defaults to the issuer's `/.well-known/openid-configuration` endpoint. Set `AIO_OIDC_DISCOVERY_URL` when the provider publishes its configuration at another URL.
+
 REST and MCP clients use their own OAuth registrations. The optional Streamlit client uses an authorization-code registration.
+
+OCI OpenTofu deployments create the Streamlit client/resource-server registration in the deploying OCI user's identity domain, grant it to that user, and configure the user as Admin. Grant the generated IAM application to additional users or groups to admit members.
 
 ## User settings
 

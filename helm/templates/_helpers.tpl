@@ -173,7 +173,7 @@ Validate the immutable authentication authority contract.
 {{- $auth := .Values.global.authentication | default dict -}}
 {{- $oidc := $auth.oidc | default dict -}}
 {{- $configured := false -}}
-{{- range $field := list "issuer" "audience" "adminSubject" "publicServerUrl" -}}
+{{- range $field := list "issuer" "discoveryUrl" "audience" "adminSubject" "publicServerUrl" -}}
   {{- if ne (index $oidc $field | default "" | trim) "" -}}
     {{- $configured = true -}}
   {{- end -}}
@@ -192,8 +192,11 @@ Validate the immutable authentication authority contract.
 {{- if ne (ne $serverCert "") (ne $serverKey "") -}}
   {{- fail "server.ssl.certFile and server.ssl.keyFile must be supplied together" -}}
 {{- end -}}
-{{- if and .Values.server.ingress.enabled (eq (len (.Values.server.ingress.tls | default list)) 0) -}}
-  {{- fail "server.ingress.tls is required when the API Server ingress is enabled" -}}
+{{- $serverIngressAnnotations := .Values.server.ingress.annotations | default dict -}}
+{{- $serverCertificateOCID := get $serverIngressAnnotations "oci-native-ingress.oraclecloud.com/certificate-ocid" | default "" | trim -}}
+{{- $serverUsesOCICertificate := and (eq .Values.server.ingress.className "native-ic") (ne $serverCertificateOCID "") -}}
+{{- if and .Values.server.ingress.enabled (eq (len (.Values.server.ingress.tls | default list)) 0) (not $serverUsesOCICertificate) -}}
+  {{- fail "server.ingress.tls is required when the API Server ingress is enabled unless the OCI Native Ingress certificate-ocid annotation is set" -}}
 {{- end -}}
 {{- if and .Values.server.gateway.enabled (not .Values.server.gateway.tls) -}}
   {{- fail "server.gateway.tls is required when the API Server gateway is enabled" -}}
@@ -203,8 +206,11 @@ Validate the immutable authentication authority contract.
 {{- if ne (ne $clientCert "") (ne $clientKey "") -}}
   {{- fail "client.ssl.certFile and client.ssl.keyFile must be supplied together" -}}
 {{- end -}}
-{{- if and .Values.client.enabled .Values.client.ingress.enabled (eq (len (.Values.client.ingress.tls | default list)) 0) -}}
-  {{- fail "client.ingress.tls is required when the Streamlit client ingress is enabled" -}}
+{{- $clientIngressAnnotations := .Values.client.ingress.annotations | default dict -}}
+{{- $clientCertificateOCID := get $clientIngressAnnotations "oci-native-ingress.oraclecloud.com/certificate-ocid" | default "" | trim -}}
+{{- $clientUsesOCICertificate := and (eq .Values.client.ingress.className "native-ic") (ne $clientCertificateOCID "") -}}
+{{- if and .Values.client.enabled .Values.client.ingress.enabled (eq (len (.Values.client.ingress.tls | default list)) 0) (not $clientUsesOCICertificate) -}}
+  {{- fail "client.ingress.tls is required when the Streamlit client ingress is enabled unless the OCI Native Ingress certificate-ocid annotation is set" -}}
 {{- end -}}
 {{- if and .Values.client.enabled .Values.client.gateway.enabled (not .Values.client.gateway.tls) -}}
   {{- fail "client.gateway.tls is required when the Streamlit client gateway is enabled" -}}
@@ -231,6 +237,9 @@ Validate the immutable authentication authority contract.
     {{- if not (hasPrefix "https://" (index $oidc $field | trim)) -}}
       {{- fail (printf "global.authentication.oidc.%s must use HTTPS" $field) -}}
     {{- end -}}
+  {{- end -}}
+  {{- if and (ne ($oidc.discoveryUrl | default "" | trim) "") (not (hasPrefix "https://" ($oidc.discoveryUrl | trim))) -}}
+    {{- fail "global.authentication.oidc.discoveryUrl must use HTTPS" -}}
   {{- end -}}
   {{- if and .Values.client.enabled (not (hasPrefix "https://" (.Values.client.oidc.redirectUri | trim))) -}}
     {{- fail "client.oidc.redirectUri must use HTTPS" -}}
@@ -316,11 +325,11 @@ Always returns a path with leading and trailing slashes for proper concatenation
 Define the serviceName and serviceUrl of the API Server for Client Access.
 *********************************************** */}}
 {{- define "ai-optimizer.server.serviceName" -}}
-{{ include "ai-optimizer.fullname" . }}-server-https
+{{ include "ai-optimizer.fullname" . }}-server-{{ if .Values.server.ssl.enabled }}https{{ else }}http{{ end }}
 {{- end -}}
 
 {{- define "ai-optimizer.server.serviceUrl" -}}
-https://{{ include "ai-optimizer.server.serviceName" . }}.{{ .Release.Namespace }}.svc
+{{ if .Values.server.ssl.enabled }}https{{ else }}http{{ end }}://{{ include "ai-optimizer.server.serviceName" . }}.{{ .Release.Namespace }}.svc
 {{- end -}}
 
 
@@ -424,6 +433,9 @@ Secret-mounted file rather than as pod env entries. Operator-supplied
 {{- if eq (include "ai-optimizer.authentication.isOidc" . | trim) "true" -}}
 {{- $oidc := $auth.oidc -}}
 {{- $_ = set $out "AIO_OIDC_ISSUER" $oidc.issuer -}}
+{{- if ne ($oidc.discoveryUrl | default "" | trim) "" -}}
+{{- $_ = set $out "AIO_OIDC_DISCOVERY_URL" $oidc.discoveryUrl -}}
+{{- end -}}
 {{- $_ = set $out "AIO_OIDC_AUDIENCE" $oidc.audience -}}
 {{- $_ = set $out "AIO_OIDC_REQUIRED_SCOPES" ($oidc.requiredScopes | toJson) -}}
 {{- $_ = set $out "AIO_OIDC_ADMIN_SUBJECT" $oidc.adminSubject -}}
@@ -432,8 +444,11 @@ Secret-mounted file rather than as pod env entries. Operator-supplied
 {{- $_ = set $out "AIO_SERVER_URL_PREFIX" (include "ai-optimizer.getPath" . | trimSuffix "/") -}}
 {{- $_ = set $out "AIO_MAX_CLIENTS" (.Values.server.maxClients | toString) -}}
 {{- with .Values.server.ssl -}}
+{{- $_ = set $out "AIO_SERVER_SSL" (.enabled | toString) -}}
+{{- if .enabled -}}
 {{- if .certFile -}}{{- $_ = set $out "AIO_SERVER_SSL_CERT_FILE" .certFile -}}{{- end -}}
 {{- if .keyFile -}}{{- $_ = set $out "AIO_SERVER_SSL_KEY_FILE" .keyFile -}}{{- end -}}
+{{- end -}}
 {{- end -}}
 {{- with .Values.server.ociConfig -}}
 {{- if (default false .oke) -}}
@@ -463,8 +478,11 @@ Same contract as server.envContent.
 {{- $_ := set $out "AIO_SERVER_URL" (include "ai-optimizer.server.serviceUrl" .) -}}
 {{- $_ = set $out "AIO_SERVER_PORT" (.Values.server.service.port | default 8000 | toString) -}}
 {{- with .Values.client.ssl -}}
+{{- $_ = set $out "AIO_CLIENT_SSL" (.enabled | toString) -}}
+{{- if .enabled -}}
 {{- if .certFile -}}{{- $_ = set $out "AIO_CLIENT_SSL_CERT_FILE" .certFile -}}{{- end -}}
 {{- if .keyFile -}}{{- $_ = set $out "AIO_CLIENT_SSL_KEY_FILE" .keyFile -}}{{- end -}}
+{{- end -}}
 {{- end -}}
 {{- with .Values.client.envSecret -}}{{- with .content -}}
 {{- $_ = mergeOverwrite $out . -}}

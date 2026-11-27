@@ -22,6 +22,7 @@
               "type": "object",
               "properties": {
                 "issuer": { "type": "string" },
+                "discoveryUrl": { "type": "string" },
                 "audience": { "type": "string" },
                 "requiredScopes": { "type": "array", "items": { "type": "string" } },
                 "adminSubject": { "type": "string" },
@@ -499,6 +500,7 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
+        "enabled": { "type": "boolean" },
         "certFile": { "type": "string" },
         "keyFile": { "type": "string" }
       }
@@ -516,6 +518,7 @@
       "properties": {
         "enabled": { "type": "boolean" },
         "className": { "type": "string" },
+        "host": { "type": "string" },
         "tls": { "type": "array" }
       }
     },

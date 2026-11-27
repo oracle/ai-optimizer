@@ -4,14 +4,26 @@ description: Deploy the AI Optimizer in Oracle Cloud Infrastructure with OpenTof
 sidebar_position: 10
 ---
 
-{/* Copyright (c) 2024, 2026, Oracle and/or its affiliates.
-Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl. */}
+{/_ Copyright (c) 2024, 2026, Oracle and/or its affiliates.
+Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl. _/}
 
 import {GitHubSourceLink, OciResourceManagerStackLink} from '@site/src/components/GitHubSourceLink';
 
 The **AI Optimizer** includes [OpenTofu](https://opentofu.org/) infrastructure as code (**IaC**) in the <GitHubSourceLink path="opentofu" type="tree"><code>opentofu/</code></GitHubSourceLink> directory for deploying into Oracle Cloud Infrastructure (OCI). You can either deploy the IaC from [OCI Resource Manager](https://docs.oracle.com/en-us/iaas/Content/ResourceManager/Concepts/resourcemanager.htm) or from a local checkout using OpenTofu or Terraform.
 
-The stack provisions compute, networking, load balancer, Oracle AI Database resources, and the **AI Optimizer** platform. It can provision a new Autonomous Database or connect the deployment to an existing Autonomous Database or other Oracle database.
+The stack provisions compute, networking, load balancer, Oracle AI Database resources, OCI IAM authentication, and the **AI Optimizer** platform. It can provision a new Autonomous Database or connect the deployment to an existing Autonomous Database or other Oracle database.
+
+## OCI IAM authentication
+
+The stack selects the active identity domain containing the OCI user applying the stack and registers AI Optimizer as an access-controlled OAuth client and resource server. The registration uses the load balancer URLs for its audience and Streamlit callback, the identity-domain endpoint for discovery, and OCI IAM's published issuer for token validation. It passes those values, the generated scope, and client credentials directly to the VM or OKE deployment.
+
+The OCI user applying the stack receives access to the IAM application and becomes the reserved AI Optimizer Admin. Grant the IAM application to additional users or groups from **Identity & Security → Domains → _the selected domain_ → Integrated applications**. They join AI Optimizer as members on first sign-in.
+
+The deployment principal needs permission to read users and manage applications and grants in the selected identity domain. Assign the appropriate identity-domain administrator role before applying the stack.
+
+:::warning[Protect deployment state]
+The generated OAuth client secret is stored in OpenTofu or Resource Manager state. Restrict access to state and plan artifacts.
+:::
 
 ## OCI Resource Manager
 
@@ -36,11 +48,11 @@ Select **Next** to configure variables.
 
 Choose the deployment type that suits your use case, then select it under **Infrastructure to Deploy**.
 
-| Deployment | Use case |
-| --- | --- |
-| **AlwaysFree** | An Always Free-compatible VM deployment with a free-tier Autonomous Database. |
-| **VM** | An all-in-one Server and Client deployment for development or small-scale use. |
-| **Kubernetes** | Separate Server and Client deployments on Oracle Kubernetes Engine (OKE). |
+| Deployment     | Use case                                                                       |
+| -------------- | ------------------------------------------------------------------------------ |
+| **AlwaysFree** | An Always Free-compatible VM deployment with a free-tier Autonomous Database.  |
+| **VM**         | An all-in-one Server and Client deployment for development or small-scale use. |
+| **Kubernetes** | Separate Server and Client deployments on Oracle Kubernetes Engine (OKE).      |
 
 ![Resource Manager infrastructure selection](../_assets/images/iac-stack-infra-selection.png)
 
@@ -90,6 +102,10 @@ The stack terminates TLS at the load balancer. Set **TLS Certificate** to one of
 - `self-signed` to generate a certificate.
 - `provided` to supply PEM-encoded certificate and private-key content.
 
+When providing a certificate, set **Public TLS Hostname** to the DNS name covered by that certificate.
+
+Kubernetes deployments normally preserve TLS from the ingress to the pods. This OCI stack terminates TLS at the load balancer and uses HTTP on the private backend path, whose worker ingress is restricted to the load-balancer network security group.
+
 ![Load-balancer TLS settings](../_assets/images/iac-stack-tls.png)
 
 For the application's other TLS deployment options, see [TLS / HTTPS](./tls).
@@ -103,6 +119,8 @@ Review the plan and costs, then select **Apply** to create the stack.
 ### Outputs
 
 After the apply job succeeds, use the stack outputs to open the Client or Server API URL. The Server output points to its OpenAPI documentation. Initial image pulls and application startup can take several minutes after the infrastructure job completes. If a URL is not ready, wait a few minutes and try again.
+
+Open the Client URL and select **Log in**. OCI IAM authenticates the user and returns an access token scoped to the generated AI Optimizer resource server.
 
 ![Resource Manager outputs](../_assets/images/iac-stack-outputs.png)
 

@@ -17,7 +17,7 @@ The **AI Optimizer Server** API documentation is available at `https://<IP Addre
 
 Powered by [FastAPI](https://fastapi.tiangolo.com/) and [Uvicorn](https://uvicorn.dev/), the **AI Optimizer Server** hosts the REST API, agent and flow runtime, and MCP server. It connects REST-capable clients to AI models, configured tools, and the Oracle AI Database.
 
-During startup, the Server connects to the required [Oracle AI Database](../guides/database), initializes and verifies the application schema, and restores persisted settings before accepting traffic. Its readiness status tracks database availability.
+During startup, the Server connects to the required [Oracle AI Database](../guides/database), initializes and verifies the application schema, and restores persisted settings before accepting traffic. Readiness depends on CORE database availability and the configured authentication authority. If the authority setup job is still provisioning during server startup, the Server retries verification and becomes ready when setup completes.
 
 ## [Calling the API](./api-examples/intro)
 

@@ -19,6 +19,7 @@ global:
     accountStatusCacheSeconds: 30
     oidc:
       issuer: ""
+      discoveryUrl: ""
       audience: ""
       requiredScopes: []
       adminSubject: ""
@@ -132,8 +133,9 @@ server:
     # dial the server). The container always listens on 8000.
     port: 8000
 
-  # ssl: optionally provide paths to cert/key files mounted into the container.
+  # ssl: TLS inside the container. Disable when TLS terminates at a trusted load balancer or ingress.
   ssl:
+    enabled: true
     certFile: ""
     keyFile: ""
 
@@ -152,6 +154,7 @@ server:
   ingress:
     enabled: false
     className: nginx # IngressClass name (e.g., "nginx" for NGINX ingress controller)
+    host: ""
     tls: []
       # - hosts:
       #     - example.com
@@ -510,9 +513,9 @@ client:
     # allocate one.
     nodePort: null
 
-  # ssl: optionally provide paths to cert/key files mounted into the container.
-  # When certFile and keyFile are empty, a self-signed certificate is auto-generated at startup.
+  # ssl: TLS inside the container. Disable when TLS terminates at a trusted load balancer or ingress.
   ssl:
+    enabled: true
     certFile: ""
     keyFile: ""
 
@@ -571,6 +574,7 @@ client:
   ingress:
     enabled: false
     className: nginx # IngressClass name (e.g., "nginx" for NGINX ingress controller)
+    host: ""
     tls: [ ]
     # - hosts:
     #     - example.com

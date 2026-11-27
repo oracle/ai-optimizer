@@ -147,7 +147,7 @@ def prepare_streamlit_authentication() -> None:
             f"client_id = {json.dumps(values['client_id'])}",
             f"client_secret = {json.dumps(values['client_secret'])}",
             f"server_metadata_url = {json.dumps(discovery_url)}",
-            f"client_kwargs = {{ scope = {json.dumps(scopes)} }}",
+            f'client_kwargs = {{ scope = {json.dumps(scopes)}, prompt = "login" }}',
             "",
         )
     )

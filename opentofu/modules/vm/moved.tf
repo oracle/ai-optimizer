@@ -18,8 +18,3 @@ moved {
   from = oci_load_balancer_listener.server_https_lb_listener[0]
   to   = oci_load_balancer_listener.server_https_lb_listener
 }
-
-moved {
-  from = oci_load_balancer_certificate.ssl[0]
-  to   = oci_load_balancer_certificate.ssl
-}

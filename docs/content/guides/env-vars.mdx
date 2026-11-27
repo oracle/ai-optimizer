@@ -111,7 +111,8 @@ AI Optimizer Server uses Oracle database authentication when its OIDC resource-s
 | `AIO_AUTH_SESSION_IDLE_SECONDS` | Maximum session inactivity before rejection. | `1800` |
 | `AIO_AUTH_SESSION_MAX_PER_USER` | Maximum active sessions retained for one user. | `10` |
 | `AIO_AUTH_ACCOUNT_STATUS_CACHE_SECONDS` | Maximum delay for observing an out-of-band database account-state change. | `30` |
-| `AIO_OIDC_ISSUER` | Exact issuer accepted for OIDC access tokens and used for standard provider discovery. | _(none)_ |
+| `AIO_OIDC_ISSUER` | Exact issuer accepted for OIDC access tokens. | _(none)_ |
+| `AIO_OIDC_DISCOVERY_URL` | Optional OpenID Provider configuration endpoint override. Defaults to the issuer plus `/.well-known/openid-configuration`. | Derived from `AIO_OIDC_ISSUER` |
 | `AIO_OIDC_AUDIENCE` | Audience required in access tokens issued for AI Optimizer Server. | _(none)_ |
 | `AIO_OIDC_REQUIRED_SCOPES` | JSON array of scopes required in access tokens. | _(none)_ |
 | `AIO_OIDC_ADMIN_SUBJECT` | Exact OIDC subject mapped to the reserved Admin user. | _(none)_ |

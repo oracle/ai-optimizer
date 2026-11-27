@@ -58,6 +58,15 @@ resource "terraform_data" "byo_db_validation" {
 }
 
 // Load Balancer
+resource "oci_core_public_ip" "lb" {
+  compartment_id = local.compartment_ocid
+  display_name   = format("%s-lb-ip", local.label_prefix)
+  lifetime       = "RESERVED"
+  lifecycle {
+    ignore_changes = [private_ip_id]
+  }
+}
+
 resource "oci_load_balancer_load_balancer" "lb" {
   compartment_id = local.compartment_ocid
   display_name   = format("%s-lb", local.label_prefix)
@@ -73,6 +82,11 @@ resource "oci_load_balancer_load_balancer" "lb" {
   network_security_group_ids = [
     oci_core_network_security_group.lb.id,
   ]
+  reserved_ips {
+    id = oci_core_public_ip.lb.id
+  }
+
+  depends_on = [oci_certificates_management_certificate.lb_cert]
 }
 
 // Autonomous Database
@@ -107,10 +121,12 @@ resource "oci_database_autonomous_database" "default_adb" {
 }
 
 resource "oci_objectstorage_bucket" "bucket" {
+  provider       = oci-patched
   for_each       = var.prov_object_storage ? { managed = true } : {}
   compartment_id = local.compartment_ocid
   namespace      = local.object_storage_namespace
   name           = format("%s-bucket", local.label_prefix)
   access_type    = "NoPublicAccess"
   auto_tiering   = "Disabled"
+  force_delete   = true
 }

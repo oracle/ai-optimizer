@@ -62,6 +62,10 @@ spec:
             {{- if eq (include "ai-optimizer.authentication.isOidc" . | trim) "true" }}
             - name: AIO_OIDC_ISSUER
               value: {{ .Values.global.authentication.oidc.issuer | quote }}
+            {{- if ne (.Values.global.authentication.oidc.discoveryUrl | default "" | trim) "" }}
+            - name: AIO_OIDC_DISCOVERY_URL
+              value: {{ .Values.global.authentication.oidc.discoveryUrl | quote }}
+            {{- end }}
             - name: AIO_OIDC_REQUIRED_SCOPES
               value: {{ .Values.global.authentication.oidc.requiredScopes | toJson | quote }}
             - name: AIO_OIDC_CLIENT_ID
@@ -91,7 +95,7 @@ spec:
             httpGet:
               path: {{ include "ai-optimizer.getPath" . }}ping
               port: client-port
-              scheme: HTTPS
+              scheme: {{ if .Values.client.ssl.enabled }}HTTPS{{ else }}HTTP{{ end }}
             {{- with omit .Values.client.livenessProbe "enabled" }}
               {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -101,7 +105,7 @@ spec:
             httpGet:
               path: {{ include "ai-optimizer.getPath" . }}ping
               port: client-port
-              scheme: HTTPS
+              scheme: {{ if .Values.client.ssl.enabled }}HTTPS{{ else }}HTTP{{ end }}
             {{- with omit .Values.client.readinessProbe "enabled" }}
                {{- toYaml . | nindent 12 }}
             {{- end }}

@@ -76,7 +76,8 @@ jobs:
         run: |
           cd opentofu
           zip -r $RUNNER_TEMP/${{ steps.names.outputs.iac }}.zip . \
-            -x "terraform*" ".terraform*" "*/terraform*" "*/.terraform*" \
+            -x ".terraform*" "*/.terraform*" \
+            -x "terraform.tfstate*" "*/terraform.tfstate*" "terraform.tfvars*" "*/terraform.tfvars*" \
             -x "cfgmgt/stage/*.*" "*.tfplan*" "README.md" "TESTING.md" ".gitignore" "*pycache*"
           gh release upload ${{github.event.release.tag_name}} "$RUNNER_TEMP/${{ steps.names.outputs.iac }}.zip" --clobber
         env:

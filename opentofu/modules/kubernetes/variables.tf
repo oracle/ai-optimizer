@@ -172,6 +172,14 @@ variable "ssl_key_pem" {
   sensitive = true
 }
 
+variable "ssl_hostname" {
+  type = string
+}
+
+variable "lb_certificate_ocid" {
+  type = string
+}
+
 variable "client_cookie_secret" {
   description = "Streamlit signed-cookie key supplied explicitly by OpenTofu so the value remains stable across deployment renders."
   type        = string
@@ -179,6 +187,10 @@ variable "client_cookie_secret" {
 }
 
 variable "oidc_issuer" {
+  type = string
+}
+
+variable "oidc_discovery_url" {
   type = string
 }
 

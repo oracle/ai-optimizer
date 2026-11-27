@@ -67,7 +67,11 @@ resource "oci_identity_domains_app" "optimizer" {
     requires_consent = false
   }
 
-  provider = oci.home_region
+  provider = oci-patched.home_region
+  lifecycle {
+    // cannot change from PRIVATE_ENDPOINT_ACCESS to SECURE_ACCESS
+    ignore_changes = [schemas]
+  }
 }
 
 resource "oci_identity_domains_grant" "optimizer_admin" {

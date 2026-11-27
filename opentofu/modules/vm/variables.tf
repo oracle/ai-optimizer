@@ -107,6 +107,10 @@ variable "lb_server_https_port" {
   type = number
 }
 
+variable "lb_certificate_ocid" {
+  type = string
+}
+
 variable "ssl_cert_pem" {
   type      = string
   default   = ""
@@ -119,12 +123,6 @@ variable "ssl_key_pem" {
   sensitive = true
 }
 
-variable "ssl_ca_cert" {
-  type      = string
-  default   = ""
-  sensitive = true
-}
-
 variable "client_cookie_secret" {
   description = "Streamlit signed-cookie key stored in .env.vm so the value remains stable across systemd restarts."
   type        = string
@@ -132,6 +130,10 @@ variable "client_cookie_secret" {
 }
 
 variable "oidc_issuer" {
+  type = string
+}
+
+variable "oidc_discovery_url" {
   type = string
 }
 

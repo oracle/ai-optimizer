@@ -31,17 +31,6 @@ resource "oci_load_balancer_backend_set" "server_lb_backend_set" {
   }
 }
 
-resource "oci_load_balancer_certificate" "ssl" {
-  certificate_name   = format("%s-ssl-cert", var.label_prefix)
-  load_balancer_id   = var.lb_id
-  public_certificate = var.ssl_cert_pem
-  private_key        = var.ssl_key_pem
-  ca_certificate     = var.ssl_ca_cert
-  lifecycle {
-    create_before_destroy = true
-  }
-}
-
 resource "oci_load_balancer_listener" "client_https_lb_listener" {
   load_balancer_id         = var.lb_id
   name                     = format("%s-client-https-lb-listener", var.label_prefix)
@@ -49,7 +38,7 @@ resource "oci_load_balancer_listener" "client_https_lb_listener" {
   port                     = var.lb_client_https_port
   protocol                 = "HTTP"
   ssl_configuration {
-    certificate_name        = oci_load_balancer_certificate.ssl.certificate_name
+    certificate_ids         = [var.lb_certificate_ocid]
     verify_peer_certificate = false
     protocols               = ["TLSv1.2", "TLSv1.3"]
   }
@@ -65,7 +54,7 @@ resource "oci_load_balancer_listener" "server_https_lb_listener" {
   port                     = var.lb_server_https_port
   protocol                 = "HTTP"
   ssl_configuration {
-    certificate_name        = oci_load_balancer_certificate.ssl.certificate_name
+    certificate_ids         = [var.lb_certificate_ocid]
     verify_peer_certificate = false
     protocols               = ["TLSv1.2", "TLSv1.3"]
   }

@@ -13,71 +13,6 @@ variable "deploy_optimizer" {
   default     = true
 }
 
-variable "oidc_issuer" {
-  description = "Exact OCI IAM identity-domain issuer for AI Optimizer."
-  type        = string
-  default     = ""
-}
-
-variable "oidc_audience" {
-  description = "Audience of access tokens issued for the AI Optimizer API."
-  type        = string
-  default     = ""
-}
-
-variable "oidc_required_scopes" {
-  description = "Scopes required on AI Optimizer access tokens."
-  type        = set(string)
-  default     = []
-}
-
-variable "oidc_client_id" {
-  description = "OCI IAM confidential web-client identifier."
-  type        = string
-  default     = ""
-}
-
-variable "oidc_client_secret" {
-  description = "OCI IAM confidential web-client secret."
-  type        = string
-  default     = ""
-  sensitive   = true
-}
-
-variable "oidc_redirect_uri" {
-  description = "Public Streamlit OIDC callback URL ending in /oauth2callback."
-  type        = string
-  default     = ""
-}
-
-variable "oidc_admin_subject" {
-  description = "Exact OCI IAM subject bound to the reserved Admin user."
-  type        = string
-  default     = ""
-}
-
-variable "oidc_public_server_url" {
-  description = "Public HTTPS URL of the AI Optimizer resource server."
-  type        = string
-  default     = ""
-}
-
-check "optimizer_oidc_required" {
-  assert {
-    condition = !var.deploy_optimizer || alltrue([
-      startswith(var.oidc_issuer, "https://"),
-      trimspace(var.oidc_audience) != "",
-      length(var.oidc_required_scopes) > 0,
-      trimspace(var.oidc_client_id) != "",
-      trimspace(var.oidc_client_secret) != "",
-      startswith(var.oidc_redirect_uri, "https://"),
-      trimspace(var.oidc_admin_subject) != "",
-      startswith(var.oidc_public_server_url, "https://"),
-    ])
-    error_message = "OpenTofu AI Optimizer deployments require complete OCI IAM OIDC configuration with HTTPS issuer, redirect, and public server URLs."
-  }
-}
-
 variable "optimizer_version" {
   description = "Version to deploy: 'Stable' (latest release), 'Experimental' (main branch), or 'Branch' (specified Git branch)."
   type        = string
@@ -347,6 +282,19 @@ variable "ssl_mode" {
   }
 }
 
+variable "ssl_hostname" {
+  description = "Public DNS hostname for the load balancer TLS listener."
+  type        = string
+  default     = ""
+  validation {
+    condition = var.ssl_hostname == "" || can(regex(
+      "^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)+$",
+      var.ssl_hostname,
+    ))
+    error_message = "ssl_hostname must be a DNS hostname without a scheme, port, path, or trailing dot."
+  }
+}
+
 variable "ssl_certificate" {
   description = "PEM-encoded TLS certificate (required when ssl_mode = 'provided')."
   type        = string
@@ -368,11 +316,18 @@ check "ssl_provided_requires_cert_and_key" {
   }
 }
 
+check "ssl_requires_hostname" {
+  assert {
+    condition     = var.ssl_mode != "provided" || var.ssl_hostname != ""
+    error_message = "ssl_hostname must be set when ssl_mode is 'provided'."
+  }
+}
+
 // NSGs
 variable "client_allowed_cidrs" {
   description = "Comma separated string of CIDR blocks from which the application client can be accessed."
   type        = string
-  default     = "127.0.0.0/8"
+  default     = "0.0.0.0/0"
   validation {
     condition     = can(regex("$|((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9]).(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])/(3[0-2]|[1-2]?[0-9])(,?)( ?)){1,}$", var.client_allowed_cidrs))
     error_message = "Must be a comma separated string of valid CIDRs."

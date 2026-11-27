@@ -7,7 +7,7 @@ sidebar_position: 20
 {/* Copyright (c) 2024, 2026, Oracle and/or its affiliates.
 Licensed under the Universal Permissive License v1.0 as shown at http://oss.oracle.com/licenses/upl. */}
 
-The **AI Optimizer Server** and **AI Optimizer Client** serve HTTPS only. Supply their certificate and key paths, or use their generated localhost certificate.
+The **AI Optimizer Server** and **AI Optimizer Client** serve HTTPS by default. Supply their certificate and key paths, or use their generated localhost certificate.
 
 ## Generated Self-Signed Certificates
 
@@ -55,7 +55,7 @@ podman run \
   -it --rm localhost/ai-optimizer-aio:dev
 ```
 
-In the environment file, use the mounted paths, for example:
+In the environment file, use the mounted paths:
 
 ```dotenv
 AIO_CLIENT_SSL_CERT_FILE=/app/tls/cert.pem
@@ -64,4 +64,4 @@ AIO_CLIENT_SSL_KEY_FILE=/app/tls/key.pem
 
 ## Kubernetes and Helm
 
-For ingress, gateway, and direct Client-pod TLS in a Helm deployment, see [Kubernetes / Helm](./k8s-helm#https-and-public-access).
+For ingress, gateway, and pod TLS in a Helm deployment, see [Kubernetes / Helm](./k8s-helm#https-and-public-access).

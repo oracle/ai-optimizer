@@ -47,16 +47,20 @@ The IaC is packaged and attached to each release using GitHub Actions. Below is 
 1. Zip the IaC with Archives
     ```bash
     zip -r ai-optimizer-iac.zip . \
-      -x "terraform*" ".terraform*" "*/terraform*" "*/.terraform*" \
+      -x ".terraform*" "*/.terraform*" \
+      -x "terraform.tfstate*" "*/terraform.tfstate*" "terraform.tfvars*" "*/terraform.tfvars*" \
       -x "cfgmgt/stage/*.*" "*.tfplan*" "examples/*" "*.md" ".gitignore" "*pycache*"
     ```
+
+The archive includes the project-local OCI provider packages under `terraform.d/plugins`.
 
 ## Quick Start
 
 ### 1. Prerequisites
 
 - OpenTofu/Terraform 1.5+
-- OCI account with appropriate permissions
+- OCI account with permission to create the selected infrastructure
+- Permission to read users and manage applications and grants in the deploying OCI user's identity domain
 - OCI CLI configured (optional, for easier setup)
 
 ### 2. Configure Variables
@@ -134,6 +138,8 @@ To use this infrastructure in another project:
    tofu plan
    tofu apply
    ```
+
+The apply registers an access-controlled OAuth application in the identity domain containing the OCI user applying the stack. That user is granted the application and becomes AI Optimizer Admin. The generated OAuth client secret is stored in OpenTofu state; protect state and plan artifacts.
 
 ## Testing
 

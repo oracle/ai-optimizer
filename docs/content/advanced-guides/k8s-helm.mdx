@@ -419,9 +419,22 @@ Open `https://localhost:8501` in a browser.
 
 ### HTTPS and Public Access
 
-For public Kubernetes access, terminate TLS at an ingress or gateway. The <GitHubSourceLink path="helm#example-6-ingress-with-tls" type="tree">Helm chart ingress TLS example</GitHubSourceLink> shows how to create a Kubernetes TLS Secret and reference it from the Server and Client ingress values.
+For public Kubernetes access, terminate TLS at an ingress or gateway. The pods and their health probes use HTTPS by default. The <GitHubSourceLink path="helm#example-6-ingress-with-tls" type="tree">Helm chart ingress TLS example</GitHubSourceLink> shows how to create a Kubernetes TLS Secret and reference it from the Server and Client ingress values.
 
-The Client pod and its health probes use HTTPS. To use a certificate stored in a Secret, mount it and supply its paths:
+To terminate TLS at the load balancer or ingress and use HTTP on its trusted private backend network, disable pod TLS:
+
+```yaml
+server:
+  ssl:
+    enabled: false
+client:
+  ssl:
+    enabled: false
+```
+
+The chart then configures the Services, health probes, and ingress backends for HTTP. The OCI IaC deployment uses this mode and restricts worker ingress to its load-balancer network security group.
+
+To use a certificate stored in a Secret for the Client pod, mount it and supply its paths:
 
 ```yaml
 client:

@@ -17,6 +17,10 @@ OIDC_USER_NAMESPACE = UUID("ab2c6cd7-a206-4e14-8d86-660efcf08b13")
 SESSION_CLEANUP_BATCH_SIZE = 500
 
 
+class AuthAuthorityNotInitialized(RuntimeError):
+    """Raised while the deployment authority row is being provisioned."""
+
+
 async def connection_database_identity(conn: oracledb.AsyncConnection) -> str:
     rows = await execute_sql(
         conn,
@@ -493,7 +497,9 @@ async def verify_authority(app_settings: Settings = settings) -> AuthAuthority:
             "FROM aio_auth_authority",
             max_rows=2,
         )
-        if not rows or len(rows) != 1 or tuple(rows[0][:6]) != expected:
+        if not rows:
+            raise AuthAuthorityNotInitialized("Authentication authority is not initialized")
+        if len(rows) != 1 or tuple(rows[0][:6]) != expected:
             raise ValueError("Authentication authority does not match the configured deployment")
         authority_row = rows[0]
         admin_rows = await execute_sql(

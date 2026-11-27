@@ -8,6 +8,7 @@ global:
   authentication:
     oidc:
       issuer: "${oidc_issuer}"
+      discoveryUrl: "${oidc_discovery_url}"
       audience: "${oidc_audience}"
       requiredScopes: ${oidc_required_scopes}
       adminSubject: "${oidc_admin_subject}"
@@ -18,6 +19,8 @@ global:
 
 # -- API Server configuration
 server:
+  ssl:
+    enabled: false
   image:
     repository: ${repository_base}/ai-optimizer-server
     tag: "${app_version}"
@@ -26,13 +29,15 @@ server:
   ingress:
     enabled: true
     className: native-ic
+%{ if ssl_hostname != "" ~}
+    host: "${ssl_hostname}"
+%{ endif ~}
     annotations:
-      oci-native-ingress.oraclecloud.com/backend-tls-enabled: "true"
-      oci-native-ingress.oraclecloud.com/healthcheck-protocol: HTTPS
+      oci-native-ingress.oraclecloud.com/backend-tls-enabled: "false"
+      oci-native-ingress.oraclecloud.com/certificate-ocid: "${lb_certificate_ocid}"
+      oci-native-ingress.oraclecloud.com/healthcheck-protocol: HTTP
       oci-native-ingress.oraclecloud.com/healthcheck-path: "/v1/readiness"
       oci-native-ingress.oraclecloud.com/https-listener-port: "8443"
-    tls:
-      - secretName: ai-optimizer-tls
   service:
     type: "NodePort"
 
@@ -67,6 +72,8 @@ server:
 
 client:
   enabled: true
+  ssl:
+    enabled: false
   cookieSecret: "${client_cookie_secret}"
   oidc:
     clientId: "${oidc_client_id}"
@@ -86,13 +93,15 @@ client:
   ingress:
     enabled: true
     className: native-ic
+%{ if ssl_hostname != "" ~}
+    host: "${ssl_hostname}"
+%{ endif ~}
     annotations:
-      oci-native-ingress.oraclecloud.com/backend-tls-enabled: "true"
-      oci-native-ingress.oraclecloud.com/healthcheck-protocol: HTTPS
+      oci-native-ingress.oraclecloud.com/backend-tls-enabled: "false"
+      oci-native-ingress.oraclecloud.com/certificate-ocid: "${lb_certificate_ocid}"
+      oci-native-ingress.oraclecloud.com/healthcheck-protocol: HTTP
       oci-native-ingress.oraclecloud.com/healthcheck-path: "/_stcore/health"
       oci-native-ingress.oraclecloud.com/https-listener-port: "443"
-    tls:
-      - secretName: ai-optimizer-tls
   service:
     type: "NodePort"
 

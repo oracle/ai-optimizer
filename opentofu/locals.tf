@@ -113,6 +113,19 @@ locals {
   lb_max_shape         = local.is_always_free ? 10 : var.lb_max_shape
   lb_client_https_port = 443
   lb_server_https_port = 8443
+  optimizer_public_host = (
+    var.ssl_hostname != "" ? lower(var.ssl_hostname) :
+    oci_load_balancer_load_balancer.lb.ip_address_details[0].ip_address
+  )
+  optimizer_client_url = format(
+    "https://%s",
+    local.optimizer_public_host,
+  )
+  optimizer_server_base_url = format(
+    "https://%s:%d",
+    local.optimizer_public_host,
+    local.lb_server_https_port,
+  )
   client_allowed_cidrs = toset(compact(split(",", replace(var.client_allowed_cidrs, "/\\s+/", ""))))
   server_allowed_cidrs = toset(compact(split(",", replace(var.server_allowed_cidrs, "/\\s+/", ""))))
   ssl_cert_pem = (

@@ -135,6 +135,7 @@ write_files:
       AIO_DB_PASSWORD=${db_password}
       AIO_DB_DSN=${db_service}
       AIO_OIDC_ISSUER=${oidc_issuer}
+      AIO_OIDC_DISCOVERY_URL=${oidc_discovery_url}
       AIO_OIDC_AUDIENCE=${oidc_audience}
       AIO_OIDC_REQUIRED_SCOPES='${oidc_required_scopes}'
       AIO_OIDC_CLIENT_ID=${oidc_client_id}

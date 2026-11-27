@@ -4,11 +4,11 @@ spell-checker: ignore nindent */}}
 
 {{- if and .Values.client.enabled .Values.client.ingress.enabled -}}
 {{- $annotations := deepCopy (.Values.client.ingress.annotations | default dict) -}}
-{{- if and (eq .Values.client.ingress.className "nginx") (not (hasKey $annotations "nginx.ingress.kubernetes.io/backend-protocol")) -}}
+{{- if and .Values.client.ssl.enabled (eq .Values.client.ingress.className "nginx") (not (hasKey $annotations "nginx.ingress.kubernetes.io/backend-protocol")) -}}
   {{- $_ := set $annotations "nginx.ingress.kubernetes.io/backend-protocol" "HTTPS" -}}
 {{- end -}}
 {{- if and (eq .Values.client.ingress.className "native-ic") (not (hasKey $annotations "oci-native-ingress.oraclecloud.com/backend-tls-enabled")) -}}
-  {{- $_ := set $annotations "oci-native-ingress.oraclecloud.com/backend-tls-enabled" "true" -}}
+  {{- $_ := set $annotations "oci-native-ingress.oraclecloud.com/backend-tls-enabled" (ternary "true" "false" .Values.client.ssl.enabled) -}}
 {{- end -}}
 {{- if and .Values.client.ingress.className (not (semverCompare ">=1.18-0" .Capabilities.KubeVersion.GitVersion)) }}
   {{- if not (hasKey $annotations "kubernetes.io/ingress.class") }}
@@ -43,7 +43,12 @@ spec:
     {{- end }}
   {{- end }}
   rules:
+    {{- if .Values.client.ingress.host }}
+    - host: {{ .Values.client.ingress.host | quote }}
+      http:
+    {{- else }}
     - http:
+    {{- end }}
         paths:
           - pathType: Prefix
             path: {{ include "ai-optimizer.getPath" . | trimSuffix "/" | default "/" }}
